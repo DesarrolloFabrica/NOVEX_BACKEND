@@ -1,0 +1,23 @@
+# Entorno local (no versionar)
+.env
+.env.local
+.env.*.local
+
+# Dependencias
+node_modules/
+
+# Build
+dist/
+coverage/
+*.tsbuildinfo
+
+# Logs / IDE
+logs/
+*.log
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
