@@ -38,7 +38,16 @@ export class OperationalEventsRepository extends Repository<OperationalEvent> {
 
     const qb = this.createQueryBuilder('event')
       .leftJoinAndSelect('event.sourceArea', 'sourceArea')
+      .leftJoinAndSelect('event.timelineEntries', 'timelineEntries')
+      .leftJoinAndSelect('event.interpretations', 'interpretations')
+      .leftJoinAndSelect('interpretations.category', 'category')
+      .leftJoinAndSelect('interpretations.affectedAreas', 'affectedAreas')
+      .leftJoinAndSelect(
+        'interpretations.suggestedIndicators',
+        'suggestedIndicators',
+      )
       .orderBy('event.reportedAt', 'DESC')
+      .addOrderBy('timelineEntries.at', 'ASC')
       .skip((page - 1) * limit)
       .take(limit);
 

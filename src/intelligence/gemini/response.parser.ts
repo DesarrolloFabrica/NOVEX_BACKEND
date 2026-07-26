@@ -1,11 +1,22 @@
 import { BadRequestException } from '@nestjs/common';
 import { RiskLevel } from '../../common/enums/operational.enums';
+import {
+  ActionPriority,
+  CertaintyLevel,
+  ExecutiveIntelligenceReport,
+  ExecutiveUrgency,
+  IndicatorTrend,
+  INTELLIGENCE_CONTRACT_VERSION,
+} from '../contracts/executive-intelligence-report.contract';
 import { InterpretEventAiDto } from './dto/interpret-event-ai.dto';
 import {
   GeminiInterpretationResult,
   GeminiSuggestedIndicator,
 } from './dto/gemini-interpretation.result';
-import { GeminiRawInterpretationPayload } from './response.schema';
+import {
+  GeminiRawExecutiveReport,
+  GeminiRawInterpretationPayload,
+} from './response.schema';
 
 /**
  * Parser de la respuesta estructurada de Gemini hacia el dominio de inteligencia.
@@ -59,7 +70,175 @@ export class GeminiResponseParser {
       riskScore,
       modelLabel,
       interpretedAt: new Date().toISOString(),
+      executiveReport: this.parseExecutiveReport(payload.executiveReport),
     };
+  }
+
+  /**
+   * Normaliza el reporte ejecutivo (contrato omega.intelligence.v2).
+   * Valida presencia de secciones, sanea enums y acota valores numéricos.
+   */
+  private parseExecutiveReport(
+    raw: GeminiRawExecutiveReport,
+  ): ExecutiveIntelligenceReport {
+    if (!raw || typeof raw !== 'object') {
+      throw new BadRequestException(
+        'Gemini no devolvió el reporte ejecutivo (executiveReport).',
+      );
+    }
+
+    const sections: Array<keyof GeminiRawExecutiveReport> = [
+      'incidentSummary',
+      'riskAssessment',
+      'impactAnalysis',
+      'affectedAreas',
+      'rootCause',
+      'decisionFactors',
+      'recommendedActions',
+      'operationalConsequences',
+      'operationalIndicators',
+      'timelineSuggestions',
+      'executiveConclusion',
+      'dataGaps',
+    ];
+    for (const key of sections) {
+      if (raw[key] === undefined || raw[key] === null) {
+        throw new BadRequestException(
+          `El reporte ejecutivo carece de la sección requerida: ${key}`,
+        );
+      }
+    }
+
+    const students = raw.impactAnalysis.estimatedAffectedStudents;
+
+    return {
+      contractVersion: INTELLIGENCE_CONTRACT_VERSION,
+      incidentSummary: {
+        executiveTitle: String(raw.incidentSummary.executiveTitle).trim(),
+        executiveSummary: String(raw.incidentSummary.executiveSummary).trim(),
+      },
+      riskAssessment: {
+        riskScore: this.clampInt(raw.riskAssessment.riskScore, 0, 100),
+        riskLevel: this.asRiskLevel(raw.riskAssessment.riskLevel),
+        severity: this.clampInt(raw.riskAssessment.severity, 1, 5),
+        certainty: {
+          level: this.asEnum<CertaintyLevel>(
+            raw.riskAssessment.certainty.level,
+            ['low', 'medium', 'high'],
+            'medium',
+          ),
+          percentage: this.clampInt(
+            raw.riskAssessment.certainty.percentage,
+            0,
+            100,
+          ),
+          explanation: String(raw.riskAssessment.certainty.explanation).trim(),
+        },
+      },
+      impactAnalysis: {
+        internalImpactPercentage: this.clampInt(
+          raw.impactAnalysis.internalImpactPercentage,
+          0,
+          100,
+        ),
+        externalImpactPercentage: this.clampInt(
+          raw.impactAnalysis.externalImpactPercentage,
+          0,
+          100,
+        ),
+        studentImpactPercentage: this.clampInt(
+          raw.impactAnalysis.studentImpactPercentage,
+          0,
+          100,
+        ),
+        affectedProcesses: this.asStringList(
+          raw.impactAnalysis.affectedProcesses,
+        ),
+        estimatedAffectedStudents:
+          students === null || students === undefined || !Number.isFinite(students)
+            ? null
+            : Math.max(0, Math.round(students)),
+        estimatedAffectedAreas: this.clampInt(
+          raw.impactAnalysis.estimatedAffectedAreas,
+          0,
+          100,
+        ),
+      },
+      affectedAreas: (raw.affectedAreas ?? []).map((area) => ({
+        name: String(area.name).trim(),
+        affectationLevel: this.asRiskLevel(area.affectationLevel),
+        reason: String(area.reason).trim(),
+      })),
+      rootCause: {
+        detectedCauses: this.asStringList(raw.rootCause.detectedCauses),
+        hypotheses: this.asStringList(raw.rootCause.hypotheses),
+        dependencies: this.asStringList(raw.rootCause.dependencies),
+      },
+      decisionFactors: this.asStringList(raw.decisionFactors),
+      recommendedActions: (raw.recommendedActions ?? []).map((item) => ({
+        priority: this.asEnum<ActionPriority>(
+          item.priority,
+          ['immediate', 'high', 'medium', 'scheduled'],
+          'medium',
+        ),
+        action: String(item.action).trim(),
+        reason: String(item.reason).trim(),
+        suggestedArea: String(item.suggestedArea).trim(),
+        recommendedTime: String(item.recommendedTime).trim(),
+      })),
+      operationalConsequences: this.asStringList(raw.operationalConsequences),
+      operationalIndicators: (raw.operationalIndicators ?? []).map((item) => ({
+        name: String(item.name).trim(),
+        explanation: String(item.explanation).trim(),
+        unit: String(item.unit).trim(),
+        suggestedValue: Number.isFinite(item.suggestedValue)
+          ? Number(item.suggestedValue)
+          : 0,
+        trend: this.asEnum<IndicatorTrend>(
+          item.trend,
+          ['up', 'down', 'stable'],
+          'stable',
+        ),
+      })),
+      timelineSuggestions: (raw.timelineSuggestions ?? []).map((item) => ({
+        horizon: String(item.horizon).trim(),
+        checkpoint: String(item.checkpoint).trim(),
+      })),
+      executiveConclusion: {
+        gravity: String(raw.executiveConclusion.gravity).trim(),
+        urgency: this.asEnum<ExecutiveUrgency>(
+          raw.executiveConclusion.urgency,
+          ['immediate', 'high', 'medium', 'low'],
+          'medium',
+        ),
+        recommendation: String(raw.executiveConclusion.recommendation).trim(),
+      },
+      dataGaps: this.asStringList(raw.dataGaps),
+    };
+  }
+
+  private asRiskLevel(value: string): RiskLevel {
+    const normalized = String(value).trim().toLowerCase();
+    const valid = Object.values(RiskLevel) as string[];
+    return valid.includes(normalized)
+      ? (normalized as RiskLevel)
+      : RiskLevel.MODERATE;
+  }
+
+  private asEnum<T extends string>(
+    value: string,
+    allowed: readonly T[],
+    fallback: T,
+  ): T {
+    const normalized = String(value).trim().toLowerCase() as T;
+    return allowed.includes(normalized) ? normalized : fallback;
+  }
+
+  private asStringList(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((item) => String(item).trim())
+      .filter(Boolean);
   }
 
   private asPayload(raw: unknown): GeminiRawInterpretationPayload {
@@ -82,6 +261,7 @@ export class GeminiResponseParser {
       'suggestedIndicators',
       'recommendations',
       'confidence',
+      'executiveReport',
     ];
 
     for (const key of required) {

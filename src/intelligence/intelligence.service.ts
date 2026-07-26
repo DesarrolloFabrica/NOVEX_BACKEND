@@ -141,6 +141,7 @@ export class IntelligenceService {
         unit: indicator.unit,
         direction: indicator.direction as IndicatorDirection | undefined,
       })),
+      executiveReport: aiResult.executiveReport,
     };
 
     return this.createMockInterpretation(dto);
@@ -194,6 +195,7 @@ export class IntelligenceService {
       modelLabel: dto.modelLabel ?? 'gemini-mock',
       interpretedAt: new Date(),
       confidence: dto.confidence ?? null,
+      executiveReport: dto.executiveReport ?? null,
       suggestedIndicators: (dto.suggestedIndicators ?? []).map((indicator) =>
         Object.assign(new OperationalIndicator(), {
           code: indicator.code,

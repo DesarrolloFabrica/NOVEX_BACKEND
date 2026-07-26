@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { RiskLevel } from '../../common/enums/operational.enums';
+import { ExecutiveIntelligenceReport } from '../contracts/executive-intelligence-report.contract';
 import { OperationalArea } from '../../operational-areas/entities/operational-area.entity';
 import { OperationalEvent } from '../../operational-events/entities/operational-event.entity';
 import { IncidentCategory } from './incident-category.entity';
@@ -97,6 +98,18 @@ export class AIInterpretation extends BaseEntity {
 
   @Column({ type: 'real', nullable: true })
   confidence!: number | null;
+
+  /**
+   * Reporte ejecutivo definitivo (contrato omega.intelligence.v2).
+   * Nullable por compatibilidad con interpretaciones previas al Sprint 12.
+   */
+  @Column({
+    type: 'jsonb',
+    name: 'executive_report',
+    nullable: true,
+    default: null,
+  })
+  executiveReport!: ExecutiveIntelligenceReport | null;
 
   @OneToMany(
     () => OperationalIndicator,

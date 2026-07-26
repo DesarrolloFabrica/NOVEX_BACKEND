@@ -3,6 +3,8 @@
  * No es una entidad de persistencia.
  */
 
+import { ExecutiveIntelligenceReport } from '../../contracts/executive-intelligence-report.contract';
+
 export interface GeminiSuggestedIndicator {
   code: string;
   label: string;
@@ -39,4 +41,9 @@ export interface GeminiInterpretationResult {
   riskScore: number;
   modelLabel: string;
   interpretedAt: string;
+  /**
+   * Reporte ejecutivo definitivo (contrato omega.intelligence.v2).
+   * Producido por el proveedor de IA; el resto del sistema solo lo transporta.
+   */
+  executiveReport: ExecutiveIntelligenceReport;
 }

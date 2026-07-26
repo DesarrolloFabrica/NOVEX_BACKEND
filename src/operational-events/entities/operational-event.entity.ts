@@ -59,6 +59,12 @@ export class OperationalEvent extends BaseEntity {
   @Column({ type: 'jsonb', name: 'attachment_names', default: [] })
   attachmentNames!: string[];
 
+  @Column({ type: 'boolean', name: 'is_mock', default: false })
+  isMock!: boolean;
+
+  @Column({ type: 'varchar', length: 40, default: 'production' })
+  source!: string;
+
   @Column({ type: 'timestamptz', name: 'last_update_at', nullable: true })
   lastUpdateAt!: Date | null;
 

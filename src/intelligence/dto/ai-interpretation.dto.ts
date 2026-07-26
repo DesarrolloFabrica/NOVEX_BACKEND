@@ -4,6 +4,7 @@ import {
   IsArray,
   IsEnum,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -16,6 +17,7 @@ import {
   IndicatorDirection,
   RiskLevel,
 } from '../../common/enums/operational.enums';
+import type { ExecutiveIntelligenceReport } from '../contracts/executive-intelligence-report.contract';
 
 export class SuggestedIndicatorDto {
   @IsString()
@@ -120,4 +122,12 @@ export class CreateAIInterpretationDto {
   @ValidateNested({ each: true })
   @Type(() => SuggestedIndicatorDto)
   suggestedIndicators?: SuggestedIndicatorDto[];
+
+  /**
+   * Reporte ejecutivo definitivo (contrato omega.intelligence.v2).
+   * Se transporta como objeto ya validado por el parser de la capa Gemini.
+   */
+  @IsOptional()
+  @IsObject()
+  executiveReport?: ExecutiveIntelligenceReport;
 }
