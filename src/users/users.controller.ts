@@ -1,23 +1,27 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
-import { EnsureUserDto } from './dto/user.dto';
+import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
+import { RbacService } from '../rbac/rbac.service';
+import { ListUsersQueryDto } from './dto/user.dto';
 import { UsersService } from './users.service';
 
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly rbacService: RbacService,
+  ) {}
 
-  @Post('ensure')
-  ensure(@Body() dto: EnsureUserDto) {
-    return this.usersService.ensure(dto);
+  @Get()
+  list(@Query() query: ListUsersQueryDto) {
+    return this.usersService.list(query);
   }
 
-  @Patch(':id/onboarding/complete')
-  completeOnboarding(@Param('id') id: string) {
-    return this.usersService.completeOnboarding(id);
+  @Get(':id/permissions')
+  getPermissions(@Param('id', ParseUUIDPipe) id: string) {
+    return this.rbacService.getUserPermissions(id);
   }
 
   @Get(':id')
-  getById(@Param('id') id: string) {
+  getById(@Param('id', ParseUUIDPipe) id: string) {
     return this.usersService.getById(id);
   }
 }

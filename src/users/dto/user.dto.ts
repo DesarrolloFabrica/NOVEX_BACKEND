@@ -1,28 +1,32 @@
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsBoolean, IsEnum, IsOptional } from 'class-validator';
+import { UserStatus } from '../../common/enums/identity.enums';
 
-export class EnsureUserDto {
-  @IsString()
-  @MaxLength(120)
-  id!: string;
-
-  @IsString()
-  @MaxLength(180)
-  name!: string;
-
-  @IsIn(['supervisor', 'ejecutor'])
-  role!: 'supervisor' | 'ejecutor';
+export class ListUsersQueryDto {
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  includeInactive?: boolean = false;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(120)
-  selectedAreaId?: string | null;
+  @IsEnum(UserStatus)
+  status?: UserStatus;
 }
 
 export class UserResponseDto {
   id!: string;
-  name!: string;
-  role!: 'supervisor' | 'ejecutor';
-  selectedAreaId!: string | null;
-  onboardingCompleted!: boolean;
-  onboardingSeenAt!: string | null;
+  googleSub!: string | null;
+  email!: string;
+  fullName!: string;
+  photoUrl!: string | null;
+  roleId!: string;
+  roleCode!: string;
+  roleName!: string;
+  coordinationId!: string;
+  coordinationCode!: string;
+  coordinationName!: string;
+  status!: UserStatus;
+  lastLoginAt!: Date | null;
+  createdAt!: Date;
+  updatedAt!: Date;
 }

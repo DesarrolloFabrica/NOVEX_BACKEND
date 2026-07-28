@@ -43,7 +43,7 @@ cp .env.example .env
 | Variable | Descripción |
 |----------|-------------|
 | `GEMINI_API_KEY` | Clave de Google AI Studio / Vertex |
-| `GEMINI_MODEL` | Modelo (default `gemini-2.0-flash`) |
+| `GEMINI_MODEL` | Modelo (default `gemini-3-flash-preview`) |
 
 ## Comandos
 

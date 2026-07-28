@@ -11,8 +11,8 @@ import {
 } from 'class-validator';
 
 function toBoolean(value: unknown): boolean {
+  if (typeof value === 'string') return value.trim().toLowerCase() === 'true';
   if (typeof value === 'boolean') return value;
-  if (typeof value === 'string') return value.toLowerCase() === 'true';
   return false;
 }
 
@@ -72,12 +72,25 @@ export class EnvironmentVariables {
 
   @IsString()
   @IsOptional()
-  GEMINI_MODEL: string = 'gemini-2.0-flash';
+  GEMINI_MODEL: string = 'gemini-3-flash-preview';
+
+  @IsString()
+  @IsNotEmpty()
+  JWT_SECRET!: string;
+
+  @IsString()
+  @IsOptional()
+  JWT_EXPIRES_IN: string = '1h';
+
+  @IsString()
+  @IsNotEmpty()
+  GOOGLE_CLIENT_ID!: string;
 }
 
 export function validateEnvironment(config: Record<string, unknown>) {
+  // enableImplicitConversion convierte el string "false" en boolean true (Boolean("false")).
   const validated = plainToInstance(EnvironmentVariables, config, {
-    enableImplicitConversion: true,
+    enableImplicitConversion: false,
   });
 
   const errors = validateSync(validated, {
