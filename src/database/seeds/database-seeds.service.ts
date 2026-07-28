@@ -12,7 +12,9 @@ import { OperationalIndicator } from '../../intelligence/entities/operational-in
 import { OperationalArea } from '../../operational-areas/entities/operational-area.entity';
 import { OperationalEvent } from '../../operational-events/entities/operational-event.entity';
 import { OperationalTimelineEntry } from '../../operational-events/entities/operational-timeline-entry.entity';
+import { RecommendedActionsService } from '../../recommended-actions/recommended-actions.service';
 import {
+  MOCK_ACTION_EXECUTION_OVERRIDES,
   MOCK_AREAS,
   MOCK_CATEGORIES,
   MOCK_OPERATIONAL_EVENTS,
@@ -32,10 +34,12 @@ export class DatabaseSeedsService implements OnApplicationBootstrap {
     private readonly eventsRepository: Repository<OperationalEvent>,
     @InjectRepository(AIInterpretation)
     private readonly interpretationsRepository: Repository<AIInterpretation>,
+    private readonly recommendedActionsService: RecommendedActionsService,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
     await this.seedMockOperationalEvents();
+    await this.ensureRecommendedActionsMaterialized();
   }
 
   private async seedMockOperationalEvents(): Promise<void> {
@@ -49,6 +53,27 @@ export class DatabaseSeedsService implements OnApplicationBootstrap {
       if (exists) continue;
 
       await this.createSeedEvent(seed, areas, categories);
+    }
+  }
+
+  /**
+   * Materializa acciones para interpretaciones seed aunque el evento ya existiera.
+   * Idempotente: no duplica (interpretationId + actionIndex).
+   */
+  private async ensureRecommendedActionsMaterialized(): Promise<void> {
+    for (const seed of MOCK_OPERATIONAL_EVENTS) {
+      const interpretation = await this.interpretationsRepository.findOne({
+        where: { eventId: seed.id },
+        order: { interpretedAt: 'DESC' },
+      });
+      if (!interpretation?.executiveReport?.recommendedActions?.length) {
+        continue;
+      }
+
+      await this.recommendedActionsService.materializeFromInterpretation(
+        interpretation,
+        MOCK_ACTION_EXECUTION_OVERRIDES[seed.id] ?? [],
+      );
     }
   }
 
@@ -146,46 +171,51 @@ export class DatabaseSeedsService implements OnApplicationBootstrap {
     );
 
     const interpretation = this.interpretationsRepository.create({
-        event,
-        eventId: event.id,
-        category,
-        categoryId: category.id,
-        categoryName: category.name,
-        affectedAreas,
-        impactSeverity: seed.interpretation.impactSeverity,
-        affectationPercentage: seed.interpretation.affectationPercentage,
-        impactInternal: seed.interpretation.impactInternal,
-        impactExternal: seed.interpretation.impactExternal,
-        impactStudents: seed.interpretation.impactStudents,
-        riskLevel: seed.interpretation.riskLevel,
-        riskScore: seed.interpretation.riskScore,
-        executiveSummary: seed.interpretation.executiveSummary,
-        narrative: seed.interpretation.narrative,
-        detectedPatterns: [...seed.interpretation.detectedPatterns],
-        recommendations: [...seed.interpretation.recommendations],
-        modelLabel: seed.interpretation.modelLabel,
-        interpretedAt: new Date(seed.timeline[1][1]),
-        confidence: seed.interpretation.confidence,
-        executiveReport: seed.interpretation
-          .executiveReport as unknown as ExecutiveIntelligenceReport,
-        suggestedIndicators: seed.interpretation.suggestedIndicators.map(
-          (indicator) =>
-            Object.assign(new OperationalIndicator(), {
-              code: indicator.code,
-              label: indicator.label,
-              value: indicator.value,
-              unit: indicator.unit,
-              direction: indicator.direction,
-              suggestedByAI: true,
-              source: IndicatorSource.AI_SUGGESTED,
-            }),
-        ),
-      });
+      event,
+      eventId: event.id,
+      category,
+      categoryId: category.id,
+      categoryName: category.name,
+      affectedAreas,
+      impactSeverity: seed.interpretation.impactSeverity,
+      affectationPercentage: seed.interpretation.affectationPercentage,
+      impactInternal: seed.interpretation.impactInternal,
+      impactExternal: seed.interpretation.impactExternal,
+      impactStudents: seed.interpretation.impactStudents,
+      riskLevel: seed.interpretation.riskLevel,
+      riskScore: seed.interpretation.riskScore,
+      executiveSummary: seed.interpretation.executiveSummary,
+      narrative: seed.interpretation.narrative,
+      detectedPatterns: [...seed.interpretation.detectedPatterns],
+      recommendations: [...seed.interpretation.recommendations],
+      modelLabel: seed.interpretation.modelLabel,
+      interpretedAt: new Date(seed.timeline[1][1]),
+      confidence: seed.interpretation.confidence,
+      executiveReport: seed.interpretation
+        .executiveReport as unknown as ExecutiveIntelligenceReport,
+      suggestedIndicators: seed.interpretation.suggestedIndicators.map(
+        (indicator) =>
+          Object.assign(new OperationalIndicator(), {
+            code: indicator.code,
+            label: indicator.label,
+            value: indicator.value,
+            unit: indicator.unit,
+            direction: indicator.direction,
+            suggestedByAI: true,
+            source: IndicatorSource.AI_SUGGESTED,
+          }),
+      ),
+    });
     const savedInterpretation =
       await this.interpretationsRepository.save(interpretation);
 
     event.currentInterpretationId = savedInterpretation.id;
     await this.eventsRepository.save(event);
+
+    await this.recommendedActionsService.materializeFromInterpretation(
+      savedInterpretation,
+      MOCK_ACTION_EXECUTION_OVERRIDES[seed.id] ?? [],
+    );
   }
 
   private createTimelineEntry(

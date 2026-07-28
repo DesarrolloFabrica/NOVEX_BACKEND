@@ -9,9 +9,9 @@ const configuration = () => ({
   database: {
     host: process.env.DB_HOST ?? 'localhost',
     port: parseInt(process.env.DB_PORT ?? '5432', 10),
-    username: process.env.DB_USERNAME ?? 'omega',
-    password: process.env.DB_PASSWORD ?? 'omega',
-    name: process.env.DB_DATABASE ?? 'omega',
+    username: process.env.DB_USERNAME ?? 'cunmark',
+    password: process.env.DB_PASSWORD ?? 'cunmark',
+    name: process.env.DB_DATABASE ?? 'cunmark',
     synchronize: (process.env.DB_SYNCHRONIZE ?? 'false') === 'true',
     logging: (process.env.DB_LOGGING ?? 'false') === 'true',
   },

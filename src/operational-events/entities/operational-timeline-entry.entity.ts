@@ -31,7 +31,12 @@ export class OperationalTimelineEntry extends BaseEntity {
   @Column({ type: 'varchar', length: 64, name: 'by_user_id', nullable: true })
   byUserId!: string | null;
 
-  @Column({ type: 'varchar', length: 160, name: 'by_user_name', nullable: true })
+  @Column({
+    type: 'varchar',
+    length: 160,
+    name: 'by_user_name',
+    nullable: true,
+  })
   byUserName!: string | null;
 
   @Column({ type: 'text' })

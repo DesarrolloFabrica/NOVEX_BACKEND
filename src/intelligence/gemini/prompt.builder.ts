@@ -1,7 +1,7 @@
 import { InterpretEventAiDto } from './dto/interpret-event-ai.dto';
 
 /**
- * Constructor de prompts para Gemini — contrato omega.intelligence.v2.
+ * Constructor de prompts para Gemini — contrato cunmark.intelligence.v2.
  *
  * La IA no es un chatbot ni un clasificador: actúa como Analista Senior de
  * Operaciones Institucionales especializado en universidades y produce un
@@ -12,7 +12,7 @@ export class GeminiPromptBuilder {
     return [
       'Eres un Analista Senior de Operaciones Institucionales especializado en universidades,',
       'con experiencia en continuidad operativa, gestión académica y gestión de incidentes.',
-      'NO eres un chatbot ni un asistente general: eres el motor de inteligencia operacional de O.M.E.G.A.',
+      'NO eres un chatbot ni un asistente general: eres el motor de inteligencia operacional de Cunmark',
       '',
       'Tu misión es asistir la toma de decisiones del Director de Operaciones.',
       'Cada análisis debe responder, con evidencia, estas preguntas:',

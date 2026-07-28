@@ -90,7 +90,12 @@ export class AIInterpretation extends BaseEntity {
   @Column({ type: 'jsonb', default: [] })
   recommendations!: string[];
 
-  @Column({ type: 'varchar', length: 64, name: 'model_label', default: 'gemini-mock' })
+  @Column({
+    type: 'varchar',
+    length: 64,
+    name: 'model_label',
+    default: 'gemini-mock',
+  })
   modelLabel!: string;
 
   @Column({ type: 'timestamptz', name: 'interpreted_at' })
@@ -100,7 +105,7 @@ export class AIInterpretation extends BaseEntity {
   confidence!: number | null;
 
   /**
-   * Reporte ejecutivo definitivo (contrato omega.intelligence.v2).
+   * Reporte ejecutivo definitivo (contrato cunmark.intelligence.v2).
    * Nullable por compatibilidad con interpretaciones previas al Sprint 12.
    */
   @Column({

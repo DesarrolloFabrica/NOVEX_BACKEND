@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { OperationalAreasRepository } from './repositories/operational-areas.repository';
 import {
   CreateOperationalAreaDto,

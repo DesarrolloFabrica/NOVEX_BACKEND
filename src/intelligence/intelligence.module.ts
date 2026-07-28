@@ -1,7 +1,8 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { OperationalAreasModule } from '../operational-areas/operational-areas.module';
 import { OperationalEventsModule } from '../operational-events/operational-events.module';
+import { RecommendedActionsModule } from '../recommended-actions/recommended-actions.module';
 import { AIInterpretation } from './entities/ai-interpretation.entity';
 import { IncidentCategory } from './entities/incident-category.entity';
 import { OperationalIndicator } from './entities/operational-indicator.entity';
@@ -21,6 +22,7 @@ import { AIInterpretationsRepository } from './repositories/ai-interpretations.r
     OperationalEventsModule,
     OperationalAreasModule,
     GeminiModule,
+    forwardRef(() => RecommendedActionsModule),
   ],
   controllers: [IntelligenceController],
   providers: [

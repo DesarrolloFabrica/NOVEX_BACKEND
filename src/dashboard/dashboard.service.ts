@@ -24,9 +24,7 @@ type EventWithInterpretations = OperationalEvent[];
  */
 @Injectable()
 export class DashboardService {
-  constructor(
-    private readonly eventsRepository: OperationalEventsRepository,
-  ) {}
+  constructor(private readonly eventsRepository: OperationalEventsRepository) {}
 
   /**
    * Fotografía ejecutiva calculada desde eventos persistidos.
@@ -80,8 +78,9 @@ export class DashboardService {
 
     return {
       totalEvents,
-      openCount: events.filter((event) => event.status === OperationalEventStatus.OPEN)
-        .length,
+      openCount: events.filter(
+        (event) => event.status === OperationalEventStatus.OPEN,
+      ).length,
       monitoringCount: events.filter(
         (event) => event.status === OperationalEventStatus.MONITORING,
       ).length,
@@ -188,7 +187,10 @@ export class DashboardService {
   private buildAreaBreakdown(
     events: EventWithInterpretations,
   ): AreaMetricBreakdownDto[] {
-    const map = new Map<string, AreaMetricBreakdownDto & { riskTotal: number }>();
+    const map = new Map<
+      string,
+      AreaMetricBreakdownDto & { riskTotal: number }
+    >();
     for (const event of events) {
       const interpretation = event.interpretations?.find(
         (item) => item.id === event.currentInterpretationId,
@@ -219,24 +221,28 @@ export class DashboardService {
     }
     return [...map.values()]
       .map(({ riskTotal: _riskTotal, ...item }) => item)
-      .sort((a, b) => b.openCount - a.openCount || b.averageRiskScore - a.averageRiskScore);
+      .sort(
+        (a, b) =>
+          b.openCount - a.openCount || b.averageRiskScore - a.averageRiskScore,
+      );
   }
 
   private buildConsolidatedIndicators(
     events: EventWithInterpretations,
   ): ConsolidatedIndicatorDto[] {
     return events
-      .flatMap((event) =>
-        event.interpretations
-          ?.find((item) => item.id === event.currentInterpretationId)
-          ?.suggestedIndicators?.map((indicator) => ({
-            code: indicator.code,
-            label: indicator.label,
-            value: indicator.value,
-            unit: indicator.unit ?? undefined,
-            direction: indicator.direction ?? undefined,
-            source: indicator.source as ConsolidatedIndicatorDto['source'],
-          })) ?? [],
+      .flatMap(
+        (event) =>
+          event.interpretations
+            ?.find((item) => item.id === event.currentInterpretationId)
+            ?.suggestedIndicators?.map((indicator) => ({
+              code: indicator.code,
+              label: indicator.label,
+              value: indicator.value,
+              unit: indicator.unit ?? undefined,
+              direction: indicator.direction ?? undefined,
+              source: indicator.source,
+            })) ?? [],
       )
       .slice(0, 8);
   }
@@ -261,8 +267,11 @@ export class DashboardService {
     return RiskLevel.LOW;
   }
 
-  private environmentFromRisk(riskLevel: RiskLevel): OperationalEnvironmentStatus {
-    if (riskLevel === RiskLevel.CRITICAL) return OperationalEnvironmentStatus.CRITICAL;
+  private environmentFromRisk(
+    riskLevel: RiskLevel,
+  ): OperationalEnvironmentStatus {
+    if (riskLevel === RiskLevel.CRITICAL)
+      return OperationalEnvironmentStatus.CRITICAL;
     if (riskLevel === RiskLevel.HIGH || riskLevel === RiskLevel.MODERATE) {
       return OperationalEnvironmentStatus.ATTENTION;
     }

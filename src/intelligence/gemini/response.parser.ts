@@ -75,7 +75,7 @@ export class GeminiResponseParser {
   }
 
   /**
-   * Normaliza el reporte ejecutivo (contrato omega.intelligence.v2).
+   * Normaliza el reporte ejecutivo (contrato cunmark.intelligence.v2).
    * Valida presencia de secciones, sanea enums y acota valores numéricos.
    */
   private parseExecutiveReport(
@@ -155,7 +155,9 @@ export class GeminiResponseParser {
           raw.impactAnalysis.affectedProcesses,
         ),
         estimatedAffectedStudents:
-          students === null || students === undefined || !Number.isFinite(students)
+          students === null ||
+          students === undefined ||
+          !Number.isFinite(students)
             ? null
             : Math.max(0, Math.round(students)),
         estimatedAffectedAreas: this.clampInt(
@@ -236,9 +238,7 @@ export class GeminiResponseParser {
 
   private asStringList(value: unknown): string[] {
     if (!Array.isArray(value)) return [];
-    return value
-      .map((item) => String(item).trim())
-      .filter(Boolean);
+    return value.map((item) => String(item).trim()).filter(Boolean);
   }
 
   private asPayload(raw: unknown): GeminiRawInterpretationPayload {
@@ -360,14 +360,18 @@ export class GeminiResponseParser {
 
   private clampInt(value: number, min: number, max: number): number {
     if (!Number.isFinite(value)) {
-      throw new BadRequestException('Valor numérico inválido en respuesta Gemini.');
+      throw new BadRequestException(
+        'Valor numérico inválido en respuesta Gemini.',
+      );
     }
     return Math.min(max, Math.max(min, Math.round(value)));
   }
 
   private clampNumber(value: number, min: number, max: number): number {
     if (!Number.isFinite(value)) {
-      throw new BadRequestException('Valor numérico inválido en respuesta Gemini.');
+      throw new BadRequestException(
+        'Valor numérico inválido en respuesta Gemini.',
+      );
     }
     return Math.min(max, Math.max(min, value));
   }

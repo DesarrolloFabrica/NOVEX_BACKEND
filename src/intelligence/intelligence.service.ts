@@ -1,6 +1,8 @@
 import {
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -13,6 +15,7 @@ import {
 import { OperationalAreasRepository } from '../operational-areas/repositories/operational-areas.repository';
 import { OperationalEventsRepository } from '../operational-events/repositories/operational-events.repository';
 import { OperationalTimelineEntry } from '../operational-events/entities/operational-timeline-entry.entity';
+import { RecommendedActionsService } from '../recommended-actions/recommended-actions.service';
 import { CreateAIInterpretationDto } from './dto/ai-interpretation.dto';
 import { AIInterpretation } from './entities/ai-interpretation.entity';
 import { IncidentCategory } from './entities/incident-category.entity';
@@ -36,6 +39,8 @@ export class IntelligenceService {
     @InjectRepository(IncidentCategory)
     private readonly categoriesRepository: Repository<IncidentCategory>,
     private readonly intelligenceFacade: IntelligenceFacade,
+    @Inject(forwardRef(() => RecommendedActionsService))
+    private readonly recommendedActionsService: RecommendedActionsService,
   ) {}
 
   listCategories(): Promise<IncidentCategory[]> {
@@ -121,7 +126,7 @@ export class IntelligenceService {
       eventId: event.id,
       categoryId: category.id,
       affectedAreaIds: affectedAreas.map((area) => area.id),
-      impactSeverity: aiResult.severity as 1 | 2 | 3 | 4 | 5,
+      impactSeverity: aiResult.severity,
       affectationPercentage: aiResult.affectationPercentage,
       impactInternal: aiResult.internalImpact,
       impactExternal: aiResult.externalImpact,
@@ -223,11 +228,15 @@ export class IntelligenceService {
     ];
     await this.eventsRepository.save(event);
 
+    await this.recommendedActionsService.materializeFromInterpretation(saved);
+
     return saved;
   }
 
   private async ensureEventExists(eventId: string): Promise<void> {
-    const exists = await this.eventsRepository.exist({ where: { id: eventId } });
+    const exists = await this.eventsRepository.exist({
+      where: { id: eventId },
+    });
     if (!exists) {
       throw new NotFoundException(
         `Evento operacional no encontrado: ${eventId}`,

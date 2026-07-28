@@ -1,10 +1,4 @@
-import {
-  Column,
-  Entity,
-  ManyToOne,
-  OneToMany,
-  JoinColumn,
-} from 'typeorm';
+import { Column, Entity, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { OperationalEventStatus } from '../../common/enums/operational.enums';
 import { AIInterpretation } from '../../intelligence/entities/ai-interpretation.entity';

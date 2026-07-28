@@ -85,9 +85,7 @@ export function validateEnvironment(config: Record<string, unknown>) {
   });
 
   if (errors.length > 0) {
-    throw new Error(
-      `Configuración de entorno inválida: ${errors.toString()}`,
-    );
+    throw new Error(`Configuración de entorno inválida: ${errors.toString()}`);
   }
 
   return validated;

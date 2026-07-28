@@ -21,7 +21,12 @@ export class User {
   @Column({ type: 'varchar', length: 32 })
   role!: 'supervisor' | 'ejecutor';
 
-  @Column({ type: 'varchar', length: 120, name: 'selected_area_id', nullable: true })
+  @Column({
+    type: 'varchar',
+    length: 120,
+    name: 'selected_area_id',
+    nullable: true,
+  })
   selectedAreaId!: string | null;
 
   @Column({ type: 'boolean', name: 'onboarding_completed', default: false })

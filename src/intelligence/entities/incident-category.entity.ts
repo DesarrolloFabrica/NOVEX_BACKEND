@@ -18,6 +18,9 @@ export class IncidentCategory extends BaseEntity {
   @Column({ type: 'text', nullable: true })
   description!: string | null;
 
-  @OneToMany(() => AIInterpretation, (interpretation) => interpretation.category)
+  @OneToMany(
+    () => AIInterpretation,
+    (interpretation) => interpretation.category,
+  )
   interpretations!: AIInterpretation[];
 }

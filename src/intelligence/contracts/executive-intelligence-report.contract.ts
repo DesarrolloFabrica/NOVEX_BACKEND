@@ -1,7 +1,7 @@
 import { RiskLevel } from '../../common/enums/operational.enums';
 
 /**
- * CONTRATO DEFINITIVO DE INTELIGENCIA OPERACIONAL — omega.intelligence.v2
+ * CONTRATO DEFINITIVO DE INTELIGENCIA OPERACIONAL — cunmark.intelligence.v2
  *
  * Este contrato es la respuesta completa del Asistente Ejecutivo Operacional.
  * Todo proveedor de IA (Gemini real o mock) debe producir exactamente esta
@@ -9,7 +9,26 @@ import { RiskLevel } from '../../common/enums/operational.enums';
  * cuando se reemplace el proveedor.
  */
 
-export const INTELLIGENCE_CONTRACT_VERSION = 'omega.intelligence.v2';
+export const INTELLIGENCE_CONTRACT_VERSION = 'cunmark.intelligence.v2';
+
+/** Versiones legacy aceptadas en lectura tras el rebrand Omega → Cunmark. */
+export const LEGACY_INTELLIGENCE_CONTRACT_VERSIONS = [
+  'omega.intelligence.v2',
+] as const;
+
+export type IntelligenceContractVersion =
+  | typeof INTELLIGENCE_CONTRACT_VERSION
+  | (typeof LEGACY_INTELLIGENCE_CONTRACT_VERSIONS)[number];
+
+export function isSupportedIntelligenceContractVersion(
+  version: string | undefined | null,
+): version is IntelligenceContractVersion {
+  if (!version) return false;
+  if (version === INTELLIGENCE_CONTRACT_VERSION) return true;
+  return (LEGACY_INTELLIGENCE_CONTRACT_VERSIONS as readonly string[]).includes(
+    version,
+  );
+}
 
 export type CertaintyLevel = 'low' | 'medium' | 'high';
 export type ActionPriority = 'immediate' | 'high' | 'medium' | 'scheduled';
@@ -93,7 +112,7 @@ export interface ExecutiveConclusion {
 
 /** Respuesta definitiva del Asistente Ejecutivo Operacional. */
 export interface ExecutiveIntelligenceReport {
-  contractVersion: typeof INTELLIGENCE_CONTRACT_VERSION;
+  contractVersion: IntelligenceContractVersion;
   incidentSummary: IncidentSummary;
   riskAssessment: RiskAssessment;
   impactAnalysis: ImpactAnalysis;

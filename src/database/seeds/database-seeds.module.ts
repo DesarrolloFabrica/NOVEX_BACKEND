@@ -6,6 +6,7 @@ import { OperationalIndicator } from '../../intelligence/entities/operational-in
 import { OperationalArea } from '../../operational-areas/entities/operational-area.entity';
 import { OperationalEvent } from '../../operational-events/entities/operational-event.entity';
 import { OperationalTimelineEntry } from '../../operational-events/entities/operational-timeline-entry.entity';
+import { RecommendedActionsModule } from '../../recommended-actions/recommended-actions.module';
 import { DatabaseSeedsService } from './database-seeds.service';
 
 @Module({
@@ -18,6 +19,7 @@ import { DatabaseSeedsService } from './database-seeds.service';
       AIInterpretation,
       OperationalIndicator,
     ]),
+    RecommendedActionsModule,
   ],
   providers: [DatabaseSeedsService],
 })

@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { OperationalEventStatus } from '../common/enums/operational.enums';
 import { TimelineEntryType } from '../common/enums/operational.enums';
 import { OperationalAreasService } from '../operational-areas/operational-areas.service';

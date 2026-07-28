@@ -60,10 +60,9 @@ export class OperationalEventsRepository extends Repository<OperationalEvent> {
       });
     }
     if (query.search?.trim()) {
-      qb.andWhere(
-        '(event.title ILIKE :q OR event.description ILIKE :q)',
-        { q: `%${query.search.trim()}%` },
-      );
+      qb.andWhere('(event.title ILIKE :q OR event.description ILIKE :q)', {
+        q: `%${query.search.trim()}%`,
+      });
     }
 
     return qb.getManyAndCount();

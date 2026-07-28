@@ -1,5 +1,5 @@
 /**
- * Enums del dominio operacional — alineados al frontend O.M.E.G.A.
+ * Enums del dominio operacional — alineados al frontend Cunmark
  */
 
 export enum OperationalEventStatus {
@@ -35,6 +35,17 @@ export enum TimelineEntryType {
   INTERPRETATION_GENERATED = 'interpretation_generated',
   STATUS_CHANGE = 'status_change',
   NOTE = 'note',
+}
+
+/**
+ * Estado de ejecución de una acción recomendada por la IA.
+ * Contrato definitivo de producción para el Centro de Ejecución Operativa.
+ */
+export enum RecommendedActionExecutionStatus {
+  PENDING = 'pending',
+  IN_PROGRESS = 'in_progress',
+  EXECUTED = 'executed',
+  NOT_EXECUTABLE = 'not_executable',
 }
 
 export enum IndicatorDirection {

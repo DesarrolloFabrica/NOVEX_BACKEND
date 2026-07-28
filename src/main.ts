@@ -27,9 +27,9 @@ async function bootstrap() {
   });
 
   await app.listen(port);
-  // eslint-disable-next-line no-console
+
   console.log(
-    `O.M.E.G.A. Backend listening on http://localhost:${port}/${apiPrefix}`,
+    `Cunmark Backend listening on http://localhost:${port}/${apiPrefix}`,
   );
 }
 

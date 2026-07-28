@@ -2,9 +2,10 @@ import { INTELLIGENCE_CONTRACT_VERSION } from '../../intelligence/contracts/exec
 import {
   IndicatorDirection,
   OperationalEventStatus,
+  RecommendedActionExecutionStatus,
   RiskLevel,
-  TimelineEntryType,
 } from '../../common/enums/operational.enums';
+import { MaterializeActionSeedOverride } from '../../recommended-actions/recommended-actions.service';
 
 export const MOCK_SEED_SOURCE = 'seed';
 
@@ -12,17 +13,20 @@ export const MOCK_AREAS = [
   {
     code: 'TEC',
     name: 'Tecnologia',
-    description: 'Soporte de plataformas, infraestructura y servicios digitales.',
+    description:
+      'Soporte de plataformas, infraestructura y servicios digitales.',
   },
   {
     code: 'REG',
     name: 'Registro y Control',
-    description: 'Gestion de matriculas, historia academica y registros institucionales.',
+    description:
+      'Gestion de matriculas, historia academica y registros institucionales.',
   },
   {
     code: 'ACA',
     name: 'Coordinacion Academica',
-    description: 'Programacion academica, carga docente y seguimiento curricular.',
+    description:
+      'Programacion academica, carga docente y seguimiento curricular.',
   },
   {
     code: 'FIN',
@@ -51,7 +55,8 @@ export const MOCK_CATEGORIES = [
   {
     code: 'ACADEMIC_INCONSISTENCY',
     name: 'Inconsistencia academica',
-    description: 'Errores de programacion, cupos, horarios o configuracion curricular.',
+    description:
+      'Errores de programacion, cupos, horarios o configuracion curricular.',
   },
   {
     code: 'TECH_DEGRADATION',
@@ -61,7 +66,8 @@ export const MOCK_CATEGORIES = [
   {
     code: 'RESOLVED_SERVICE_EVENT',
     name: 'Incidente operacional resuelto',
-    description: 'Situacion cerrada con evidencia de mitigacion y resultado final.',
+    description:
+      'Situacion cerrada con evidencia de mitigacion y resultado final.',
   },
 ];
 
@@ -78,7 +84,10 @@ export const MOCK_OPERATIONAL_EVENTS = [
     status: OperationalEventStatus.OPEN,
     observations:
       'Mayor volumen de solicitudes entre aspirantes de primer ingreso y estudiantes antiguos con orden financiera aprobada.',
-    attachmentNames: ['traza-sgp-08-15.log', 'reporte-matricula-turno-manana.pdf'],
+    attachmentNames: [
+      'traza-sgp-08-15.log',
+      'reporte-matricula-turno-manana.pdf',
+    ],
     lastUpdateAt: '2026-07-22T10:15:00.000Z',
     categoryCode: 'PLATFORM_OUTAGE',
     affectedAreaCodes: ['TEC', 'REG', 'FIN', 'ACA', 'BIEN'],
@@ -167,27 +176,32 @@ export const MOCK_OPERATIONAL_EVENTS = [
           {
             name: 'Tecnologia',
             affectationLevel: RiskLevel.CRITICAL,
-            reason: 'Debe recuperar disponibilidad, revisar base de datos y sostener monitoreo minuto a minuto.',
+            reason:
+              'Debe recuperar disponibilidad, revisar base de datos y sostener monitoreo minuto a minuto.',
           },
           {
             name: 'Registro y Control',
             affectationLevel: RiskLevel.CRITICAL,
-            reason: 'No puede confirmar inscripciones ni resolver inconsistencias de cupos en tiempo real.',
+            reason:
+              'No puede confirmar inscripciones ni resolver inconsistencias de cupos en tiempo real.',
           },
           {
             name: 'Financiera',
             affectationLevel: RiskLevel.HIGH,
-            reason: 'Existen pagos aprobados que no se reflejan en el flujo de matricula.',
+            reason:
+              'Existen pagos aprobados que no se reflejan en el flujo de matricula.',
           },
           {
             name: 'Coordinacion Academica',
             affectationLevel: RiskLevel.HIGH,
-            reason: 'La asignacion de grupos queda detenida y aumenta la presion por cupos.',
+            reason:
+              'La asignacion de grupos queda detenida y aumenta la presion por cupos.',
           },
           {
             name: 'Bienestar Universitario',
             affectationLevel: RiskLevel.MODERATE,
-            reason: 'Debe contener inquietudes estudiantiles y orientar canales de atencion.',
+            reason:
+              'Debe contener inquietudes estudiantiles y orientar canales de atencion.',
           },
         ],
         rootCause: {
@@ -200,7 +214,12 @@ export const MOCK_OPERATIONAL_EVENTS = [
             'Bloqueo en cola de integracion de pagos',
             'Regla de cupos ejecutandose sobre datos parcialmente confirmados',
           ],
-          dependencies: ['SGP', 'Base de datos academica', 'Pasarela financiera', 'Mesa de ayuda'],
+          dependencies: [
+            'SGP',
+            'Base de datos academica',
+            'Pasarela financiera',
+            'Mesa de ayuda',
+          ],
         },
         decisionFactors: [
           'El incidente ocurre en una ventana institucional no aplazable.',
@@ -211,36 +230,46 @@ export const MOCK_OPERATIONAL_EVENTS = [
         recommendedActions: [
           {
             priority: 'immediate',
-            action: 'Conformar sala tecnica con lider de tecnologia, registro, financiera y operaciones.',
-            reason: 'La recuperacion requiere decisiones coordinadas y una unica version del estado.',
+            action:
+              'Conformar sala tecnica con lider de tecnologia, registro, financiera y operaciones.',
+            reason:
+              'La recuperacion requiere decisiones coordinadas y una unica version del estado.',
             suggestedArea: 'Direccion de Operaciones',
             recommendedTime: '15 minutos',
           },
           {
             priority: 'immediate',
-            action: 'Ejecutar diagnostico de disponibilidad, conexiones y cola de pagos antes de reabrir transacciones.',
-            reason: 'Reabrir sin consistencia puede duplicar o perder registros de matricula.',
+            action:
+              'Ejecutar diagnostico de disponibilidad, conexiones y cola de pagos antes de reabrir transacciones.',
+            reason:
+              'Reabrir sin consistencia puede duplicar o perder registros de matricula.',
             suggestedArea: 'Tecnologia',
             recommendedTime: '30 minutos',
           },
           {
             priority: 'high',
-            action: 'Definir lista priorizada de estudiantes con pago confirmado y cupo en riesgo.',
-            reason: 'Permite proteger casos sensibles mientras se estabiliza la plataforma.',
+            action:
+              'Definir lista priorizada de estudiantes con pago confirmado y cupo en riesgo.',
+            reason:
+              'Permite proteger casos sensibles mientras se estabiliza la plataforma.',
             suggestedArea: 'Registro y Control',
             recommendedTime: '1 hora',
           },
           {
             priority: 'high',
-            action: 'Emitir comunicado con hora exacta del siguiente corte operativo.',
-            reason: 'Reduce saturacion de canales y preserva confianza durante la contingencia.',
+            action:
+              'Emitir comunicado con hora exacta del siguiente corte operativo.',
+            reason:
+              'Reduce saturacion de canales y preserva confianza durante la contingencia.',
             suggestedArea: 'Bienestar Universitario',
             recommendedTime: '20 minutos',
           },
           {
             priority: 'medium',
-            action: 'Preparar extension de ventana de matricula con criterios academicos y financieros.',
-            reason: 'Mitiga el impacto si la recuperacion tecnica supera el umbral esperado.',
+            action:
+              'Preparar extension de ventana de matricula con criterios academicos y financieros.',
+            reason:
+              'Mitiga el impacto si la recuperacion tecnica supera el umbral esperado.',
             suggestedArea: 'Coordinacion Academica',
             recommendedTime: '2 horas',
           },
@@ -254,21 +283,24 @@ export const MOCK_OPERATIONAL_EVENTS = [
         operationalIndicators: [
           {
             name: 'Disponibilidad SGP',
-            explanation: 'Mide el porcentaje de tiempo util en que el SGP responde durante matricula.',
+            explanation:
+              'Mide el porcentaje de tiempo util en que el SGP responde durante matricula.',
             unit: '%',
             suggestedValue: 42,
             trend: 'down',
           },
           {
             name: 'Transacciones pendientes de conciliacion',
-            explanation: 'Casos donde pago o inscripcion no tiene confirmacion completa.',
+            explanation:
+              'Casos donde pago o inscripcion no tiene confirmacion completa.',
             unit: 'casos',
             suggestedValue: 740,
             trend: 'up',
           },
           {
             name: 'Saturacion de mesa de ayuda',
-            explanation: 'Demanda de atencion relacionada con bloqueo de matricula.',
+            explanation:
+              'Demanda de atencion relacionada con bloqueo de matricula.',
             unit: '%',
             suggestedValue: 88,
             trend: 'up',
@@ -277,19 +309,23 @@ export const MOCK_OPERATIONAL_EVENTS = [
         timelineSuggestions: [
           {
             horizon: '30 minutos',
-            checkpoint: 'Confirmar causa tecnica dominante y estado de cola transaccional.',
+            checkpoint:
+              'Confirmar causa tecnica dominante y estado de cola transaccional.',
           },
           {
             horizon: '1 hora',
-            checkpoint: 'Publicar decision sobre continuidad, ventana extendida o pausa controlada.',
+            checkpoint:
+              'Publicar decision sobre continuidad, ventana extendida o pausa controlada.',
           },
           {
             horizon: '2 horas',
-            checkpoint: 'Validar consistencia de registros recuperados antes de cierre parcial.',
+            checkpoint:
+              'Validar consistencia de registros recuperados antes de cierre parcial.',
           },
         ],
         executiveConclusion: {
-          gravity: 'Critica por afectar el proceso institucional central de matricula.',
+          gravity:
+            'Critica por afectar el proceso institucional central de matricula.',
           urgency: 'immediate',
           recommendation:
             'Mantener comando operativo centralizado hasta recuperar disponibilidad y consistencia; no delegar la comunicacion a canales aislados.',
@@ -301,12 +337,42 @@ export const MOCK_OPERATIONAL_EVENTS = [
       },
     },
     timeline: [
-      ['event_registered', '2026-07-22T08:15:00.000Z', 'Se registra caida del SGP durante matricula.', 'Direccion de Operaciones'],
-      ['interpretation_generated', '2026-07-22T08:17:00.000Z', 'IA genera analisis critico y prioriza respuesta transversal.', 'Asistente Ejecutivo Operacional'],
-      ['status_change', '2026-07-22T08:20:00.000Z', 'Asignado a Tecnologia con acompanamiento de Registro y Financiera.', 'Coordinacion de Sala'],
-      ['note', '2026-07-22T09:05:00.000Z', 'Se confirma cola de transacciones pendientes y saturacion de mesa de ayuda.', 'Tecnologia'],
-      ['note', '2026-07-22T09:40:00.000Z', 'Mitigacion parcial: se habilita consulta, pero no inscripcion masiva.', 'Registro y Control'],
-      ['note', '2026-07-22T10:15:00.000Z', 'Se mantiene incidente abierto hasta validar consistencia de pagos y cupos.', 'Direccion de Operaciones'],
+      [
+        'event_registered',
+        '2026-07-22T08:15:00.000Z',
+        'Se registra caida del SGP durante matricula.',
+        'Direccion de Operaciones',
+      ],
+      [
+        'interpretation_generated',
+        '2026-07-22T08:17:00.000Z',
+        'IA genera analisis critico y prioriza respuesta transversal.',
+        'Asistente Ejecutivo Operacional',
+      ],
+      [
+        'status_change',
+        '2026-07-22T08:20:00.000Z',
+        'Asignado a Tecnologia con acompanamiento de Registro y Financiera.',
+        'Coordinacion de Sala',
+      ],
+      [
+        'note',
+        '2026-07-22T09:05:00.000Z',
+        'Se confirma cola de transacciones pendientes y saturacion de mesa de ayuda.',
+        'Tecnologia',
+      ],
+      [
+        'note',
+        '2026-07-22T09:40:00.000Z',
+        'Mitigacion parcial: se habilita consulta, pero no inscripcion masiva.',
+        'Registro y Control',
+      ],
+      [
+        'note',
+        '2026-07-22T10:15:00.000Z',
+        'Se mantiene incidente abierto hasta validar consistencia de pagos y cupos.',
+        'Direccion de Operaciones',
+      ],
     ],
   },
   {
@@ -386,7 +452,11 @@ export const MOCK_OPERATIONAL_EVENTS = [
           internalImpactPercentage: 58,
           externalImpactPercentage: 18,
           studentImpactPercentage: 52,
-          affectedProcesses: ['Programacion academica', 'Asignacion de aulas', 'Publicacion de horarios'],
+          affectedProcesses: [
+            'Programacion academica',
+            'Asignacion de aulas',
+            'Publicacion de horarios',
+          ],
           estimatedAffectedStudents: 620,
           estimatedAffectedAreas: 2,
         },
@@ -394,18 +464,30 @@ export const MOCK_OPERATIONAL_EVENTS = [
           {
             name: 'Coordinacion Academica',
             affectationLevel: RiskLevel.MODERATE,
-            reason: 'Debe validar cruces, cupos y disponibilidad docente antes de publicar.',
+            reason:
+              'Debe validar cruces, cupos y disponibilidad docente antes de publicar.',
           },
           {
             name: 'Registro y Control',
             affectationLevel: RiskLevel.LOW,
-            reason: 'Requiere confirmar que los cambios no alteren reglas de matricula.',
+            reason:
+              'Requiere confirmar que los cambios no alteren reglas de matricula.',
           },
         ],
         rootCause: {
-          detectedCauses: ['Cruces horarios detectados en matriz de programacion', 'Cupos configurados por encima de capacidad fisica'],
-          hypotheses: ['Actualizacion parcial de disponibilidad de aulas', 'Duplicidad de criterios entre programa y registro'],
-          dependencies: ['Matriz de horarios', 'Catalogo de aulas', 'Reglas de cupos'],
+          detectedCauses: [
+            'Cruces horarios detectados en matriz de programacion',
+            'Cupos configurados por encima de capacidad fisica',
+          ],
+          hypotheses: [
+            'Actualizacion parcial de disponibilidad de aulas',
+            'Duplicidad de criterios entre programa y registro',
+          ],
+          dependencies: [
+            'Matriz de horarios',
+            'Catalogo de aulas',
+            'Reglas de cupos',
+          ],
         },
         decisionFactors: [
           'El incidente fue detectado antes de la publicacion masiva.',
@@ -415,21 +497,26 @@ export const MOCK_OPERATIONAL_EVENTS = [
         recommendedActions: [
           {
             priority: 'high',
-            action: 'Validar manualmente los grupos con cruce antes de liberar horarios.',
-            reason: 'Evita publicar informacion que luego requiera reproceso estudiantil.',
+            action:
+              'Validar manualmente los grupos con cruce antes de liberar horarios.',
+            reason:
+              'Evita publicar informacion que luego requiera reproceso estudiantil.',
             suggestedArea: 'Coordinacion Academica',
             recommendedTime: '4 horas',
           },
           {
             priority: 'medium',
-            action: 'Cruzar cupos configurados contra capacidad fisica disponible.',
-            reason: 'La causa puede estar en parametros de aula, no en demanda academica.',
+            action:
+              'Cruzar cupos configurados contra capacidad fisica disponible.',
+            reason:
+              'La causa puede estar en parametros de aula, no en demanda academica.',
             suggestedArea: 'Registro y Control',
             recommendedTime: '1 dia',
           },
           {
             priority: 'scheduled',
-            action: 'Documentar regla de aprobacion para cambios posteriores a publicacion.',
+            action:
+              'Documentar regla de aprobacion para cambios posteriores a publicacion.',
             reason: 'Reduce ambiguedad si aparecen ajustes de ultimo momento.',
             suggestedArea: 'Direccion de Operaciones',
             recommendedTime: '48 horas',
@@ -443,14 +530,16 @@ export const MOCK_OPERATIONAL_EVENTS = [
         operationalIndicators: [
           {
             name: 'Grupos con observacion',
-            explanation: 'Cantidad de grupos que requieren validacion antes de publicacion.',
+            explanation:
+              'Cantidad de grupos que requieren validacion antes de publicacion.',
             unit: 'grupos',
             suggestedValue: 18,
             trend: 'stable',
           },
           {
             name: 'Estudiantes potencialmente afectados',
-            explanation: 'Estimacion de estudiantes inscritos o interesados en grupos observados.',
+            explanation:
+              'Estimacion de estudiantes inscritos o interesados en grupos observados.',
             unit: 'estudiantes',
             suggestedValue: 620,
             trend: 'up',
@@ -459,7 +548,8 @@ export const MOCK_OPERATIONAL_EVENTS = [
         timelineSuggestions: [
           {
             horizon: '4 horas',
-            checkpoint: 'Tener listado depurado de grupos que pueden publicarse.',
+            checkpoint:
+              'Tener listado depurado de grupos que pueden publicarse.',
           },
           {
             horizon: '24 horas',
@@ -467,7 +557,8 @@ export const MOCK_OPERATIONAL_EVENTS = [
           },
         ],
         executiveConclusion: {
-          gravity: 'Moderada, con riesgo de ruido operativo si se publica sin depurar.',
+          gravity:
+            'Moderada, con riesgo de ruido operativo si se publica sin depurar.',
           urgency: 'medium',
           recommendation:
             'Mantener el evento en monitoreo hasta cerrar la matriz academica validada por coordinacion y registro.',
@@ -479,10 +570,30 @@ export const MOCK_OPERATIONAL_EVENTS = [
       },
     },
     timeline: [
-      ['event_registered', '2026-07-22T11:10:00.000Z', 'Se reportan cruces y sobrecupos en programacion academica.', 'Coordinacion Academica'],
-      ['interpretation_generated', '2026-07-22T11:12:00.000Z', 'IA clasifica riesgo moderado y recomienda depuracion previa a publicacion.', 'Asistente Ejecutivo Operacional'],
-      ['status_change', '2026-07-22T11:25:00.000Z', 'Evento pasa a monitoreo con responsable academico asignado.', 'Direccion de Operaciones'],
-      ['note', '2026-07-22T12:05:00.000Z', 'Se consolidan 18 grupos para revision prioritaria.', 'Registro y Control'],
+      [
+        'event_registered',
+        '2026-07-22T11:10:00.000Z',
+        'Se reportan cruces y sobrecupos en programacion academica.',
+        'Coordinacion Academica',
+      ],
+      [
+        'interpretation_generated',
+        '2026-07-22T11:12:00.000Z',
+        'IA clasifica riesgo moderado y recomienda depuracion previa a publicacion.',
+        'Asistente Ejecutivo Operacional',
+      ],
+      [
+        'status_change',
+        '2026-07-22T11:25:00.000Z',
+        'Evento pasa a monitoreo con responsable academico asignado.',
+        'Direccion de Operaciones',
+      ],
+      [
+        'note',
+        '2026-07-22T12:05:00.000Z',
+        'Se consolidan 18 grupos para revision prioritaria.',
+        'Registro y Control',
+      ],
     ],
   },
   {
@@ -513,7 +624,10 @@ export const MOCK_OPERATIONAL_EVENTS = [
         'El LMS presenta lentitud acotada sin indisponibilidad total. El riesgo es bajo y requiere monitoreo tecnico focalizado para evitar deterioro.',
       narrative:
         'La situacion afecta la experiencia de cursos puntuales, pero no bloquea la continuidad academica. Las acciones deben concentrarse en medicion, cache y comunicacion a docentes afectados.',
-      detectedPatterns: ['Latencia en contenidos multimedia', 'Afectacion limitada a pocos cursos'],
+      detectedPatterns: [
+        'Latencia en contenidos multimedia',
+        'Afectacion limitada a pocos cursos',
+      ],
       recommendations: [
         'Medir latencia por recurso y curso afectado durante la siguiente hora.',
         'Limpiar cache de contenidos multimedia con mayor demora.',
@@ -551,7 +665,10 @@ export const MOCK_OPERATIONAL_EVENTS = [
           internalImpactPercentage: 28,
           externalImpactPercentage: 12,
           studentImpactPercentage: 24,
-          affectedProcesses: ['Acceso a contenidos virtuales', 'Soporte docente'],
+          affectedProcesses: [
+            'Acceso a contenidos virtuales',
+            'Soporte docente',
+          ],
           estimatedAffectedStudents: 140,
           estimatedAffectedAreas: 2,
         },
@@ -559,18 +676,29 @@ export const MOCK_OPERATIONAL_EVENTS = [
           {
             name: 'Tecnologia',
             affectationLevel: RiskLevel.LOW,
-            reason: 'Debe validar desempeno y aplicar acciones tecnicas menores.',
+            reason:
+              'Debe validar desempeno y aplicar acciones tecnicas menores.',
           },
           {
             name: 'Coordinacion Academica',
             affectationLevel: RiskLevel.LOW,
-            reason: 'Necesita informar a docentes de cursos puntuales si persiste la lentitud.',
+            reason:
+              'Necesita informar a docentes de cursos puntuales si persiste la lentitud.',
           },
         ],
         rootCause: {
-          detectedCauses: ['Demoras al abrir contenidos multimedia en cursos especificos'],
-          hypotheses: ['Cache vencida o recurso pesado en repositorio de contenidos', 'Pico de consumo en franja de clase virtual'],
-          dependencies: ['LMS', 'Repositorio de contenidos', 'Red institucional'],
+          detectedCauses: [
+            'Demoras al abrir contenidos multimedia en cursos especificos',
+          ],
+          hypotheses: [
+            'Cache vencida o recurso pesado en repositorio de contenidos',
+            'Pico de consumo en franja de clase virtual',
+          ],
+          dependencies: [
+            'LMS',
+            'Repositorio de contenidos',
+            'Red institucional',
+          ],
         },
         decisionFactors: [
           'No hay caida total del servicio.',
@@ -580,15 +708,19 @@ export const MOCK_OPERATIONAL_EVENTS = [
         recommendedActions: [
           {
             priority: 'medium',
-            action: 'Tomar muestra de tiempos de carga por curso y tipo de recurso.',
-            reason: 'Permite distinguir problema de plataforma, red o contenido puntual.',
+            action:
+              'Tomar muestra de tiempos de carga por curso y tipo de recurso.',
+            reason:
+              'Permite distinguir problema de plataforma, red o contenido puntual.',
             suggestedArea: 'Tecnologia',
             recommendedTime: '1 hora',
           },
           {
             priority: 'scheduled',
-            action: 'Informar a docentes afectados que mantengan material alterno si la latencia supera diez segundos.',
-            reason: 'Reduce interrupcion pedagogica sin activar crisis institucional.',
+            action:
+              'Informar a docentes afectados que mantengan material alterno si la latencia supera diez segundos.',
+            reason:
+              'Reduce interrupcion pedagogica sin activar crisis institucional.',
             suggestedArea: 'Coordinacion Academica',
             recommendedTime: 'Durante la jornada',
           },
@@ -600,7 +732,8 @@ export const MOCK_OPERATIONAL_EVENTS = [
         operationalIndicators: [
           {
             name: 'Tiempo promedio de carga',
-            explanation: 'Segundos promedio para abrir contenidos LMS reportados.',
+            explanation:
+              'Segundos promedio para abrir contenidos LMS reportados.',
             unit: 'segundos',
             suggestedValue: 8,
             trend: 'stable',
@@ -629,10 +762,30 @@ export const MOCK_OPERATIONAL_EVENTS = [
       },
     },
     timeline: [
-      ['event_registered', '2026-07-22T14:35:00.000Z', 'Mesa de ayuda registra lentitud LMS en cursos virtuales.', 'Mesa de Ayuda Tecnologia'],
-      ['interpretation_generated', '2026-07-22T14:37:00.000Z', 'IA genera analisis de riesgo bajo con recomendaciones acotadas.', 'Asistente Ejecutivo Operacional'],
-      ['note', '2026-07-22T14:50:00.000Z', 'Se identifica mayor demora en recursos multimedia.', 'Tecnologia'],
-      ['note', '2026-07-22T15:05:00.000Z', 'Se agenda monitoreo de latencia hasta cierre de jornada.', 'Mesa de Ayuda Tecnologia'],
+      [
+        'event_registered',
+        '2026-07-22T14:35:00.000Z',
+        'Mesa de ayuda registra lentitud LMS en cursos virtuales.',
+        'Mesa de Ayuda Tecnologia',
+      ],
+      [
+        'interpretation_generated',
+        '2026-07-22T14:37:00.000Z',
+        'IA genera analisis de riesgo bajo con recomendaciones acotadas.',
+        'Asistente Ejecutivo Operacional',
+      ],
+      [
+        'note',
+        '2026-07-22T14:50:00.000Z',
+        'Se identifica mayor demora en recursos multimedia.',
+        'Tecnologia',
+      ],
+      [
+        'note',
+        '2026-07-22T15:05:00.000Z',
+        'Se agenda monitoreo de latencia hasta cierre de jornada.',
+        'Mesa de Ayuda Tecnologia',
+      ],
     ],
   },
   {
@@ -693,7 +846,8 @@ export const MOCK_OPERATIONAL_EVENTS = [
       executiveReport: {
         contractVersion: INTELLIGENCE_CONTRACT_VERSION,
         incidentSummary: {
-          executiveTitle: 'Incidente financiero cerrado con normalizacion completa',
+          executiveTitle:
+            'Incidente financiero cerrado con normalizacion completa',
           executiveSummary:
             'La conciliacion de pagos pendientes fue resuelta y validada entre financiera, registro y tecnologia. El cierre reduce el riesgo operativo, aunque deja una mejora preventiva para alertas tempranas.',
         },
@@ -712,7 +866,11 @@ export const MOCK_OPERATIONAL_EVENTS = [
           internalImpactPercentage: 72,
           externalImpactPercentage: 45,
           studentImpactPercentage: 70,
-          affectedProcesses: ['Conciliacion financiera', 'Habilitacion de matricula', 'Validacion de pagos'],
+          affectedProcesses: [
+            'Conciliacion financiera',
+            'Habilitacion de matricula',
+            'Validacion de pagos',
+          ],
           estimatedAffectedStudents: 186,
           estimatedAffectedAreas: 3,
         },
@@ -720,7 +878,8 @@ export const MOCK_OPERATIONAL_EVENTS = [
           {
             name: 'Financiera',
             affectationLevel: RiskLevel.HIGH,
-            reason: 'Fue responsable de validar pagos aprobados y cerrar conciliacion.',
+            reason:
+              'Fue responsable de validar pagos aprobados y cerrar conciliacion.',
           },
           {
             name: 'Registro y Control',
@@ -730,12 +889,19 @@ export const MOCK_OPERATIONAL_EVENTS = [
           {
             name: 'Tecnologia',
             affectationLevel: RiskLevel.MODERATE,
-            reason: 'Apoyo revision de integracion entre pagos y sistema academico.',
+            reason:
+              'Apoyo revision de integracion entre pagos y sistema academico.',
           },
         ],
         rootCause: {
-          detectedCauses: ['Retraso en reflejo de pagos aprobados hacia matricula', 'Necesidad de validacion cruzada manual'],
-          hypotheses: ['Demora en job de conciliacion', 'Latencia temporal de integracion financiera'],
+          detectedCauses: [
+            'Retraso en reflejo de pagos aprobados hacia matricula',
+            'Necesidad de validacion cruzada manual',
+          ],
+          hypotheses: [
+            'Demora en job de conciliacion',
+            'Latencia temporal de integracion financiera',
+          ],
           dependencies: ['Pasarela de pagos', 'Modulo financiero', 'SGP'],
         },
         decisionFactors: [
@@ -746,22 +912,27 @@ export const MOCK_OPERATIONAL_EVENTS = [
         recommendedActions: [
           {
             priority: 'scheduled',
-            action: 'Archivar acta de cierre junto con muestra de pagos conciliados.',
-            reason: 'Permite auditoria posterior y evita reapertura sin evidencia.',
+            action:
+              'Archivar acta de cierre junto con muestra de pagos conciliados.',
+            reason:
+              'Permite auditoria posterior y evita reapertura sin evidencia.',
             suggestedArea: 'Financiera',
             recommendedTime: '24 horas',
           },
           {
             priority: 'medium',
-            action: 'Configurar alerta cuando la conciliacion supere treinta minutos.',
+            action:
+              'Configurar alerta cuando la conciliacion supere treinta minutos.',
             reason: 'Detecta acumulacion antes de que afecte matricula masiva.',
             suggestedArea: 'Tecnologia',
             recommendedTime: '5 dias',
           },
           {
             priority: 'scheduled',
-            action: 'Actualizar protocolo de comunicacion entre financiera y registro.',
-            reason: 'Acelera confirmacion de estudiantes habilitados en futuras ventanas.',
+            action:
+              'Actualizar protocolo de comunicacion entre financiera y registro.',
+            reason:
+              'Acelera confirmacion de estudiantes habilitados en futuras ventanas.',
             suggestedArea: 'Registro y Control',
             recommendedTime: '1 semana',
           },
@@ -773,14 +944,16 @@ export const MOCK_OPERATIONAL_EVENTS = [
         operationalIndicators: [
           {
             name: 'Pagos normalizados',
-            explanation: 'Cantidad de pagos aprobados que quedaron reflejados tras la mitigacion.',
+            explanation:
+              'Cantidad de pagos aprobados que quedaron reflejados tras la mitigacion.',
             unit: 'pagos',
             suggestedValue: 186,
             trend: 'down',
           },
           {
             name: 'Tiempo de resolucion',
-            explanation: 'Duracion total entre registro del incidente y cierre operativo.',
+            explanation:
+              'Duracion total entre registro del incidente y cierre operativo.',
             unit: 'minutos',
             suggestedValue: 130,
             trend: 'stable',
@@ -789,15 +962,18 @@ export const MOCK_OPERATIONAL_EVENTS = [
         timelineSuggestions: [
           {
             horizon: '24 horas',
-            checkpoint: 'Verificar que no existan pagos aprobados sin reflejo en matricula.',
+            checkpoint:
+              'Verificar que no existan pagos aprobados sin reflejo en matricula.',
           },
           {
             horizon: '1 semana',
-            checkpoint: 'Confirmar implementacion de alerta temprana de conciliacion.',
+            checkpoint:
+              'Confirmar implementacion de alerta temprana de conciliacion.',
           },
         ],
         executiveConclusion: {
-          gravity: 'Alta en su fase activa, actualmente cerrada con evidencia suficiente.',
+          gravity:
+            'Alta en su fase activa, actualmente cerrada con evidencia suficiente.',
           urgency: 'low',
           recommendation:
             'Mantener cerrado el incidente y convertir las acciones preventivas en compromiso operativo antes de la siguiente matricula.',
@@ -809,15 +985,133 @@ export const MOCK_OPERATIONAL_EVENTS = [
       },
     },
     timeline: [
-      ['event_registered', '2026-07-21T08:05:00.000Z', 'Financiera registra pagos aprobados sin reflejo academico.', 'Coordinacion Financiera'],
-      ['interpretation_generated', '2026-07-21T08:07:00.000Z', 'IA genera analisis de riesgo alto por posible bloqueo de matricula.', 'Asistente Ejecutivo Operacional'],
-      ['status_change', '2026-07-21T08:20:00.000Z', 'Asignado a Financiera con apoyo de Registro y Tecnologia.', 'Direccion de Operaciones'],
-      ['note', '2026-07-21T09:05:00.000Z', 'Se ejecuta conciliacion controlada de pagos pendientes.', 'Financiera'],
-      ['note', '2026-07-21T09:40:00.000Z', 'Registro confirma habilitacion de estudiantes afectados.', 'Registro y Control'],
-      ['status_change', '2026-07-21T10:15:00.000Z', 'Incidente resuelto con acta de cierre y acciones preventivas.', 'Direccion de Operaciones'],
+      [
+        'event_registered',
+        '2026-07-21T08:05:00.000Z',
+        'Financiera registra pagos aprobados sin reflejo academico.',
+        'Coordinacion Financiera',
+      ],
+      [
+        'interpretation_generated',
+        '2026-07-21T08:07:00.000Z',
+        'IA genera analisis de riesgo alto por posible bloqueo de matricula.',
+        'Asistente Ejecutivo Operacional',
+      ],
+      [
+        'status_change',
+        '2026-07-21T08:20:00.000Z',
+        'Asignado a Financiera con apoyo de Registro y Tecnologia.',
+        'Direccion de Operaciones',
+      ],
+      [
+        'note',
+        '2026-07-21T09:05:00.000Z',
+        'Se ejecuta conciliacion controlada de pagos pendientes.',
+        'Financiera',
+      ],
+      [
+        'note',
+        '2026-07-21T09:40:00.000Z',
+        'Registro confirma habilitacion de estudiantes afectados.',
+        'Registro y Control',
+      ],
+      [
+        'status_change',
+        '2026-07-21T10:15:00.000Z',
+        'Incidente resuelto con acta de cierre y acciones preventivas.',
+        'Direccion de Operaciones',
+      ],
     ],
   },
 ] as const;
+
+/**
+ * Estados iniciales de ejecución para demos del Centro de Ejecución Operativa.
+ * Se aplican solo al materializar por primera vez (idempotente).
+ */
+export const MOCK_ACTION_EXECUTION_OVERRIDES: Record<
+  string,
+  MaterializeActionSeedOverride[]
+> = {
+  '11111111-1111-4111-8111-111111111111': [
+    {
+      actionIndex: 0,
+      status: RecommendedActionExecutionStatus.IN_PROGRESS,
+      startedAt: '2026-07-22T08:45:00.000Z',
+      assignedToUserName: 'Direccion de Operaciones',
+      assignedToUserId: 'seed-director-operaciones',
+    },
+    {
+      actionIndex: 1,
+      status: RecommendedActionExecutionStatus.EXECUTED,
+      startedAt: '2026-07-22T08:40:00.000Z',
+      completedAt: '2026-07-22T09:20:00.000Z',
+      observation: 'Diagnostico completado; se estabilizo cola de pagos.',
+      assignedToUserName: 'Tecnologia',
+      assignedToUserId: 'seed-tecnologia',
+    },
+    {
+      actionIndex: 2,
+      status: RecommendedActionExecutionStatus.PENDING,
+    },
+    {
+      actionIndex: 3,
+      status: RecommendedActionExecutionStatus.PENDING,
+    },
+    {
+      actionIndex: 4,
+      status: RecommendedActionExecutionStatus.NOT_EXECUTABLE,
+      completedAt: '2026-07-22T10:00:00.000Z',
+      statusNote:
+        'No se autorizo extension de ventana hasta confirmar recuperacion tecnica.',
+      assignedToUserName: 'Coordinacion Academica',
+      assignedToUserId: 'seed-academica',
+    },
+  ],
+  '22222222-2222-4222-8222-222222222222': [
+    {
+      actionIndex: 0,
+      status: RecommendedActionExecutionStatus.IN_PROGRESS,
+      startedAt: '2026-07-23T14:20:00.000Z',
+    },
+    {
+      actionIndex: 1,
+      status: RecommendedActionExecutionStatus.PENDING,
+    },
+    {
+      actionIndex: 2,
+      status: RecommendedActionExecutionStatus.PENDING,
+    },
+  ],
+  '33333333-3333-4333-8333-333333333333': [
+    {
+      actionIndex: 0,
+      status: RecommendedActionExecutionStatus.PENDING,
+    },
+    {
+      actionIndex: 1,
+      status: RecommendedActionExecutionStatus.PENDING,
+    },
+  ],
+  '44444444-4444-4444-8444-444444444444': [
+    {
+      actionIndex: 0,
+      status: RecommendedActionExecutionStatus.EXECUTED,
+      startedAt: '2026-07-21T09:10:00.000Z',
+      completedAt: '2026-07-21T10:00:00.000Z',
+      observation: 'Acta archivada con muestra de pagos conciliados.',
+    },
+    {
+      actionIndex: 1,
+      status: RecommendedActionExecutionStatus.IN_PROGRESS,
+      startedAt: '2026-07-22T11:00:00.000Z',
+    },
+    {
+      actionIndex: 2,
+      status: RecommendedActionExecutionStatus.PENDING,
+    },
+  ],
+};
 
 export type MockOperationalEventSeed = (typeof MOCK_OPERATIONAL_EVENTS)[number];
 export type MockTimelineSeed = MockOperationalEventSeed['timeline'][number];

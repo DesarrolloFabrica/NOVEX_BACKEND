@@ -1,6 +1,6 @@
-# O.M.E.G.A. Backend
+# Cunmark Backend
 
-Backend oficial del **Centro de Inteligencia Operacional**.
+Backend oficial de **Visión general**.
 
 Stack: **NestJS + PostgreSQL + TypeORM + Gemini**.
 
@@ -35,6 +35,9 @@ src/
 ```bash
 cp .env.example .env
 # Ajustar DB_* y GEMINI_API_KEY
+# Si tu PostgreSQL local aún usa rol/base `omega`, conserva esos valores en `.env`.
+# El script opcional `scripts/migrate-intelligence-contract-version.sql`
+# alinea `contractVersion` históricos a `cunmark.intelligence.v2`.
 ```
 
 | Variable | Descripción |

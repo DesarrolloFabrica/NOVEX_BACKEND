@@ -8,6 +8,7 @@ import { DatabaseSeedsModule } from './database/seeds/database-seeds.module';
 import { IntelligenceModule } from './intelligence/intelligence.module';
 import { OperationalAreasModule } from './operational-areas/operational-areas.module';
 import { OperationalEventsModule } from './operational-events/operational-events.module';
+import { RecommendedActionsModule } from './recommended-actions/recommended-actions.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -18,6 +19,7 @@ import { UsersModule } from './users/users.module';
     OperationalAreasModule,
     OperationalEventsModule,
     IntelligenceModule,
+    RecommendedActionsModule,
     DashboardModule,
     UsersModule,
     DatabaseSeedsModule,
