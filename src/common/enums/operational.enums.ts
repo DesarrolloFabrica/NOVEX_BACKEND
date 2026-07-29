@@ -1,5 +1,5 @@
 /**
- * Enums del dominio operacional — alineados al frontend Cunmark
+ * Enums del dominio operacional — alineados al frontend Novex
  */
 
 export enum OperationalEventStatus {

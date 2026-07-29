@@ -29,7 +29,7 @@ async function bootstrap() {
   await app.listen(port);
 
   console.log(
-    `Cunmark Backend listening on http://localhost:${port}/${apiPrefix}`,
+    `Novex Backend listening on http://localhost:${port}/${apiPrefix}`,
   );
 }
 

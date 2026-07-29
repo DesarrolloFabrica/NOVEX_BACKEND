@@ -1,4 +1,4 @@
-# Cunmark Backend
+# Novex Backend
 
 Backend oficial de **Visión general**.
 
@@ -35,9 +35,10 @@ src/
 ```bash
 cp .env.example .env
 # Ajustar DB_* y GEMINI_API_KEY
-# Si tu PostgreSQL local aún usa rol/base `omega`, conserva esos valores en `.env`.
+# Si tu PostgreSQL local aún usa rol/base legacy (`omega`/`cunmark`), conserva esos valores en `.env`
+# o migra al stack Docker `novex-*` (ver docker-compose.yml).
 # El script opcional `scripts/migrate-intelligence-contract-version.sql`
-# alinea `contractVersion` históricos a `cunmark.intelligence.v2`.
+# alinea `contractVersion` históricos (omega/cunmark) a `novex.intelligence.v2`.
 ```
 
 | Variable | Descripción |

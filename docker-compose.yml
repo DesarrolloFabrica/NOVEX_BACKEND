@@ -1,13 +1,13 @@
-# Cunmark Backend — entorno de desarrollo local con Docker
+# Novex Backend — entorno de desarrollo local con Docker
 # Uso: cp .env.example .env  →  docker compose up -d
 # NestJS corre en el host y se conecta a PostgreSQL vía localhost:${POSTGRES_PORT}
 
-name: cunmark-backend
+name: novex-backend
 
 services:
   postgres:
     image: postgres:${POSTGRES_VERSION:-17}-alpine
-    container_name: cunmark-postgres
+    container_name: novex-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -19,7 +19,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - cunmark-network
+      - novex-network
     healthcheck:
       test:
         [
@@ -33,7 +33,7 @@ services:
 
   pgadmin:
     image: dpage/pgadmin4:${PGADMIN_VERSION:-latest}
-    container_name: cunmark-pgadmin
+    container_name: novex-pgadmin
     restart: unless-stopped
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
@@ -45,18 +45,18 @@ services:
     volumes:
       - pgadmin_data:/var/lib/pgadmin
     networks:
-      - cunmark-network
+      - novex-network
     depends_on:
       postgres:
         condition: service_healthy
 
 networks:
-  cunmark-network:
-    name: cunmark-network
+  novex-network:
+    name: novex-network
     driver: bridge
 
 volumes:
   postgres_data:
-    name: cunmark-postgres-data
+    name: novex-postgres-data
   pgadmin_data:
-    name: cunmark-pgadmin-data
+    name: novex-pgadmin-data

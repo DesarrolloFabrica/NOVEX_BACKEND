@@ -4,7 +4,7 @@ import { SchemaType, type ResponseSchema } from '@google/generative-ai';
  * Response Schema oficial de Gemini (JSON estructurado).
  * La IA no debe devolver texto libre: solo este contrato.
  *
- * Sprint 12 — contrato definitivo cunmark.intelligence.v2:
+ * Sprint 12 — contrato definitivo novex.intelligence.v2:
  * se conservan los campos base (compatibilidad) y se añade `executiveReport`,
  * la respuesta completa del Asistente Ejecutivo Operacional.
  */

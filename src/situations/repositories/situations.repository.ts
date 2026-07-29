@@ -30,6 +30,7 @@ export class SituationsRepository extends Repository<Situation> {
       relations: {
         coordination: true,
         createdByUser: true,
+        assignedUser: true,
         category: true,
       },
     });
@@ -41,6 +42,7 @@ export class SituationsRepository extends Repository<Situation> {
     const qb = this.createQueryBuilder('situation')
       .leftJoinAndSelect('situation.coordination', 'coordination')
       .leftJoinAndSelect('situation.createdByUser', 'createdByUser')
+      .leftJoinAndSelect('situation.assignedUser', 'assignedUser')
       .leftJoinAndSelect('situation.category', 'category');
 
     if (query.status) {

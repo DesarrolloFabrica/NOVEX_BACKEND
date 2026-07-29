@@ -6,7 +6,6 @@ import {
   UpdateEvent,
 } from 'typeorm';
 import { TimelineEventType } from '../../common/enums/situation-timeline.enums';
-import { SituationStatus } from '../../common/enums/situation.enums';
 import { Situation } from '../../situations/entities/situation.entity';
 import { CreateTimelineEntryInput } from '../dto/situation-timeline.dto';
 import { SituationTimelineService } from '../situation-timeline.service';
@@ -74,19 +73,10 @@ export class SituationTimelineSubscriber
       userId: null,
     };
 
+    // Las transiciones de estado las registra SituationsService (actor,
+    // comentario y metadata). Evitar duplicados / ruido en el subscriber.
     if (before.status !== after.status) {
-      const eventType = this.resolveStatusEventType(before.status, after.status);
-      entries.push({
-        ...base,
-        eventType,
-        title: this.statusEventTitle(eventType),
-        description: `El estado cambió de ${before.status} a ${after.status}.`,
-        metadata: {
-          field: 'status',
-          previousValue: before.status,
-          newValue: after.status,
-        },
-      });
+      return entries;
     }
 
     if (before.severity !== after.severity) {
@@ -117,36 +107,6 @@ export class SituationTimelineSubscriber
     }
 
     return entries;
-  }
-
-  private resolveStatusEventType(
-    previousStatus: SituationStatus,
-    nextStatus: SituationStatus,
-  ): TimelineEventType {
-    if (nextStatus === SituationStatus.CLOSED) {
-      return TimelineEventType.CLOSED;
-    }
-
-    if (
-      previousStatus === SituationStatus.CLOSED &&
-      (nextStatus === SituationStatus.OPEN ||
-        nextStatus === SituationStatus.IN_PROGRESS)
-    ) {
-      return TimelineEventType.REOPENED;
-    }
-
-    return TimelineEventType.STATUS_CHANGED;
-  }
-
-  private statusEventTitle(eventType: TimelineEventType): string {
-    switch (eventType) {
-      case TimelineEventType.CLOSED:
-        return 'Situación cerrada';
-      case TimelineEventType.REOPENED:
-        return 'Situación reabierta';
-      default:
-        return 'Estado actualizado';
-    }
   }
 
   private collectUpdatedFields(

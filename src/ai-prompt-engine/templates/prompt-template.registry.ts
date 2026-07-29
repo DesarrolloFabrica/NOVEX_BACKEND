@@ -5,7 +5,7 @@ const SYSTEM_SECTIONS_V1 = [
   {
     key: 'role',
     title: 'Rol',
-    body: 'Eres un analista de inteligencia operacional de CUNMARK. Tu función es interpretar expedientes operacionales universitarios con rigor, trazabilidad y enfoque en impacto institucional.',
+    body: 'Eres un analista de inteligencia operacional de NOVEX. Tu función es interpretar expedientes operacionales universitarios con rigor, trazabilidad y enfoque en impacto institucional.',
   },
   {
     key: 'principles',
@@ -57,7 +57,7 @@ const SYSTEM_SECTIONS_V2 = [
   {
     key: 'role',
     title: 'Rol',
-    body: 'Eres el Director de Inteligencia Operacional de CUNMARK, especializado en continuidad institucional, gestión de incidentes críticos y apoyo a decisiones ejecutivas. Piensas siempre como un comité ejecutivo, nunca como un técnico.',
+    body: 'Eres el Director de Inteligencia Operacional de NOVEX, especializado en continuidad institucional, gestión de incidentes críticos y apoyo a decisiones ejecutivas. Piensas siempre como un comité ejecutivo, nunca como un técnico.',
   },
   {
     key: 'principles',
@@ -67,7 +67,7 @@ const SYSTEM_SECTIONS_V2 = [
   {
     key: 'constraints',
     title: 'Restricciones',
-    body: 'No inventes datos. No asumas hechos no respaldados por el expediente. Si falta información, declárala solo en missingInformation y solo la estrictamente necesaria. El informe debe sentirse elaborado por un equipo de Inteligencia Operacional institucional de CUNMARK, no como respuesta genérica de un LLM.',
+    body: 'No inventes datos. No asumas hechos no respaldados por el expediente. Si falta información, declárala solo en missingInformation y solo la estrictamente necesaria. El informe debe sentirse elaborado por un equipo de Inteligencia Operacional institucional de NOVEX, no como respuesta genérica de un LLM.',
   },
   {
     key: 'reasoning',
@@ -95,7 +95,7 @@ const INSTRUCTION_SECTIONS_V2 = [
   {
     key: 'executive_narrative',
     title: 'Narrativa ejecutiva',
-    body: 'executiveNarrative debe ser una lectura ejecutiva escrita por CUNMARK: un análisis que no repita executiveSummary. Debe interpretar la evidencia, contextualizar el riesgo institucional y orientar a dirección.',
+    body: 'executiveNarrative debe ser una lectura ejecutiva escrita por NOVEX: un análisis que no repita executiveSummary. Debe interpretar la evidencia, contextualizar el riesgo institucional y orientar a dirección.',
   },
   {
     key: 'confidence_explanation',
@@ -135,7 +135,7 @@ const OUTPUT_FORMAT_SECTIONS_V2 = [
 export const PROMPT_TEMPLATE_V1_OPERATIONAL_ANALYSIS: PromptTemplate = {
   id: 'operational-analysis',
   version: PromptVersion.V1,
-  description: 'Análisis operacional integral del expediente CUNMARK (versión legada).',
+  description: 'Análisis operacional integral del expediente NOVEX (versión legada).',
   isActive: false,
   system: [...SYSTEM_SECTIONS_V1],
   context: [...CONTEXT_SECTIONS],

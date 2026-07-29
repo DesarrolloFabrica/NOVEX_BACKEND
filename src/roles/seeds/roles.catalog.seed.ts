@@ -10,7 +10,7 @@ export const CATALOG_ROLES: readonly RoleCatalogItem[] = [
   {
     code: 'ADMIN',
     name: 'Administrador',
-    description: 'Administración completa del sistema CUNMARK.',
+    description: 'Administración completa del sistema NOVEX.',
     isSystem: true,
     isActive: true,
   },

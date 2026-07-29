@@ -43,10 +43,12 @@ export class SituationsController {
   }
 
   @Patch(':id')
+  @UseGuards(JwtAuthGuard)
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateSituationDto,
+    @CurrentUser() user: AuthPayload,
   ) {
-    return this.situationsService.update(id, dto);
+    return this.situationsService.update(id, dto, user.sub);
   }
 }

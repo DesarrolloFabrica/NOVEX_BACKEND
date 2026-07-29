@@ -75,7 +75,7 @@ export class GeminiResponseParser {
   }
 
   /**
-   * Normaliza el reporte ejecutivo (contrato cunmark.intelligence.v2).
+   * Normaliza el reporte ejecutivo (contrato novex.intelligence.v2).
    * Valida presencia de secciones, sanea enums y acota valores numéricos.
    */
   private parseExecutiveReport(

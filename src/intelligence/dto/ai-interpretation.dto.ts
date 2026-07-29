@@ -124,7 +124,7 @@ export class CreateAIInterpretationDto {
   suggestedIndicators?: SuggestedIndicatorDto[];
 
   /**
-   * Reporte ejecutivo definitivo (contrato cunmark.intelligence.v2).
+   * Reporte ejecutivo definitivo (contrato novex.intelligence.v2).
    * Se transporta como objeto ya validado por el parser de la capa Gemini.
    */
   @IsOptional()

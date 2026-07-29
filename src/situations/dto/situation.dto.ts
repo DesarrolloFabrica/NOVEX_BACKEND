@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsDateString,
   IsEnum,
   IsInt,
@@ -66,6 +67,22 @@ export class UpdateSituationDto {
   @IsEnum(SituationStatus)
   status?: SituationStatus;
 
+  /** Motivo de resolución o comentario de cierre (obligatorio según el estado). */
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(4000)
+  statusComment?: string;
+
+  /**
+   * Estructura preparada para adjuntar evidencias en futuras iteraciones.
+   * Hoy solo se registra en el historial operacional; no valida ni asocia archivos.
+   */
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  evidenceIds?: string[];
+
   @IsOptional()
   @IsDateString()
   occurredAt?: string;
@@ -118,11 +135,16 @@ export class SituationResponseDto {
   coordinationName!: string;
   createdByUserId!: string;
   createdByUserName!: string;
+  assignedUserId!: string | null;
+  assignedUserName!: string | null;
   categoryId!: string;
   categoryCode!: string;
   categoryName!: string;
   severity!: SituationSeverity;
   status!: SituationStatus;
+  lastStatusComment!: string | null;
+  resolvedAt!: Date | null;
+  closedAt!: Date | null;
   occurredAt!: Date;
   createdAt!: Date;
   updatedAt!: Date;

@@ -108,7 +108,7 @@ export const CATALOG_PERMISSIONS: readonly PermissionCatalogItem[] = [
     code: 'SYSTEM_CONFIGURATION',
     name: 'Configuración del sistema',
     module: 'SYSTEM',
-    description: 'Permite administrar la configuración global de CUNMARK.',
+    description: 'Permite administrar la configuración global de NOVEX.',
   },
 ] as const;
 

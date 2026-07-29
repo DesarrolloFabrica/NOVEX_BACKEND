@@ -42,7 +42,7 @@ export interface GeminiInterpretationResult {
   modelLabel: string;
   interpretedAt: string;
   /**
-   * Reporte ejecutivo definitivo (contrato cunmark.intelligence.v2).
+   * Reporte ejecutivo definitivo (contrato novex.intelligence.v2).
    * Producido por el proveedor de IA; el resto del sistema solo lo transporta.
    */
   executiveReport: ExecutiveIntelligenceReport;

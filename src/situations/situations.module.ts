@@ -3,6 +3,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { Coordination } from '../coordinations/entities/coordination.entity';
 import { IncidentCategory } from '../intelligence/entities/incident-category.entity';
+import { SituationTimelineModule } from '../situation-timeline/situation-timeline.module';
+import { User } from '../users/entities/user.entity';
 import { Situation } from './entities/situation.entity';
 import { SituationsRepository } from './repositories/situations.repository';
 import { SituationsController } from './situations.controller';
@@ -10,8 +12,14 @@ import { SituationsService } from './situations.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Situation, Coordination, IncidentCategory]),
+    TypeOrmModule.forFeature([
+      Situation,
+      Coordination,
+      IncidentCategory,
+      User,
+    ]),
     AuthModule,
+    SituationTimelineModule,
   ],
   controllers: [SituationsController],
   providers: [SituationsService, SituationsRepository],

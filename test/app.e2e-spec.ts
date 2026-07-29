@@ -8,7 +8,7 @@ import { AppModule } from './../src/app.module';
  * E2E base. Requiere PostgreSQL disponible para AppModule completo.
  * En Sprint 6 se deja como placeholder estructural.
  */
-describe('Cunmark Backend (e2e)', () => {
+describe('Novex Backend (e2e)', () => {
   let app: INestApplication<App>;
 
   beforeEach(async () => {

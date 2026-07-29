@@ -38,6 +38,14 @@ export class Situation extends BaseEntity {
   @Column({ type: 'uuid', name: 'created_by_user_id' })
   createdByUserId!: string;
 
+  @ManyToOne(() => User, { nullable: true, eager: true })
+  @JoinColumn({ name: 'assigned_user_id' })
+  assignedUser!: User | null;
+
+  @Index()
+  @Column({ type: 'uuid', name: 'assigned_user_id', nullable: true })
+  assignedUserId!: string | null;
+
   @ManyToOne(() => IncidentCategory, { nullable: false, eager: true })
   @JoinColumn({ name: 'category_id' })
   category!: IncidentCategory;
@@ -60,6 +68,15 @@ export class Situation extends BaseEntity {
     default: SituationStatus.OPEN,
   })
   status!: SituationStatus;
+
+  @Column({ type: 'text', name: 'last_status_comment', nullable: true })
+  lastStatusComment!: string | null;
+
+  @Column({ type: 'timestamptz', name: 'resolved_at', nullable: true })
+  resolvedAt!: Date | null;
+
+  @Column({ type: 'timestamptz', name: 'closed_at', nullable: true })
+  closedAt!: Date | null;
 
   @Index()
   @Column({ type: 'timestamptz', name: 'occurred_at' })

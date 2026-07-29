@@ -24,3 +24,6 @@ Thumbs.db
 
 # Docker (overrides locales opcionales)
 docker-compose.override.yml
+
+# Respaldos locales de base de datos
+*.dump

@@ -105,7 +105,7 @@ export class AIInterpretation extends BaseEntity {
   confidence!: number | null;
 
   /**
-   * Reporte ejecutivo definitivo (contrato cunmark.intelligence.v2).
+   * Reporte ejecutivo definitivo (contrato novex.intelligence.v2).
    * Nullable por compatibilidad con interpretaciones previas al Sprint 12.
    */
   @Column({

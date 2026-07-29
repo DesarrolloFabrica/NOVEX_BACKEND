@@ -28,6 +28,11 @@ export class SituationRecommendationsBySituationController {
     return this.recommendationsService.findBySituation(situationId);
   }
 
+  /**
+   * @deprecated La gestión individual de recomendaciones está desacoplada del
+   * Centro de Gestión Operativa. Conservado solo por compatibilidad; la UI de
+   * `/gestion` ya no invoca este endpoint.
+   */
   @Post(':id/recommendations')
   @UseGuards(JwtAuthGuard)
   createManual(
@@ -54,6 +59,11 @@ export class SituationRecommendationsController {
     return this.recommendationsService.getById(id);
   }
 
+  /**
+   * @deprecated La gestión individual de recomendaciones está desacoplada del
+   * Centro de Gestión Operativa. Conservado solo por compatibilidad; la UI de
+   * `/gestion` ya no invoca este endpoint.
+   */
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
   update(
