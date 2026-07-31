@@ -10,19 +10,17 @@
 #   {REGION}-docker.pkg.dev/{PROJECT}/novex/novex-backend:{sha7}
 #   Sin tag :latest (despliegue inmutable por commit).
 #
-# Cloud Run (hoy):
-#   Servicio: omega-backend  (var CLOUD_RUN_SERVICE_BACKEND)
+# Cloud Run:
+#   Servicio: novex-backend  (var CLOUD_RUN_SERVICE_BACKEND)
 #   Solo se actualiza --image; se preservan Cloud SQL, env y secretos.
-#
-# Rename futuro a novex-backend:
-#   GitHub → Settings → Variables → CLOUD_RUN_SERVICE_BACKEND = novex-backend
+#   omega-backend queda intacto (convivencia durante la migración).
 #
 # Variables de repositorio requeridas:
 #   GCP_PROJECT_ID, GCP_REGION
 #   (opcionales con default abajo)
 #   ARTIFACT_REGISTRY_REPOSITORY  default: novex
 #   BACKEND_IMAGE_NAME            default: novex-backend
-#   CLOUD_RUN_SERVICE_BACKEND     default: omega-backend
+#   CLOUD_RUN_SERVICE_BACKEND     default: novex-backend
 #
 # Secrets de repositorio requeridos:
 #   GCP_SERVICE_ACCOUNT_KEY
@@ -74,8 +72,7 @@ jobs:
 
           REPOSITORY="${REPOSITORY:-novex}"
           IMAGE_NAME="${IMAGE_NAME:-novex-backend}"
-          # Hoy: omega-backend. Futuro rename: novex-backend via variable de GitHub.
-          SERVICE_NAME="${SERVICE_NAME:-omega-backend}"
+          SERVICE_NAME="${SERVICE_NAME:-novex-backend}"
 
           SHORT_SHA="${GITHUB_SHA:0:7}"
           REGISTRY_HOST="${REGION}-docker.pkg.dev"
@@ -143,8 +140,8 @@ jobs:
           set -euo pipefail
           # Importante: solo --image.
           # No pasar --set-env-vars / --set-secrets / --clear-* / --add-cloudsql-instances
-          # para no pisar la configuración ya aplicada en omega-backend
-          # (Cloud SQL novex-db, env y secretos omega-*).
+          # para no pisar la configuración ya aplicada en novex-backend
+          # (Cloud SQL novex-db, env y secretos).
           gcloud run deploy "${{ steps.meta.outputs.service_name }}" \
             --image="${{ steps.digest.outputs.fully_qualified_digest }}" \
             --region="${{ steps.meta.outputs.region }}" \
@@ -173,5 +170,5 @@ jobs:
             echo ""
             echo "Configuración previa (Cloud SQL, variables, secretos) **preservada**."
             echo ""
-            echo "Rename futuro: variable \`CLOUD_RUN_SERVICE_BACKEND=novex-backend\`."
+            echo "Target: \`novex-backend\` (omega-backend no se modifica)."
           } >> "$GITHUB_STEP_SUMMARY"
