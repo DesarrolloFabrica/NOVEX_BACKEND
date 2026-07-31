@@ -12,8 +12,7 @@
 #
 # Cloud Run:
 #   Servicio: novex-backend  (var CLOUD_RUN_SERVICE_BACKEND)
-#   Solo se actualiza --image; se preservan Cloud SQL, env y secretos.
-#   omega-backend queda intacto (convivencia durante la migración).
+#   Solo se actualiza --image; se preservan Cloud SQL, env y secretos novex-*.
 #
 # Variables de repositorio requeridas:
 #   GCP_PROJECT_ID, GCP_REGION
@@ -170,5 +169,5 @@ jobs:
             echo ""
             echo "Configuración previa (Cloud SQL, variables, secretos) **preservada**."
             echo ""
-            echo "Target: \`novex-backend\` (omega-backend no se modifica)."
+            echo "Target: \`novex-backend\`."
           } >> "$GITHUB_STEP_SUMMARY"
