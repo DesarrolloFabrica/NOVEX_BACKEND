@@ -85,6 +85,12 @@ export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   GOOGLE_CLIENT_ID!: string;
+
+  /** true solo en local; en deploy/omitido = false (solo Google). */
+  @Transform(({ value }) => toBoolean(value))
+  @IsBoolean()
+  @IsOptional()
+  ENABLE_EMAIL_LOGIN: boolean = false;
 }
 
 export function validateEnvironment(config: Record<string, unknown>) {

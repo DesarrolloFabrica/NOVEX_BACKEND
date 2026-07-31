@@ -154,6 +154,26 @@ export class AuthService {
 
   async loginWithEmail(email: string): Promise<GoogleLoginResponseDto> {
 
+    const emailLoginEnabled = this.configService.get<boolean>(
+
+      'enableEmailLogin',
+
+      { infer: true },
+
+    );
+
+    if (!emailLoginEnabled) {
+
+      throw new ForbiddenException(
+
+        'El acceso por correo solo está disponible en desarrollo local.',
+
+      );
+
+    }
+
+
+
     const normalizedEmail = email.trim().toLowerCase();
 
     const user = await this.findActiveUserByEmail(normalizedEmail);

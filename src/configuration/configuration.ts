@@ -26,6 +26,8 @@ const configuration = () => ({
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID ?? '',
   },
+  /** Solo desarrollo local: login por correo sin OAuth. En deploy debe ser false. */
+  enableEmailLogin: (process.env.ENABLE_EMAIL_LOGIN ?? 'false') === 'true',
 });
 
 export type AppConfiguration = ReturnType<typeof configuration>;
