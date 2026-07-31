@@ -2,27 +2,13 @@
 # NOVEX — Deploy Backend → Artifact Registry (novex) → Cloud Run
 # =============================================================================
 #
-# Triggers:
-#   - push a main
-#   - workflow_dispatch (manual)
+# Triggers: push a main | workflow_dispatch
+# Imagen: {REGION}-docker.pkg.dev/{PROJECT}/novex/novex-backend:{sha7}
+# Deploy: solo --image (preserva Cloud SQL, env, secretos novex-*).
 #
-# Imágenes:
-#   {REGION}-docker.pkg.dev/{PROJECT}/novex/novex-backend:{sha7}
-#   Sin tag :latest (despliegue inmutable por commit).
-#
-# Cloud Run:
-#   Servicio: novex-backend  (var CLOUD_RUN_SERVICE_BACKEND)
-#   Solo se actualiza --image; se preservan Cloud SQL, env y secretos novex-*.
-#
-# Variables de repositorio requeridas:
-#   GCP_PROJECT_ID, GCP_REGION
-#   (opcionales con default abajo)
-#   ARTIFACT_REGISTRY_REPOSITORY  default: novex
-#   BACKEND_IMAGE_NAME            default: novex-backend
-#   CLOUD_RUN_SERVICE_BACKEND     default: novex-backend
-#
-# Secrets de repositorio requeridos:
-#   GCP_SERVICE_ACCOUNT_KEY
+# Vars: GCP_PROJECT_ID, GCP_REGION (req)
+#       ARTIFACT_REGISTRY_REPOSITORY, BACKEND_IMAGE_NAME, CLOUD_RUN_SERVICE_BACKEND (opc)
+# Secret: GCP_SERVICE_ACCOUNT_KEY
 # =============================================================================
 
 name: Deploy Backend
@@ -46,10 +32,41 @@ permissions:
   contents: read
 
 jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test -- --passWithNoTests
+
+      - name: Build
+        run: npm run build
+
   build-push-deploy:
-    name: Build · Push · Deploy (Backend)
+    name: Build · Push · Deploy
+    needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      service_url: ${{ steps.deploy.outputs.service_url }}
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      digest: ${{ steps.digest.outputs.fully_qualified_digest }}
 
     steps:
       - name: Checkout
@@ -65,9 +82,16 @@ jobs:
           REPOSITORY="${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}"
           IMAGE_NAME="${{ vars.BACKEND_IMAGE_NAME }}"
           SERVICE_NAME="${{ vars.CLOUD_RUN_SERVICE_BACKEND }}"
+          REASON="${{ github.event.inputs.reason || 'push' }}"
 
-          : "${PROJECT_ID:?GCP_PROJECT_ID no configurada}"
-          : "${REGION:?GCP_REGION no configurada}"
+          if [[ -z "${PROJECT_ID}" ]]; then
+            echo "::error::Falta variable de repositorio GCP_PROJECT_ID"
+            exit 1
+          fi
+          if [[ -z "${REGION}" ]]; then
+            echo "::error::Falta variable de repositorio GCP_REGION"
+            exit 1
+          fi
 
           REPOSITORY="${REPOSITORY:-novex}"
           IMAGE_NAME="${IMAGE_NAME:-novex-backend}"
@@ -88,9 +112,10 @@ jobs:
             echo "registry_host=${REGISTRY_HOST}"
             echo "image_uri=${IMAGE_URI}"
             echo "image_tag=${IMAGE_TAG}"
+            echo "reason=${REASON}"
           } >> "$GITHUB_OUTPUT"
 
-          echo "::notice::Backend image=${IMAGE_TAG} → Cloud Run service=${SERVICE_NAME}"
+          echo "::notice::Deploy reason=${REASON} image=${IMAGE_TAG} → ${SERVICE_NAME}"
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -137,10 +162,7 @@ jobs:
         id: deploy
         run: |
           set -euo pipefail
-          # Importante: solo --image.
-          # No pasar --set-env-vars / --set-secrets / --clear-* / --add-cloudsql-instances
-          # para no pisar la configuración ya aplicada en novex-backend
-          # (Cloud SQL novex-db, env y secretos).
+          # Solo --image: no pisar Cloud SQL / env / secretos de novex-backend.
           gcloud run deploy "${{ steps.meta.outputs.service_name }}" \
             --image="${{ steps.digest.outputs.fully_qualified_digest }}" \
             --region="${{ steps.meta.outputs.region }}" \
@@ -154,20 +176,33 @@ jobs:
             --format='value(status.url)')"
           echo "service_url=${SERVICE_URL}" >> "$GITHUB_OUTPUT"
 
+      - name: Smoke test (health)
+        id: smoke
+        run: |
+          set -euo pipefail
+          URL="${{ steps.deploy.outputs.service_url }}/api/v1/auth/health"
+          echo "::notice::Smoke GET ${URL}"
+          BODY="$(curl -fsS --retry 5 --retry-delay 3 --retry-all-errors "${URL}")"
+          echo "${BODY}" | grep -q '"status":"ok"'
+          echo "result=ok" >> "$GITHUB_OUTPUT"
+          echo "body=${BODY}" >> "$GITHUB_OUTPUT"
+
       - name: Job summary
+        if: always()
         run: |
           {
             echo "## Deploy Backend"
             echo ""
             echo "| Campo | Valor |"
             echo "|---|---|"
-            echo "| Servicio Cloud Run | \`${{ steps.meta.outputs.service_name }}\` |"
-            echo "| Imagen (tag) | \`${{ steps.meta.outputs.image_tag }}\` |"
+            echo "| Motivo | \`${{ steps.meta.outputs.reason }}\` |"
+            echo "| Servicio | \`${{ steps.meta.outputs.service_name }}\` |"
+            echo "| Imagen | \`${{ steps.meta.outputs.image_tag }}\` |"
             echo "| Digest | \`${{ steps.digest.outputs.fully_qualified_digest }}\` |"
             echo "| Commit | \`${{ steps.meta.outputs.short_sha }}\` |"
             echo "| URL | ${{ steps.deploy.outputs.service_url }} |"
+            echo "| Smoke | \`${{ steps.smoke.outputs.result || 'failed' }}\` |"
+            echo "| Job | \`${{ job.status }}\` |"
             echo ""
             echo "Configuración previa (Cloud SQL, variables, secretos) **preservada**."
-            echo ""
-            echo "Target: \`novex-backend\`."
           } >> "$GITHUB_STEP_SUMMARY"

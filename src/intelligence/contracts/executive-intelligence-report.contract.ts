@@ -11,7 +11,10 @@ import { RiskLevel } from '../../common/enums/operational.enums';
 
 export const INTELLIGENCE_CONTRACT_VERSION = 'novex.intelligence.v2';
 
-/** Versiones legacy aceptadas en lectura tras el rebrand Omega → Cunmark -> NOVEX. */
+/**
+ * Versiones legacy aceptadas en lectura tras el rebrand Omega → Cunmark → NOVEX.
+ * Necesarias para reportes históricos en DB. Ver docs/LEGACY-OMEGA.md. No renombrar.
+ */
 export const LEGACY_INTELLIGENCE_CONTRACT_VERSIONS = [
   'cunmark.intelligence.v2',
   'omega.intelligence.v2',
