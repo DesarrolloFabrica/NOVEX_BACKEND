@@ -27,3 +27,7 @@ docker-compose.override.yml
 
 # Respaldos locales de base de datos
 *.dump
+
+# Respaldos locales Cloud Run / deploy (no versionar)
+backend.yaml
+frontend.yaml

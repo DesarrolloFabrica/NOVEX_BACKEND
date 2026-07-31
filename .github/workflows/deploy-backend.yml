@@ -1,0 +1,177 @@
+# =============================================================================
+# NOVEX — Deploy Backend → Artifact Registry (novex) → Cloud Run
+# =============================================================================
+#
+# Triggers:
+#   - push a main
+#   - workflow_dispatch (manual)
+#
+# Imágenes:
+#   {REGION}-docker.pkg.dev/{PROJECT}/novex/novex-backend:{sha7}
+#   Sin tag :latest (despliegue inmutable por commit).
+#
+# Cloud Run (hoy):
+#   Servicio: omega-backend  (var CLOUD_RUN_SERVICE_BACKEND)
+#   Solo se actualiza --image; se preservan Cloud SQL, env y secretos.
+#
+# Rename futuro a novex-backend:
+#   GitHub → Settings → Variables → CLOUD_RUN_SERVICE_BACKEND = novex-backend
+#
+# Variables de repositorio requeridas:
+#   GCP_PROJECT_ID, GCP_REGION
+#   (opcionales con default abajo)
+#   ARTIFACT_REGISTRY_REPOSITORY  default: novex
+#   BACKEND_IMAGE_NAME            default: novex-backend
+#   CLOUD_RUN_SERVICE_BACKEND     default: omega-backend
+#
+# Secrets de repositorio requeridos:
+#   GCP_SERVICE_ACCOUNT_KEY
+# =============================================================================
+
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Motivo del deploy manual (auditoría)'
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-backend-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-push-deploy:
+    name: Build · Push · Deploy (Backend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve deploy metadata
+        id: meta
+        run: |
+          set -euo pipefail
+
+          PROJECT_ID="${{ vars.GCP_PROJECT_ID }}"
+          REGION="${{ vars.GCP_REGION }}"
+          REPOSITORY="${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}"
+          IMAGE_NAME="${{ vars.BACKEND_IMAGE_NAME }}"
+          SERVICE_NAME="${{ vars.CLOUD_RUN_SERVICE_BACKEND }}"
+
+          : "${PROJECT_ID:?GCP_PROJECT_ID no configurada}"
+          : "${REGION:?GCP_REGION no configurada}"
+
+          REPOSITORY="${REPOSITORY:-novex}"
+          IMAGE_NAME="${IMAGE_NAME:-novex-backend}"
+          # Hoy: omega-backend. Futuro rename: novex-backend via variable de GitHub.
+          SERVICE_NAME="${SERVICE_NAME:-omega-backend}"
+
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          REGISTRY_HOST="${REGION}-docker.pkg.dev"
+          IMAGE_URI="${REGISTRY_HOST}/${PROJECT_ID}/${REPOSITORY}/${IMAGE_NAME}"
+          IMAGE_TAG="${IMAGE_URI}:${SHORT_SHA}"
+
+          {
+            echo "project_id=${PROJECT_ID}"
+            echo "region=${REGION}"
+            echo "repository=${REPOSITORY}"
+            echo "image_name=${IMAGE_NAME}"
+            echo "service_name=${SERVICE_NAME}"
+            echo "short_sha=${SHORT_SHA}"
+            echo "registry_host=${REGISTRY_HOST}"
+            echo "image_uri=${IMAGE_URI}"
+            echo "image_tag=${IMAGE_TAG}"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "::notice::Backend image=${IMAGE_TAG} → Cloud Run service=${SERVICE_NAME}"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ steps.meta.outputs.project_id }}
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker "${{ steps.meta.outputs.registry_host }}" --quiet
+
+      - name: Build Docker image
+        run: |
+          set -euo pipefail
+          docker build \
+            --pull \
+            --tag "${{ steps.meta.outputs.image_tag }}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --label "novex.component=backend" \
+            --label "novex.git.sha=${{ steps.meta.outputs.short_sha }}" \
+            .
+
+      - name: Push image to Artifact Registry
+        run: |
+          set -euo pipefail
+          docker push "${{ steps.meta.outputs.image_tag }}"
+
+      - name: Resolve image digest
+        id: digest
+        run: |
+          set -euo pipefail
+          DIGEST="$(gcloud artifacts docker images describe "${{ steps.meta.outputs.image_tag }}" \
+            --format='value(image_summary.fully_qualified_digest)' \
+            --project="${{ steps.meta.outputs.project_id }}")"
+          echo "fully_qualified_digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "::notice::Deploy digest=${DIGEST}"
+
+      - name: Deploy to Cloud Run (preserve existing config)
+        id: deploy
+        run: |
+          set -euo pipefail
+          # Importante: solo --image.
+          # No pasar --set-env-vars / --set-secrets / --clear-* / --add-cloudsql-instances
+          # para no pisar la configuración ya aplicada en omega-backend
+          # (Cloud SQL novex-db, env y secretos omega-*).
+          gcloud run deploy "${{ steps.meta.outputs.service_name }}" \
+            --image="${{ steps.digest.outputs.fully_qualified_digest }}" \
+            --region="${{ steps.meta.outputs.region }}" \
+            --platform=managed \
+            --project="${{ steps.meta.outputs.project_id }}" \
+            --quiet
+
+          SERVICE_URL="$(gcloud run services describe "${{ steps.meta.outputs.service_name }}" \
+            --region="${{ steps.meta.outputs.region }}" \
+            --project="${{ steps.meta.outputs.project_id }}" \
+            --format='value(status.url)')"
+          echo "service_url=${SERVICE_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Job summary
+        run: |
+          {
+            echo "## Deploy Backend"
+            echo ""
+            echo "| Campo | Valor |"
+            echo "|---|---|"
+            echo "| Servicio Cloud Run | \`${{ steps.meta.outputs.service_name }}\` |"
+            echo "| Imagen (tag) | \`${{ steps.meta.outputs.image_tag }}\` |"
+            echo "| Digest | \`${{ steps.digest.outputs.fully_qualified_digest }}\` |"
+            echo "| Commit | \`${{ steps.meta.outputs.short_sha }}\` |"
+            echo "| URL | ${{ steps.deploy.outputs.service_url }} |"
+            echo ""
+            echo "Configuración previa (Cloud SQL, variables, secretos) **preservada**."
+            echo ""
+            echo "Rename futuro: variable \`CLOUD_RUN_SERVICE_BACKEND=novex-backend\`."
+          } >> "$GITHUB_STEP_SUMMARY"
