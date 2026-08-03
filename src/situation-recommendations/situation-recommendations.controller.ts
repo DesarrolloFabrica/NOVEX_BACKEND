@@ -10,7 +10,10 @@ import {
 } from '@nestjs/common';
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { SituationAccessService } from '../situations/situation-access.service';
 import {
   CreateManualRecommendationDto,
   UpdateSituationRecommendationDto,
@@ -18,13 +21,20 @@ import {
 import { SituationRecommendationsService } from './situation-recommendations.service';
 
 @Controller('situations')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SituationRecommendationsBySituationController {
   constructor(
     private readonly recommendationsService: SituationRecommendationsService,
+    private readonly situationAccessService: SituationAccessService,
   ) {}
 
   @Get(':id/recommendations')
-  findBySituation(@Param('id', ParseUUIDPipe) situationId: string) {
+  @RequirePermissions('SITUATIONS_VIEW')
+  async findBySituation(
+    @Param('id', ParseUUIDPipe) situationId: string,
+    @CurrentUser() user: AuthPayload,
+  ) {
+    await this.situationAccessService.requireAccessibleSituation(user, situationId);
     return this.recommendationsService.findBySituation(situationId);
   }
 
@@ -34,12 +44,13 @@ export class SituationRecommendationsBySituationController {
    * `/gestion` ya no invoca este endpoint.
    */
   @Post(':id/recommendations')
-  @UseGuards(JwtAuthGuard)
-  createManual(
+  @RequirePermissions('SITUATIONS_UPDATE')
+  async createManual(
     @Param('id', ParseUUIDPipe) situationId: string,
     @Body() dto: CreateManualRecommendationDto,
     @CurrentUser() user: AuthPayload,
   ) {
+    await this.situationAccessService.requireAccessibleSituation(user, situationId);
     return this.recommendationsService.createManualRecommendation(
       situationId,
       dto,
@@ -49,12 +60,14 @@ export class SituationRecommendationsBySituationController {
 }
 
 @Controller('recommendations')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SituationRecommendationsController {
   constructor(
     private readonly recommendationsService: SituationRecommendationsService,
   ) {}
 
   @Get(':id')
+  @RequirePermissions('SITUATIONS_VIEW')
   getById(@Param('id', ParseUUIDPipe) id: string) {
     return this.recommendationsService.getById(id);
   }
@@ -65,7 +78,7 @@ export class SituationRecommendationsController {
    * `/gestion` ya no invoca este endpoint.
    */
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
+  @RequirePermissions('SITUATIONS_UPDATE')
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateSituationRecommendationDto,

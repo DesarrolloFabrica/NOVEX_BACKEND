@@ -182,9 +182,11 @@ export class SituationContextBuilder {
   ): SituationContextCoordination[] {
     const related = new Map<string, SituationContextCoordination>();
 
-    const perceptionMatch = description.match(
-      /Áreas relacionadas \(percepción inicial\): (.+)/i,
-    );
+    const perceptionMatch =
+      description.match(
+        /Coordinaciones relacionadas \(percepción inicial\): (.+)/i,
+      ) ??
+      description.match(/Áreas relacionadas \(percepción inicial\): (.+)/i);
     if (perceptionMatch?.[1]) {
       for (const label of perceptionMatch[1].split(',')) {
         const trimmed = label.trim();

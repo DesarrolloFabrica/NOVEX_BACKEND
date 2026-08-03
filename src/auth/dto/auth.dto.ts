@@ -31,9 +31,9 @@ export class AuthUserSummaryDto {
   roleId!: string;
   roleCode!: string;
   roleName!: string;
-  coordinationId!: string;
-  coordinationCode!: string;
-  coordinationName!: string;
+  coordinationId!: string | null;
+  coordinationCode!: string | null;
+  coordinationName!: string | null;
   status!: string;
   lastLoginAt!: Date | null;
   createdAt!: Date;
@@ -55,7 +55,7 @@ export class AuthCoordinationSummaryDto {
 export class AuthMeResponseDto {
   user!: AuthUserSummaryDto;
   role!: AuthRoleSummaryDto;
-  coordination!: AuthCoordinationSummaryDto;
+  coordination!: AuthCoordinationSummaryDto | null;
   permissions!: {
     id: string;
     code: string;

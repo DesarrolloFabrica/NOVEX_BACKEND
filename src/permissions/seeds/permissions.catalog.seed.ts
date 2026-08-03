@@ -121,7 +121,7 @@ export const ROLE_PERMISSION_CODES: Readonly<
 > = {
   ADMIN: ALL_PERMISSION_CODES,
   DIRECTOR: ALL_PERMISSION_CODES.filter(
-    (code) => code !== 'SYSTEM_CONFIGURATION',
+    (code) => code !== 'SYSTEM_CONFIGURATION' && code !== 'SITUATIONS_CREATE',
   ),
   ANALISTA: [
     'AUTH_VIEW_PROFILE',
@@ -129,6 +129,7 @@ export const ROLE_PERMISSION_CODES: Readonly<
     'COORDINATIONS_VIEW',
     'SITUATIONS_VIEW',
     'SITUATIONS_CREATE',
+    'SITUATIONS_UPDATE',
     'AI_ANALYZE',
     'AI_VIEW_REPORTS',
     'REPORTS_VIEW',
@@ -139,5 +140,7 @@ export const ROLE_PERMISSION_CODES: Readonly<
     'SITUATIONS_VIEW',
     'SITUATIONS_CREATE',
     'SITUATIONS_UPDATE',
+    'AI_ANALYZE',
+    'AI_VIEW_REPORTS',
   ],
 };

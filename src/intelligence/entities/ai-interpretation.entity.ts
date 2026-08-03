@@ -1,6 +1,7 @@
 import {
   Column,
   Entity,
+  Index,
   JoinColumn,
   JoinTable,
   ManyToMany,
@@ -28,6 +29,7 @@ export class AIInterpretation extends BaseEntity {
   @JoinColumn({ name: 'event_id' })
   event!: OperationalEvent;
 
+  @Index()
   @Column({ type: 'uuid', name: 'event_id' })
   eventId!: string;
 
@@ -38,6 +40,7 @@ export class AIInterpretation extends BaseEntity {
   @JoinColumn({ name: 'category_id' })
   category!: IncidentCategory;
 
+  @Index()
   @Column({ type: 'uuid', name: 'category_id' })
   categoryId!: string;
 

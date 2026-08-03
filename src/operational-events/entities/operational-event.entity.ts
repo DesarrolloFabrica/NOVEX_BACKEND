@@ -1,4 +1,4 @@
-import { Column, Entity, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
+import { Column, Entity, Index, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { OperationalEventStatus } from '../../common/enums/operational.enums';
 import { AIInterpretation } from '../../intelligence/entities/ai-interpretation.entity';
@@ -23,6 +23,7 @@ export class OperationalEvent extends BaseEntity {
   @Column({ type: 'varchar', length: 160, name: 'reported_by_name' })
   reportedByName!: string;
 
+  @Index()
   @Column({ type: 'timestamptz', name: 'reported_at' })
   reportedAt!: Date;
 
@@ -33,6 +34,7 @@ export class OperationalEvent extends BaseEntity {
   @JoinColumn({ name: 'source_area_id' })
   sourceArea!: OperationalArea;
 
+  @Index()
   @Column({ type: 'uuid', name: 'source_area_id' })
   sourceAreaId!: string;
 
@@ -40,6 +42,7 @@ export class OperationalEvent extends BaseEntity {
   @Column({ type: 'varchar', length: 180, name: 'source_area_name' })
   sourceAreaName!: string;
 
+  @Index()
   @Column({
     type: 'enum',
     enum: OperationalEventStatus,

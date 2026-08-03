@@ -1,4 +1,4 @@
-import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { TimelineEntryType } from '../../common/enums/operational.enums';
 import { OperationalEvent } from '../../operational-events/entities/operational-event.entity';
@@ -16,6 +16,7 @@ export class OperationalTimelineEntry extends BaseEntity {
   @JoinColumn({ name: 'event_id' })
   event!: OperationalEvent;
 
+  @Index()
   @Column({ type: 'uuid', name: 'event_id' })
   eventId!: string;
 

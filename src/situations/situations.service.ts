@@ -1,10 +1,13 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { OperationalScopeService } from '../auth/services/operational-scope.service';
+import { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { TimelineEventType } from '../common/enums/situation-timeline.enums';
 import { SituationStatus } from '../common/enums/situation.enums';
 import { Coordination } from '../coordinations/entities/coordination.entity';
@@ -37,23 +40,39 @@ export class SituationsService {
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
     private readonly timelineService: SituationTimelineService,
+    private readonly scopeService: OperationalScopeService,
   ) {}
 
   async create(
     dto: CreateSituationDto,
-    createdByUserId: string,
+    actor: AuthPayload,
   ): Promise<SituationResponseDto> {
+    const coordinationId = this.scopeService.resolveCreateCoordinationId(
+      actor,
+      dto.coordinationId,
+    );
+
     const [coordination, category] = await Promise.all([
-      this.ensureCoordination(dto.coordinationId),
+      this.ensureCoordination(coordinationId),
       this.ensureCategory(dto.categoryId),
     ]);
+
+    const occurredAt = new Date(dto.occurredAt);
+    if (Number.isNaN(occurredAt.getTime())) {
+      throw new BadRequestException('La fecha de ocurrencia no es válida.');
+    }
+    if (occurredAt.getTime() > Date.now()) {
+      throw new BadRequestException(
+        'La fecha de ocurrencia no puede ser futura.',
+      );
+    }
 
     const situation = this.situationsRepository.create({
       title: dto.title.trim(),
       description: dto.description.trim(),
       coordinationId: coordination.id,
       coordination,
-      createdByUserId,
+      createdByUserId: actor.sub,
       categoryId: category.id,
       category,
       severity: dto.severity,
@@ -62,7 +81,7 @@ export class SituationsService {
       lastStatusComment: null,
       resolvedAt: null,
       closedAt: null,
-      occurredAt: new Date(dto.occurredAt),
+      occurredAt: occurredAt,
     });
 
     const saved = await this.situationsRepository.save(situation);
@@ -76,10 +95,23 @@ export class SituationsService {
     return this.toResponse(withRelations);
   }
 
-  async list(query: ListSituationsQueryDto): Promise<SituationsListResponseDto> {
-    const page = query.page ?? 1;
-    const limit = query.limit ?? 50;
-    const [items, total] = await this.situationsRepository.search(query);
+  async list(
+    query: ListSituationsQueryDto,
+    actor: AuthPayload,
+  ): Promise<SituationsListResponseDto> {
+    this.scopeService.assertPermission(actor, 'SITUATIONS_VIEW');
+
+    const scopedQuery: ListSituationsQueryDto = {
+      ...query,
+      coordinationId: this.scopeService.resolveSituationListCoordinationId(
+        actor,
+        query.coordinationId,
+      ),
+    };
+
+    const page = scopedQuery.page ?? 1;
+    const limit = scopedQuery.limit ?? 50;
+    const [items, total] = await this.situationsRepository.search(scopedQuery);
 
     return {
       items: items.map((item) => this.toResponse(item)),
@@ -89,23 +121,27 @@ export class SituationsService {
     };
   }
 
-  async getById(id: string): Promise<SituationResponseDto> {
+  async getById(id: string, actor: AuthPayload): Promise<SituationResponseDto> {
     const situation = await this.situationsRepository.findByIdWithRelations(id);
     if (!situation) {
       throw new NotFoundException(`Situación no encontrada: ${id}`);
     }
+
+    this.scopeService.assertSituationInScope(actor, situation);
     return this.toResponse(situation);
   }
 
   async update(
     id: string,
     dto: UpdateSituationDto,
-    actorUserId?: string | null,
+    actor: AuthPayload,
   ): Promise<SituationResponseDto> {
     const situation = await this.situationsRepository.findByIdWithRelations(id);
     if (!situation) {
       throw new NotFoundException(`Situación no encontrada: ${id}`);
     }
+
+    this.scopeService.assertCanUpdateSituation(actor, situation);
 
     if (situation.status === SituationStatus.CLOSED && dto.status !== undefined) {
       throw new BadRequestException(
@@ -114,6 +150,12 @@ export class SituationsService {
     }
 
     if (dto.coordinationId !== undefined) {
+      if (this.scopeService.isCoordinationScoped(actor)) {
+        throw new ForbiddenException(
+          'No puede reasignar la coordinación de la situación.',
+        );
+      }
+
       const coordination = await this.ensureCoordination(dto.coordinationId);
       situation.coordinationId = coordination.id;
       situation.coordination = coordination;
@@ -149,7 +191,7 @@ export class SituationsService {
         situation,
         dto.status,
         statusComment,
-        actorUserId,
+        actor.sub,
       );
       statusTransitionApplied = true;
     } else if (dto.statusComment !== undefined) {
@@ -161,7 +203,7 @@ export class SituationsService {
     if (statusTransitionApplied) {
       await this.recordStatusTransitionTimeline({
         situationId: situation.id,
-        actorUserId: actorUserId ?? null,
+        actorUserId: actor.sub,
         previousStatus,
         nextStatus: situation.status,
         statusComment,
@@ -170,7 +212,7 @@ export class SituationsService {
       });
     }
 
-    return this.getById(id);
+    return this.getById(id, actor);
   }
 
   private assertValidStatusTransition(

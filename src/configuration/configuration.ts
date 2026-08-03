@@ -12,7 +12,8 @@ const configuration = () => ({
     username: process.env.DB_USERNAME ?? 'novex',
     password: process.env.DB_PASSWORD ?? 'novex',
     name: process.env.DB_DATABASE ?? 'novex',
-    synchronize: (process.env.DB_SYNCHRONIZE ?? 'false') === 'true',
+    /** Obsoleto: el esquema se administra solo con migraciones. */
+    synchronize: false,
     logging: (process.env.DB_LOGGING ?? 'false') === 'true',
   },
   gemini: {

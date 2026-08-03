@@ -18,6 +18,7 @@ export class Role extends BaseEntity {
   @Column({ type: 'boolean', name: 'is_system', default: true })
   isSystem!: boolean;
 
+  @Index()
   @Column({ type: 'boolean', name: 'is_active', default: true })
   isActive!: boolean;
 

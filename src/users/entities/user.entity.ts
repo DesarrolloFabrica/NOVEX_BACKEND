@@ -34,14 +34,15 @@ export class User extends BaseEntity {
   @Column({ type: 'uuid', name: 'role_id' })
   roleId!: string;
 
-  @ManyToOne(() => Coordination, { nullable: false, eager: true })
+  @ManyToOne(() => Coordination, { nullable: true, eager: true })
   @JoinColumn({ name: 'coordination_id' })
-  coordination!: Coordination;
+  coordination!: Coordination | null;
 
   @Index()
-  @Column({ type: 'uuid', name: 'coordination_id' })
-  coordinationId!: string;
+  @Column({ type: 'uuid', name: 'coordination_id', nullable: true })
+  coordinationId!: string | null;
 
+  @Index()
   @Column({
     type: 'enum',
     enum: UserStatus,

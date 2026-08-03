@@ -1,4 +1,4 @@
-import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import {
   IndicatorDirection,
@@ -20,6 +20,7 @@ export class OperationalIndicator extends BaseEntity {
   @JoinColumn({ name: 'interpretation_id' })
   interpretation!: AIInterpretation | null;
 
+  @Index()
   @Column({ type: 'uuid', name: 'interpretation_id', nullable: true })
   interpretationId!: string | null;
 

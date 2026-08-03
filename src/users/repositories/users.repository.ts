@@ -33,4 +33,12 @@ export class UsersRepository extends Repository<User> {
       relations: { role: true, coordination: true },
     });
   }
+
+  findByEmail(email: string): Promise<User | null> {
+    return this.createQueryBuilder('user')
+      .leftJoinAndSelect('user.role', 'role')
+      .leftJoinAndSelect('user.coordination', 'coordination')
+      .where('LOWER(user.email) = :email', { email: email.trim().toLowerCase() })
+      .getOne();
+  }
 }

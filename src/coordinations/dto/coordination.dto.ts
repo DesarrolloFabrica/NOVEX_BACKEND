@@ -6,6 +6,15 @@ export class ListCoordinationsQueryDto {
   @Type(() => Boolean)
   @IsBoolean()
   includeInactive?: boolean = false;
+
+  /**
+   * Catálogo completo para autocompletado (percepción de coordinaciones relacionadas).
+   * No restringe por alcance del coordinador; el alcance operativo sigue en graph/list normal.
+   */
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  catalog?: boolean = false;
 }
 
 export class CoordinationResponseDto {
@@ -35,4 +44,14 @@ export class CoordinationDependencyResponseDto {
 export class CoordinationGraphResponseDto {
   coordinations!: CoordinationResponseDto[];
   dependencies!: CoordinationDependencyResponseDto[];
+}
+
+/** Snapshot agregado para la Red de impacto (fuente de verdad del panel). */
+export class CoordinationNetworkStatusDto {
+  networkStatus!: 'stable' | 'attention' | 'critical';
+  globalRiskScore!: number;
+  activeIncidentsCount!: number;
+  coordinationsCount!: number;
+  synchronizedCoordinationsCount!: number;
+  lastSynchronizedAt!: string;
 }

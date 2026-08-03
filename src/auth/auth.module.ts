@@ -7,6 +7,8 @@ import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { PermissionsGuard } from './guards/permissions.guard';
+import { OperationalScopeService } from './services/operational-scope.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
@@ -36,7 +38,20 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     RbacModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, JwtAuthGuard],
-  exports: [AuthService, JwtModule, PassportModule, JwtAuthGuard],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    JwtAuthGuard,
+    PermissionsGuard,
+    OperationalScopeService,
+  ],
+  exports: [
+    AuthService,
+    JwtModule,
+    PassportModule,
+    JwtAuthGuard,
+    PermissionsGuard,
+    OperationalScopeService,
+  ],
 })
 export class AuthModule {}

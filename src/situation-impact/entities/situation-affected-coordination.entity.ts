@@ -5,12 +5,17 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Unique,
 } from 'typeorm';
 import { ImpactLevel } from '../../common/enums/situation-impact.enums';
 import { Coordination } from '../../coordinations/entities/coordination.entity';
 import { SituationImpactAssessment } from './situation-impact-assessment.entity';
 
 @Entity({ name: 'situation_affected_coordinations' })
+@Unique('uq_situation_affected_coordination', [
+  'impactAssessmentId',
+  'coordinationId',
+])
 export class SituationAffectedCoordination {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
+import { SituationsModule } from '../situations/situations.module';
 import { Situation } from '../situations/entities/situation.entity';
 import { SituationTimelineModule } from '../situation-timeline/situation-timeline.module';
 import { SituationEvidence } from './entities/situation-evidence.entity';
@@ -13,6 +14,7 @@ import { EvidenceStorageService } from './storage/evidence-storage.service';
   imports: [
     TypeOrmModule.forFeature([SituationEvidence, Situation]),
     AuthModule,
+    SituationsModule,
     SituationTimelineModule,
   ],
   controllers: [SituationEvidenceController],

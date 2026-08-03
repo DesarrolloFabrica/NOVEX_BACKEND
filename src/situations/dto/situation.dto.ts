@@ -24,6 +24,7 @@ export class CreateSituationDto {
 
   @IsString()
   @MinLength(1)
+  @MaxLength(4000)
   description!: string;
 
   @IsUUID()

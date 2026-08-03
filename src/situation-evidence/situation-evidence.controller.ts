@@ -12,43 +12,62 @@ import {
 } from '@nestjs/common';
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { SituationAccessService } from '../situations/situation-access.service';
 import { CreateSituationEvidenceDto } from './dto/situation-evidence.dto';
 import { SituationEvidenceService } from './situation-evidence.service';
 
 @Controller('situations')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SituationEvidenceController {
-  constructor(private readonly evidenceService: SituationEvidenceService) {}
+  constructor(
+    private readonly evidenceService: SituationEvidenceService,
+    private readonly situationAccessService: SituationAccessService,
+  ) {}
 
   @Post(':id/evidences')
-  @UseGuards(JwtAuthGuard)
-  create(
+  @RequirePermissions('SITUATIONS_CREATE')
+  async create(
     @Param('id', ParseUUIDPipe) situationId: string,
     @Body() dto: CreateSituationEvidenceDto,
     @CurrentUser() user: AuthPayload,
   ) {
+    await this.situationAccessService.requireAccessibleSituation(user, situationId);
     return this.evidenceService.create(situationId, dto, user.sub);
   }
 
   @Get(':id/evidences')
-  findBySituation(@Param('id', ParseUUIDPipe) situationId: string) {
+  @RequirePermissions('SITUATIONS_VIEW')
+  async findBySituation(
+    @Param('id', ParseUUIDPipe) situationId: string,
+    @CurrentUser() user: AuthPayload,
+  ) {
+    await this.situationAccessService.requireAccessibleSituation(user, situationId);
     return this.evidenceService.findBySituation(situationId);
   }
 
   @Get(':id/evidences/:evidenceId')
-  getById(
+  @RequirePermissions('SITUATIONS_VIEW')
+  async getById(
     @Param('id', ParseUUIDPipe) situationId: string,
     @Param('evidenceId', ParseUUIDPipe) evidenceId: string,
+    @CurrentUser() user: AuthPayload,
   ) {
+    await this.situationAccessService.requireAccessibleSituation(user, situationId);
     return this.evidenceService.getById(situationId, evidenceId);
   }
 
   @Delete(':id/evidences/:evidenceId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  delete(
+  @RequirePermissions('SITUATIONS_UPDATE')
+  async delete(
     @Param('id', ParseUUIDPipe) situationId: string,
     @Param('evidenceId', ParseUUIDPipe) evidenceId: string,
+    @CurrentUser() user: AuthPayload,
   ) {
+    await this.situationAccessService.requireAccessibleSituation(user, situationId);
     return this.evidenceService.delete(situationId, evidenceId);
   }
 }

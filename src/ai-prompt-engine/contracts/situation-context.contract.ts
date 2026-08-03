@@ -31,7 +31,7 @@ export interface SituationContextUser {
   id: string;
   fullName: string;
   email: string;
-  coordinationId: string;
+  coordinationId: string | null;
 }
 
 export interface SituationContextCoordination {

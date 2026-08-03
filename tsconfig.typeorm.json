@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "declaration": false,
+    "sourceMap": false,
+    "incremental": false,
+    "tsBuildInfoFile": null
+  },
+  "include": [
+    "src/database/**/*",
+    "src/**/*.entity.ts",
+    "src/common/**/*",
+    "src/users/**/*",
+    "src/roles/**/*",
+    "src/coordinations/**/*"
+  ]
+}

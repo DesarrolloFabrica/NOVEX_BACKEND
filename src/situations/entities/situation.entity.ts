@@ -15,6 +15,8 @@ import { IncidentCategory } from '../../intelligence/entities/incident-category.
 import { User } from '../../users/entities/user.entity';
 
 @Entity({ name: 'situations' })
+@Index('idx_situations_status_occurred_at', ['status', 'occurredAt'])
+@Index('idx_situations_coordination_status', ['coordinationId', 'status'])
 export class Situation extends BaseEntity {
   @Column({ type: 'varchar', length: 200 })
   title!: string;

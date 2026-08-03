@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
+import { SituationsModule } from '../situations/situations.module';
 import { Situation } from '../situations/entities/situation.entity';
 import { SituationTimelineModule } from '../situation-timeline/situation-timeline.module';
 import { User } from '../users/entities/user.entity';
@@ -16,6 +17,7 @@ import { SituationRecommendationsService } from './situation-recommendations.ser
   imports: [
     TypeOrmModule.forFeature([SituationRecommendation, Situation, User]),
     AuthModule,
+    SituationsModule,
     SituationTimelineModule,
   ],
   controllers: [

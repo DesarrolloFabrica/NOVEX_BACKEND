@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AuthModule } from '../auth/auth.module';
+import { SituationsModule } from '../situations/situations.module';
 import { Situation } from '../situations/entities/situation.entity';
 import { SituationAffectedCoordination } from './entities/situation-affected-coordination.entity';
 import { SituationImpactAssessment } from './entities/situation-impact-assessment.entity';
@@ -14,6 +16,8 @@ import { SituationImpactService } from './situation-impact.service';
       SituationAffectedCoordination,
       Situation,
     ]),
+    AuthModule,
+    SituationsModule,
   ],
   controllers: [SituationImpactController],
   providers: [SituationImpactService, SituationImpactRepository],

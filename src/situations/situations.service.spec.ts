@@ -1,8 +1,20 @@
 import { BadRequestException } from '@nestjs/common';
+import { UserStatus } from '../common/enums/identity.enums';
 import { SituationStatus } from '../common/enums/situation.enums';
+import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { SituationsService } from './situations.service';
 
 describe('SituationsService status transitions', () => {
+  const analystActor: AuthPayload = {
+    sub: 'user-1',
+    email: 'analyst@cun.edu.co',
+    roleId: 'role-analyst',
+    roleCode: 'ANALISTA',
+    coordinationId: 'coord-general',
+    permissions: ['SITUATIONS_VIEW', 'SITUATIONS_UPDATE'],
+    status: UserStatus.ACTIVE,
+  };
+
   const createService = () => {
     const situationsRepository = {
       findByIdWithRelations: jest.fn(),
@@ -21,6 +33,18 @@ describe('SituationsService status transitions', () => {
     const timelineService = {
       createEntry: jest.fn().mockResolvedValue({}),
     };
+    const scopeService = {
+      assertPermission: jest.fn(),
+      resolveSituationListCoordinationId: jest.fn(
+        (_actor: AuthPayload, requested?: string) => requested,
+      ),
+      assertSituationInScope: jest.fn(),
+      assertCanUpdateSituation: jest.fn(),
+      resolveCreateCoordinationId: jest.fn(
+        (_actor: AuthPayload, requested: string) => requested,
+      ),
+      isCoordinationScoped: jest.fn().mockReturnValue(false),
+    };
 
     const service = new SituationsService(
       situationsRepository as never,
@@ -28,6 +52,7 @@ describe('SituationsService status transitions', () => {
       categoriesRepository as never,
       usersRepository as never,
       timelineService as never,
+      scopeService as never,
     );
 
     return {
@@ -35,6 +60,7 @@ describe('SituationsService status transitions', () => {
       situationsRepository,
       usersRepository,
       timelineService,
+      scopeService,
     };
   };
 
@@ -74,7 +100,7 @@ describe('SituationsService status transitions', () => {
     const result = await service.update(
       'sit-1',
       { status: SituationStatus.IN_PROGRESS },
-      'user-1',
+      analystActor,
     );
 
     expect(situationsRepository.save).toHaveBeenCalled();
@@ -107,7 +133,7 @@ describe('SituationsService status transitions', () => {
       service.update(
         'sit-1',
         { status: SituationStatus.RESOLVED },
-        'user-1',
+        analystActor,
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
 
@@ -125,7 +151,7 @@ describe('SituationsService status transitions', () => {
       service.update(
         'sit-1',
         { status: SituationStatus.RESOLVED, statusComment: 'Motivo' },
-        'user-1',
+        analystActor,
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -142,7 +168,7 @@ describe('SituationsService status transitions', () => {
       service.update(
         'sit-1',
         { status: SituationStatus.IN_PROGRESS },
-        'user-1',
+        analystActor,
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -173,7 +199,7 @@ describe('SituationsService status transitions', () => {
         statusComment: 'Validación final realizada.',
         evidenceIds: [],
       },
-      'user-1',
+      analystActor,
     );
 
     expect(timelineService.createEntry).toHaveBeenCalledWith(

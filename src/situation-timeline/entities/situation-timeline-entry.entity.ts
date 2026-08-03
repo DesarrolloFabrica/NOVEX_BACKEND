@@ -12,6 +12,7 @@ import { Situation } from '../../situations/entities/situation.entity';
 import { User } from '../../users/entities/user.entity';
 
 @Entity({ name: 'situation_timeline_entries' })
+@Index('idx_situation_timeline_situation_created', ['situationId', 'createdAt'])
 export class SituationTimelineEntry {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

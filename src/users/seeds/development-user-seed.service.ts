@@ -56,9 +56,9 @@ export class DevelopmentUserSeedService implements OnApplicationBootstrap {
       return;
     }
 
-    const coordination = await this.coordinationsRepository.findOne({
-      where: { code: DEVELOPMENT_USER_COORDINATION_CODE },
-    });
+    const coordination = await this.waitForCoordination(
+      DEVELOPMENT_USER_COORDINATION_CODE,
+    );
     if (!coordination) {
       this.logger.error(
         `No se pudo crear el usuario de desarrollo: coordinación ${DEVELOPMENT_USER_COORDINATION_CODE} no encontrada.`,
@@ -105,6 +105,23 @@ export class DevelopmentUserSeedService implements OnApplicationBootstrap {
         `Usuario de desarrollo reutilizado: ${reused.email} | Rol: ${roleCode} | Coordinación: ${coordinationCode}`,
       );
     }
+  }
+
+  private async waitForCoordination(
+    code: string,
+    attempts = 20,
+    delayMs = 100,
+  ): Promise<Coordination | null> {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const coordination = await this.coordinationsRepository.findOne({
+        where: { code },
+      });
+      if (coordination) {
+        return coordination;
+      }
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    return null;
   }
 
   private async findDevelopmentUser(email: string) {

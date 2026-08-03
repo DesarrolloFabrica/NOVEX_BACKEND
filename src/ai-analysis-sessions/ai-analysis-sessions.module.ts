@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AuthModule } from '../auth/auth.module';
+import { SituationsModule } from '../situations/situations.module';
 import { AIAnalysisComparisonService } from './ai-analysis-comparison.service';
 import { AIAnalysisSessionsController } from './ai-analysis-sessions.controller';
 import { AIAnalysisSessionsService } from './ai-analysis-sessions.service';
@@ -7,7 +9,11 @@ import { SituationAnalysisSession } from './entities/situation-analysis-session.
 import { SituationAnalysisSessionRepository } from './repositories/situation-analysis-session.repository';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([SituationAnalysisSession])],
+  imports: [
+    TypeOrmModule.forFeature([SituationAnalysisSession]),
+    AuthModule,
+    SituationsModule,
+  ],
   controllers: [AIAnalysisSessionsController],
   providers: [
     AIAnalysisSessionsService,

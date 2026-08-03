@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { Coordination } from '../coordinations/entities/coordination.entity';
@@ -8,6 +8,7 @@ import { User } from '../users/entities/user.entity';
 import { Situation } from './entities/situation.entity';
 import { SituationsRepository } from './repositories/situations.repository';
 import { SituationsController } from './situations.controller';
+import { SituationAccessService } from './situation-access.service';
 import { SituationsService } from './situations.service';
 
 @Module({
@@ -19,10 +20,10 @@ import { SituationsService } from './situations.service';
       User,
     ]),
     AuthModule,
-    SituationTimelineModule,
+    forwardRef(() => SituationTimelineModule),
   ],
   controllers: [SituationsController],
-  providers: [SituationsService, SituationsRepository],
-  exports: [SituationsService, SituationsRepository],
+  providers: [SituationsService, SituationsRepository, SituationAccessService],
+  exports: [SituationsService, SituationsRepository, SituationAccessService],
 })
 export class SituationsModule {}
