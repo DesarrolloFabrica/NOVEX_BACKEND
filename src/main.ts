@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { ValidationPipe, RequestMethod } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
