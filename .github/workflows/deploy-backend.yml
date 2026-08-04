@@ -342,6 +342,16 @@ jobs:
           fi
           echo "result=ok" >> "$GITHUB_OUTPUT"
 
+      - name: Remove failed candidate tag
+        if: failure() && steps.deploy.outcome == 'success'
+        continue-on-error: true
+        run: |
+          gcloud run services update-traffic "${{ steps.meta.outputs.service_name }}" \
+            --remove-tags="candidate-${{ steps.meta.outputs.short_sha }}" \
+            --region="${{ steps.meta.outputs.region }}" \
+            --project="${{ steps.meta.outputs.project_id }}" \
+            --quiet
+
       - name: Promote verified revision
         id: promote
         run: |
@@ -360,6 +370,22 @@ jobs:
             exit 1
           fi
           echo "result=ok" >> "$GITHUB_OUTPUT"
+
+      - name: Remove diagnostic candidate tags
+        run: |
+          set -euo pipefail
+          SERVICE_JSON="$(gcloud run services describe "${{ steps.meta.outputs.service_name }}" \
+            --region="${{ steps.meta.outputs.region }}" \
+            --project="${{ steps.meta.outputs.project_id }}" \
+            --format=json)"
+          CANDIDATE_TAGS="$(jq -r '[.status.traffic[]?.tag // empty | select(startswith("candidate-"))] | join(",")' <<< "${SERVICE_JSON}")"
+          if [[ -n "${CANDIDATE_TAGS}" ]]; then
+            gcloud run services update-traffic "${{ steps.meta.outputs.service_name }}" \
+              --remove-tags="${CANDIDATE_TAGS}" \
+              --region="${{ steps.meta.outputs.region }}" \
+              --project="${{ steps.meta.outputs.project_id }}" \
+              --quiet
+          fi
 
       - name: Job summary
         if: always()
