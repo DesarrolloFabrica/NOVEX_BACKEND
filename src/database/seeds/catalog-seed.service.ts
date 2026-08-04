@@ -32,7 +32,10 @@ export class CatalogSeedService implements OnApplicationBootstrap {
   onApplicationBootstrap(): void {
     logLifecycleStart('CatalogSeedService');
     if (!isCatalogSeedEnabled()) {
-      logLifecycleFinish('CatalogSeedService', 'skipped: catalog seed disabled');
+      logLifecycleFinish(
+        'CatalogSeedService',
+        'skipped: catalog seed disabled',
+      );
       return;
     }
 

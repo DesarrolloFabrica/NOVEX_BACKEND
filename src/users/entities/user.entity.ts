@@ -46,4 +46,13 @@ export class User extends BaseEntity {
 
   @Column({ type: 'timestamptz', name: 'last_login_at', nullable: true })
   lastLoginAt!: Date | null;
+
+  @Column({ type: 'integer', name: 'onboarding_step', default: 0 })
+  onboardingStep!: number;
+
+  @Column({ type: 'boolean', name: 'onboarding_completed', default: false })
+  onboardingCompleted!: boolean;
+
+  @Column({ type: 'timestamptz', name: 'onboarding_seen_at', nullable: true })
+  onboardingSeenAt!: Date | null;
 }

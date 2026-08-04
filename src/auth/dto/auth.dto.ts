@@ -36,6 +36,9 @@ export class AuthUserSummaryDto {
   coordinationName!: string | null;
   status!: string;
   lastLoginAt!: Date | null;
+  onboardingStep!: number;
+  onboardingCompleted!: boolean;
+  onboardingSeenAt!: Date | null;
   createdAt!: Date;
   updatedAt!: Date;
 }

@@ -17,41 +17,58 @@ import { RbacService } from '../rbac/rbac.service';
 import {
   CreateUserDto,
   ListUsersQueryDto,
+  UpdateOnboardingDto,
   UpdateUserDto,
 } from './dto/user.dto';
 import { UsersService } from './users.service';
 
 @Controller('users')
+@UseGuards(JwtAuthGuard)
 export class UsersController {
   constructor(
     private readonly usersService: UsersService,
     private readonly rbacService: RbacService,
   ) {}
 
+  @Patch('me/onboarding')
+  updateMyOnboarding(
+    @Body() dto: UpdateOnboardingDto,
+    @CurrentUser() actor: AuthPayload,
+  ) {
+    return this.usersService.updateOnboarding(actor.sub, dto);
+  }
+
   @Get()
-  list(@Query() query: ListUsersQueryDto) {
+  list(@Query() query: ListUsersQueryDto, @CurrentUser() actor: AuthPayload) {
+    this.assertPermission(actor, 'USERS_VIEW');
     return this.usersService.list(query);
   }
 
   @Post()
-  @UseGuards(JwtAuthGuard)
   create(@Body() dto: CreateUserDto, @CurrentUser() actor: AuthPayload) {
     this.assertPermission(actor, 'USERS_CREATE');
     return this.usersService.create(dto);
   }
 
   @Get(':id/permissions')
-  getPermissions(@Param('id', ParseUUIDPipe) id: string) {
+  getPermissions(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() actor: AuthPayload,
+  ) {
+    this.assertPermission(actor, 'USERS_VIEW');
     return this.rbacService.getUserPermissions(id);
   }
 
   @Get(':id')
-  getById(@Param('id', ParseUUIDPipe) id: string) {
+  getById(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() actor: AuthPayload,
+  ) {
+    this.assertPermission(actor, 'USERS_VIEW');
     return this.usersService.getById(id);
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateUserDto,

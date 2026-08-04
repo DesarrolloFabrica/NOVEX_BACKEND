@@ -221,6 +221,9 @@ export class AuthService {
       coordinationName: user.coordination?.name ?? null,
       status: user.status,
       lastLoginAt: user.lastLoginAt,
+      onboardingStep: user.onboardingStep,
+      onboardingCompleted: user.onboardingCompleted,
+      onboardingSeenAt: user.onboardingSeenAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

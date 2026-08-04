@@ -11,6 +11,7 @@ import { Role } from '../roles/entities/role.entity';
 import {
   CreateUserDto,
   ListUsersQueryDto,
+  UpdateOnboardingDto,
   UpdateUserDto,
   UserResponseDto,
 } from './dto/user.dto';
@@ -118,6 +119,25 @@ export class UsersService {
     return this.toResponse(refreshed);
   }
 
+  async updateOnboarding(
+    id: string,
+    dto: UpdateOnboardingDto,
+  ): Promise<UserResponseDto> {
+    const user = await this.usersRepository.findByIdWithRelations(id);
+    if (!user) {
+      throw new NotFoundException(`Usuario no encontrado: ${id}`);
+    }
+
+    user.onboardingStep = Math.max(0, Math.min(100, dto.step));
+    if (dto.completed !== undefined) {
+      user.onboardingCompleted = dto.completed;
+      user.onboardingSeenAt = dto.completed ? new Date() : null;
+    }
+
+    const saved = await this.usersRepository.save(user);
+    return this.toResponse(saved);
+  }
+
   private async resolveActiveRole(roleCode: string): Promise<Role> {
     const normalized = roleCode.trim().toUpperCase();
     const role = await this.rolesRepository.findOne({
@@ -162,6 +182,9 @@ export class UsersService {
       coordinationName: user.coordination?.name ?? null,
       status: user.status,
       lastLoginAt: user.lastLoginAt,
+      onboardingStep: user.onboardingStep,
+      onboardingCompleted: user.onboardingCompleted,
+      onboardingSeenAt: user.onboardingSeenAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

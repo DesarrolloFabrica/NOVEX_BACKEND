@@ -208,4 +208,39 @@ describe('UsersService admin registration', () => {
       service.update('missing', { status: UserStatus.INACTIVE }),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('persiste el avance del onboarding y limita el paso al rango admitido', async () => {
+    const { service, usersRepository } = createService();
+    const existing = {
+      id: 'user-1',
+      googleSub: null,
+      email: 'analista@cun.edu.co',
+      fullName: 'Analista',
+      photoUrl: null,
+      roleId: role.id,
+      role,
+      coordinationId: coordination.id,
+      coordination,
+      status: UserStatus.ACTIVE,
+      lastLoginAt: null,
+      onboardingStep: 0,
+      onboardingCompleted: false,
+      onboardingSeenAt: null,
+      createdAt: new Date('2026-08-03T00:00:00.000Z'),
+      updatedAt: new Date('2026-08-03T00:00:00.000Z'),
+    };
+    usersRepository.findByIdWithRelations.mockResolvedValue(existing);
+
+    const result = await service.updateOnboarding('user-1', {
+      step: 150,
+      completed: true,
+    });
+
+    expect(usersRepository.save).toHaveBeenCalledTimes(1);
+    expect(existing.onboardingStep).toBe(100);
+    expect(existing.onboardingCompleted).toBe(true);
+    expect(result.onboardingStep).toBe(100);
+    expect(result.onboardingCompleted).toBe(true);
+    expect(result.onboardingSeenAt).toBeInstanceOf(Date);
+  });
 });

@@ -3,6 +3,7 @@ import {
   IsBoolean,
   IsEmail,
   IsEnum,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
@@ -66,6 +67,16 @@ export class UpdateUserDto {
   status?: UserStatus;
 }
 
+export class UpdateOnboardingDto {
+  @IsInt()
+  @Type(() => Number)
+  step!: number;
+
+  @IsOptional()
+  @IsBoolean()
+  completed?: boolean;
+}
+
 export class UserResponseDto {
   id!: string;
   googleSub!: string | null;
@@ -80,6 +91,9 @@ export class UserResponseDto {
   coordinationName!: string | null;
   status!: UserStatus;
   lastLoginAt!: Date | null;
+  onboardingStep!: number;
+  onboardingCompleted!: boolean;
+  onboardingSeenAt!: Date | null;
   createdAt!: Date;
   updatedAt!: Date;
 }
