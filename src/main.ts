@@ -17,6 +17,8 @@ import {
 registerGlobalProcessHandlers();
 console.log('[BOOT 1] Process started');
 
+const healthState = new ProbeHealthState();
+
 async function listenEarly(expressApp: Express, port: number): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const server = expressApp.listen(port, '0.0.0.0', () => resolve());
@@ -42,7 +44,6 @@ function logTypeOrmState(app: INestApplication): boolean {
 async function bootstrap() {
   const port = parseInt(process.env.PORT ?? '3001', 10);
   const expressApp = express();
-  const healthState = new ProbeHealthState();
   registerProbeHealthRoutes(expressApp, healthState);
 
   console.log('[BOOT 3] Opening early listener');
@@ -53,12 +54,10 @@ async function bootstrap() {
   console.log('[BOOT 4] Loading AppModule');
   const { AppModule } = await import('./app.module.js');
   console.log('[BOOT 4A] Calling NestFactory.create()');
-  let app: INestApplication;
-  try {
-    app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp));
-  } catch (error) {
-    logBootError('NestFactory.create', error);
-  }
+  const app: INestApplication = await NestFactory.create(
+    AppModule,
+    new ExpressAdapter(expressApp),
+  );
   console.log('[BOOT 4B] NestFactory.create() returned');
   console.log('[BOOT 5] AppModule created');
 
@@ -108,5 +107,6 @@ async function bootstrap() {
 }
 
 bootstrap().catch((error) => {
+  healthState.markBootstrapFailed(error);
   logBootError('bootstrap', error);
 });

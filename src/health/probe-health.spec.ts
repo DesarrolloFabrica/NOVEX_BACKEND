@@ -60,4 +60,25 @@ describe('probe health routes', () => {
       checks: { database: 'down' },
     });
   });
+
+  it('exposes a sanitized bootstrap failure to the candidate smoke test', async () => {
+    const app = express();
+    const state = new ProbeHealthState();
+    const error = Object.assign(new Error('password authentication failed'), {
+      code: '28P01',
+    });
+    state.markBootstrapFailed(error);
+    registerProbeHealthRoutes(app, state);
+
+    const response = await request(app).get('/health/ready').expect(503);
+
+    expect(response.body).toMatchObject({
+      status: 'not_ready',
+      checks: { database: 'down' },
+      failure: {
+        code: '28P01',
+        message: 'password authentication failed',
+      },
+    });
+  });
 });

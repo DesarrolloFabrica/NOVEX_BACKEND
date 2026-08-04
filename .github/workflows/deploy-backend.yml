@@ -247,7 +247,8 @@ jobs:
         run: |
           set -euo pipefail
           # Preserva instancia Cloud SQL, service account y referencias de secretos.
-          # Restablece el CMD de la imagen y fija el contrato que decide readiness.
+          # La revision candidata no recibe trafico hasta superar readiness real.
+          CANDIDATE_TAG="candidate-${{ steps.meta.outputs.short_sha }}"
           gcloud run deploy "${{ steps.meta.outputs.service_name }}" \
             --image="${{ steps.digest.outputs.fully_qualified_digest }}" \
             --region="${{ steps.meta.outputs.region }}" \
@@ -264,16 +265,27 @@ jobs:
             --min-instances=0 \
             --max-instances=5 \
             --timeout=300 \
-            --startup-probe="httpGet.path=/health/ready,httpGet.port=8080,initialDelaySeconds=0,timeoutSeconds=3,periodSeconds=5,failureThreshold=48" \
+            --startup-probe="httpGet.path=/health,httpGet.port=8080,initialDelaySeconds=0,timeoutSeconds=3,periodSeconds=5,failureThreshold=48" \
             --liveness-probe="httpGet.path=/health,httpGet.port=8080,timeoutSeconds=3,periodSeconds=10,failureThreshold=3" \
             --update-env-vars="NODE_ENV=production,DB_SSL=false,DB_SYNCHRONIZE=false,CATALOG_SEED_ON_BOOT=false,DEMO_SEED_ENABLED=false,ENABLE_EMAIL_LOGIN=false" \
+            --no-traffic \
+            --tag="${CANDIDATE_TAG}" \
             --quiet
 
-          SERVICE_URL="$(gcloud run services describe "${{ steps.meta.outputs.service_name }}" \
+          SERVICE_JSON="$(gcloud run services describe "${{ steps.meta.outputs.service_name }}" \
             --region="${{ steps.meta.outputs.region }}" \
             --project="${{ steps.meta.outputs.project_id }}" \
-            --format='value(status.url)')"
+            --format=json)"
+          SERVICE_URL="$(jq -r '.status.url' <<< "${SERVICE_JSON}")"
+          CANDIDATE_URL="$(jq -r --arg tag "${CANDIDATE_TAG}" '.status.traffic[] | select(.tag == $tag) | .url' <<< "${SERVICE_JSON}")"
+          CANDIDATE_REVISION="$(jq -r --arg tag "${CANDIDATE_TAG}" '.status.traffic[] | select(.tag == $tag) | .revisionName' <<< "${SERVICE_JSON}")"
+          if [[ -z "${CANDIDATE_URL}" || "${CANDIDATE_URL}" == "null" || -z "${CANDIDATE_REVISION}" || "${CANDIDATE_REVISION}" == "null" ]]; then
+            echo "::error::Cloud Run no publico la URL etiquetada de la revision candidata"
+            exit 1
+          fi
           echo "service_url=${SERVICE_URL}" >> "$GITHUB_OUTPUT"
+          echo "candidate_url=${CANDIDATE_URL}" >> "$GITHUB_OUTPUT"
+          echo "candidate_revision=${CANDIDATE_REVISION}" >> "$GITHUB_OUTPUT"
 
       - name: Cloud Run failure diagnostics
         if: failure() && steps.deploy.outcome == 'failure'
@@ -287,33 +299,33 @@ jobs:
             --limit=1 \
             --format='value(metadata.name)')"
           echo "::error::Revision fallida: ${REVISION}"
-          gcloud logging read \
-            "resource.type=cloud_run_revision AND resource.labels.service_name=${{ steps.meta.outputs.service_name }} AND resource.labels.revision_name=${REVISION}" \
+          gcloud run revisions describe "${REVISION}" \
+            --region="${{ steps.meta.outputs.region }}" \
             --project="${{ steps.meta.outputs.project_id }}" \
-            --freshness=30m \
-            --limit=100 \
-            --order=asc \
-            --format='value(timestamp,severity,logName,textPayload,jsonPayload.message)' || true
+            --format='yaml(status.conditions,spec.containers[0].command,spec.containers[0].args)' || true
 
       - name: Smoke test (Nest API routes)
         id: smoke
         run: |
           set -euo pipefail
-          BASE="${{ steps.deploy.outputs.service_url }}"
+          BASE="${{ steps.deploy.outputs.candidate_url }}"
           PROBE_URL="${BASE}/health"
           READY_URL="${BASE}/health/ready"
           AUTH_ME_URL="${BASE}/api/v1/auth/me"
-          echo "::notice::Smoke GET ${PROBE_URL}"
+          echo "::notice::Smoke candidate GET ${PROBE_URL}"
           curl -fsS --retry 5 --retry-delay 3 --retry-all-errors "${PROBE_URL}" | grep -q '"status":"ok"'
           echo "::notice::Waiting for Nest ready ${READY_URL}"
-          for attempt in $(seq 1 30); do
-            READY_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' "${READY_URL}")"
+          READY_BODY=''
+          for attempt in $(seq 1 60); do
+            READY_BODY="$(curl -sS "${READY_URL}" || true)"
+            READY_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' "${READY_URL}" || true)"
             if [[ "${READY_STATUS}" == "200" ]]; then
               echo "::notice::Nest ready after ${attempt} attempt(s)"
               break
             fi
-            if [[ "${attempt}" -eq 30 ]]; then
-              echo "::error::/health/ready no respondió 200 tras 30 intentos (último ${READY_STATUS})"
+            if [[ "${attempt}" -eq 60 ]]; then
+              echo "::error::Candidate /health/ready no respondio 200 tras 5 minutos (ultimo ${READY_STATUS})"
+              echo "::error::Readiness body: ${READY_BODY}"
               exit 1
             fi
             sleep 5
@@ -322,6 +334,35 @@ jobs:
           STATUS="$(curl -sS -o /dev/null -w '%{http_code}' --retry 5 --retry-delay 3 --retry-all-errors "${AUTH_ME_URL}")"
           if [[ "${STATUS}" != "401" ]]; then
             echo "::error::GET /api/v1/auth/me devolvió ${STATUS} (esperado 401). Nest no montó rutas API."
+            exit 1
+          fi
+          echo "result=ok" >> "$GITHUB_OUTPUT"
+
+      - name: Remove failed candidate tag
+        if: failure() && steps.smoke.outcome == 'failure'
+        continue-on-error: true
+        run: |
+          gcloud run services update-traffic "${{ steps.meta.outputs.service_name }}" \
+            --remove-tags="candidate-${{ steps.meta.outputs.short_sha }}" \
+            --region="${{ steps.meta.outputs.region }}" \
+            --project="${{ steps.meta.outputs.project_id }}" \
+            --quiet
+
+      - name: Promote verified revision
+        id: promote
+        run: |
+          set -euo pipefail
+          gcloud run services update-traffic "${{ steps.meta.outputs.service_name }}" \
+            --to-revisions="${{ steps.deploy.outputs.candidate_revision }}=100" \
+            --region="${{ steps.meta.outputs.region }}" \
+            --project="${{ steps.meta.outputs.project_id }}" \
+            --quiet
+
+          BASE="${{ steps.deploy.outputs.service_url }}"
+          curl -fsS --retry 10 --retry-delay 3 --retry-all-errors "${BASE}/health/ready" | grep -q '"database":"up"'
+          STATUS="$(curl -sS -o /dev/null -w '%{http_code}' --retry 5 --retry-delay 3 --retry-all-errors "${BASE}/api/v1/auth/me")"
+          if [[ "${STATUS}" != "401" ]]; then
+            echo "::error::Revision promovida pero /api/v1/auth/me devolvio ${STATUS}"
             exit 1
           fi
           echo "result=ok" >> "$GITHUB_OUTPUT"
@@ -340,7 +381,9 @@ jobs:
             echo "| Digest | \`${{ steps.digest.outputs.fully_qualified_digest }}\` |"
             echo "| Commit | \`${{ steps.meta.outputs.short_sha }}\` |"
             echo "| URL | ${{ steps.deploy.outputs.service_url }} |"
+            echo "| Revisión candidata | ${{ steps.deploy.outputs.candidate_revision }} |"
             echo "| Smoke | \`${{ steps.smoke.outputs.result || 'failed' }}\` |"
+            echo "| Promoción | \`${{ steps.promote.outputs.result || 'not-promoted' }}\` |"
             echo "| Job | \`${{ job.status }}\` |"
             echo ""
             echo "Cloud SQL y secretos **preservados**; CMD, puerto y probes gestionados por el workflow."

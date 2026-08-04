@@ -3,6 +3,23 @@
  * Solo observabilidad — no altera lógica de negocio.
  */
 
+function stringifyUnknown(value: unknown): string {
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    typeof value === 'bigint'
+  ) {
+    return String(value);
+  }
+
+  try {
+    return JSON.stringify(value) ?? 'n/a';
+  } catch {
+    return 'n/a';
+  }
+}
+
 function formatError(error: unknown): {
   message: string;
   stack: string;
@@ -11,9 +28,9 @@ function formatError(error: unknown): {
   if (error instanceof Error) {
     const cause =
       error.cause instanceof Error
-        ? error.cause.stack ?? error.cause.message
+        ? (error.cause.stack ?? error.cause.message)
         : error.cause !== undefined
-          ? String(error.cause)
+          ? stringifyUnknown(error.cause)
           : 'n/a';
 
     return {
@@ -24,13 +41,13 @@ function formatError(error: unknown): {
   }
 
   return {
-    message: String(error),
+    message: stringifyUnknown(error),
     stack: 'n/a',
     cause: 'n/a',
   };
 }
 
-export function logBootError(etapa: string, error: unknown): never {
+export function logBootError(etapa: string, error: unknown): void {
   const formatted = formatError(error);
 
   console.error('[BOOT ERROR]');
@@ -39,18 +56,13 @@ export function logBootError(etapa: string, error: unknown): never {
   console.error('message:', formatted.message);
   console.error('stack completo:', formatted.stack);
   console.error('cause:', formatted.cause);
-
-  process.exit(1);
 }
 
 export function logLifecycleStart(serviceName: string): void {
   console.log(`Starting ${serviceName}`);
 }
 
-export function logLifecycleFinish(
-  serviceName: string,
-  detail?: string,
-): void {
+export function logLifecycleFinish(serviceName: string, detail?: string): void {
   if (detail) {
     console.log(`Finished ${serviceName} (${detail})`);
     return;

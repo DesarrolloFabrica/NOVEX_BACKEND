@@ -6,6 +6,12 @@ type ProbeDataSource = Pick<DataSource, 'isInitialized' | 'query'>;
 type Readiness = {
   ready: boolean;
   database: 'up' | 'down';
+  failure?: BootstrapFailure;
+};
+
+type BootstrapFailure = {
+  code?: string;
+  message: string;
 };
 
 /**
@@ -15,14 +21,41 @@ type Readiness = {
  */
 export class ProbeHealthState {
   private dataSource?: ProbeDataSource;
+  private bootstrapFailure?: BootstrapFailure;
 
   markNestReady(dataSource: ProbeDataSource): void {
     this.dataSource = dataSource;
+    this.bootstrapFailure = undefined;
+  }
+
+  markBootstrapFailed(error: unknown): void {
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : 'unknown bootstrap error';
+    const code =
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      typeof error.code === 'string'
+        ? error.code
+        : undefined;
+
+    this.bootstrapFailure = {
+      ...(code ? { code } : {}),
+      message: message.slice(0, 500),
+    };
   }
 
   async readiness(): Promise<Readiness> {
     if (!this.dataSource?.isInitialized) {
-      return { ready: false, database: 'down' };
+      return {
+        ready: false,
+        database: 'down',
+        ...(this.bootstrapFailure ? { failure: this.bootstrapFailure } : {}),
+      };
     }
 
     try {
@@ -57,6 +90,7 @@ export function registerProbeHealthRoutes(
       checks: {
         database: readiness.database,
       },
+      ...(readiness.failure ? { failure: readiness.failure } : {}),
     });
   });
 
