@@ -6,6 +6,7 @@ import {
   logLifecycleFinish,
   logLifecycleStart,
 } from '../../common/bootstrap-observability';
+import { isCatalogSeedEnabled } from '../../configuration/catalog-seed.guard';
 import { PermissionsService } from '../../permissions/permissions.service';
 import { ROLE_PERMISSION_CODES } from '../../permissions/seeds/permissions.catalog.seed';
 import { RolePermissionsRepository } from '../../permissions/repositories/role-permissions.repository';
@@ -24,6 +25,14 @@ export class RolePermissionCatalogSeedService implements OnApplicationBootstrap 
 
   onApplicationBootstrap(): void {
     logLifecycleStart('RolePermissionCatalogSeedService');
+    if (!isCatalogSeedEnabled()) {
+      logLifecycleFinish(
+        'RolePermissionCatalogSeedService',
+        'skipped: catalog seed disabled',
+      );
+      return;
+    }
+
     void this.syncRolePermissions()
       .then(() => {
         logLifecycleFinish('RolePermissionCatalogSeedService');

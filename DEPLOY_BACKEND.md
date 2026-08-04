@@ -1,19 +1,19 @@
-# Despliegue del Backend OMEGA (Cloud Run)
+# Despliegue del Backend NOVEX (Cloud Run)
 
-Guía operativa para el backend NestJS **omega-backend** en Google Cloud.
+Guía operativa para el backend NestJS **novex-backend** en Google Cloud.
 
 > **Importante:** no copie secretos reales a este documento ni a archivos versionados. Rote `GEMINI_API_KEY` si estuvo expuesta en entornos locales.
 
 ## 1. Arquitectura del backend
 
 ```
-Cliente (frontend) → Cloud Run (omega-backend)
+Cliente (frontend) → Cloud Run (novex-backend)
                        ├── Secret Manager (DB_PASSWORD, JWT_SECRET, GEMINI_API_KEY)
                        ├── Cloud SQL PostgreSQL (socket /cloudsql/...)
                        └── Gemini API (salida)
 ```
 
-- Runtime: NestJS 11 + Node 22 (imagen Docker)
+- Runtime: NestJS 11 + Node 20 (imagen Docker)
 - ORM: TypeORM + `pg`
 - Auth: Google ID token + JWT Bearer
 - Prefijo API: `/api/v1`
@@ -53,17 +53,17 @@ us-central1
 ## 5. Servicio Cloud Run
 
 ```
-omega-backend
+novex-backend
 ```
 
 ## 6. Artifact Registry
 
 - Repositorio: `novex` (ya existe en el proyecto)
-- Imagen: `omega-backend`
+- Imagen: `novex-backend`
 - Ruta:
 
 ```
-us-central1-docker.pkg.dev/it-fab-contenido-edu-5/novex/omega-backend
+us-central1-docker.pkg.dev/it-fab-contenido-edu-5/novex/novex-backend
 ```
 
 ## 7. Variables públicas (no secretos)
@@ -105,9 +105,9 @@ Plantilla local: `.env.example`.
 **No ejecutar todavía desde automatizaciones no aprobadas.** Comandos de referencia:
 
 ```powershell
-gcloud iam service-accounts create omega-backend-runner `
+gcloud iam service-accounts create novex-backend-runner `
   --project=it-fab-contenido-edu-5 `
-  --display-name="OMEGA Backend Cloud Run"
+  --display-name="NOVEX Backend Cloud Run"
 
 # Correo esperado:
 # 550902908078-compute@developer.gserviceaccount.com
@@ -117,7 +117,7 @@ gcloud iam service-accounts create omega-backend-runner `
 
 ```powershell
 $PROJECT_ID = "it-fab-contenido-edu-5"
-$SA = "omega-backend-runner@$PROJECT_ID.iam.gserviceaccount.com"
+$SA = "novex-backend-runner@$PROJECT_ID.iam.gserviceaccount.com"
 
 gcloud projects add-iam-policy-binding $PROJECT_ID `
   --member="serviceAccount:$SA" `
@@ -192,7 +192,7 @@ npm run start:dev
 ## 14. Docker local
 
 ```powershell
-docker build -t omega-backend-local .
+docker build -t novex-backend-local .
 # No haga docker push hasta estar listo para Artifact Registry
 ```
 
@@ -220,19 +220,22 @@ $PROJECT_ID = "it-fab-contenido-edu-5"
 gcloud builds submit `
   --project=$PROJECT_ID `
   --config=cloudbuild.backend.yaml `
-  --substitutions=_CLOUD_SQL_INSTANCE="PROJECT:REGION:INSTANCE",_SERVICE_ACCOUNT="omega-backend-runner@$PROJECT_ID.iam.gserviceaccount.com",_CORS_ORIGINS="https://URL-FRONTEND",_DB_HOST="/cloudsql/PROJECT:REGION:INSTANCE",_INSTANCE_CONNECTION_NAME="PROJECT:REGION:INSTANCE",_DB_USERNAME="USER",_DB_DATABASE="DB",_GOOGLE_CLIENT_ID="CLIENT_ID"
+  --substitutions=_CLOUD_SQL_INSTANCE="PROJECT:REGION:INSTANCE",_SERVICE_ACCOUNT="novex-backend-runner@$PROJECT_ID.iam.gserviceaccount.com",_CORS_ORIGINS="https://URL-FRONTEND",_DB_HOST="/cloudsql/PROJECT:REGION:INSTANCE",_INSTANCE_CONNECTION_NAME="PROJECT:REGION:INSTANCE",_DB_USERNAME="USER",_DB_DATABASE="DB",_GOOGLE_CLIENT_ID="CLIENT_ID"
 ```
 
 Revise y complete todas las sustituciones `_...` antes de lanzar.
 
 ## 17. Migraciones
 
-Hoy **no hay** migraciones TypeORM versionadas en el repositorio.
+Hay dos migraciones TypeORM versionadas en `src/database/migrations`:
+
+- `1785790534246-InitialSchema.ts`
+- `1786100000000-MakeUserCoordinationNullable.ts`
 
 - Desarrollo: `DB_SYNCHRONIZE=true` (solo local)
 - Producción: `DB_SYNCHRONIZE=false`
-- Hay un SQL manual puntual: `scripts/migrate-intelligence-contract-version.sql`
-- Pendiente de producto: introducir DataSource + carpeta `migrations` y scripts `migration:run` / `migration:revert` compatibles con TypeORM 0.3
+- Hay un SQL manual puntual: `scripts/migrate-intelligence-contract-version.sql`.
+- Los scripts `migration:run`, `migration:show` y `migration:revert` usan TypeORM 0.3.
 
 **No ejecute synchronize ni seeds automáticos contra producción.**
 
@@ -240,7 +243,7 @@ Hoy **no hay** migraciones TypeORM versionadas en el repositorio.
 
 | Endpoint | Propósito |
 |----------|-----------|
-| `GET /health` | Proceso vivo (startup probe) |
+| `GET /health` | Proceso HTTP vivo (liveness probe) |
 | `GET /health/ready` | Listo (incluye `SELECT 1` a PostgreSQL) |
 | `GET /api/v1/auth/health` | Health legacy del módulo auth |
 
@@ -254,7 +257,7 @@ Invoke-RestMethod https://URL-SERVICIO/health/ready
 ## 19. Logs
 
 ```powershell
-gcloud run services logs read omega-backend `
+gcloud run services logs read novex-backend `
   --project=it-fab-contenido-edu-5 `
   --region=us-central1 `
   --limit=100
@@ -264,7 +267,7 @@ gcloud run services logs read omega-backend `
 
 ```powershell
 gcloud run revisions list `
-  --service=omega-backend `
+  --service=novex-backend `
   --project=it-fab-contenido-edu-5 `
   --region=us-central1
 ```
@@ -273,7 +276,7 @@ gcloud run revisions list `
 
 ```powershell
 # Enrutar 100% del tráfico a una revisión previa conocida
-gcloud run services update-traffic omega-backend `
+gcloud run services update-traffic novex-backend `
   --project=it-fab-contenido-edu-5 `
   --region=us-central1 `
   --to-revisions=REVISION_ANTERIOR=100
@@ -336,9 +339,10 @@ gcloud run services update-traffic omega-backend `
 | Concurrency | 40 |
 | Timeout | 300s |
 | Execution | gen2 |
-| Startup probe | `/api/v1/auth/health` (configurado en Cloud Run) |
-| Liveness probe | `/api/v1/auth/health` |
-| Health auxiliar | `/health`, `/health/ready` |
+| Startup probe | `/health/ready` (Nest inicializado + `SELECT 1`) |
+| Liveness probe | `/health` (proceso HTTP vivo) |
+| Readiness probe | `/health/ready` |
+| Health legacy | `/api/v1/auth/health` (uptime check existente) |
 | Ingress | all (API pública para frontend) |
 | Auth | allow unauthenticated en el servicio (autorización vía JWT de aplicación) |
 

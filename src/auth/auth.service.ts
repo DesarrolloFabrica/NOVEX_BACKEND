@@ -179,10 +179,6 @@ export class AuthService {
     return { accessToken, expiresIn };
   }
 
-  getHealthStatus(): { status: 'ok'; module: 'auth' } {
-    return { status: 'ok', module: 'auth' };
-  }
-
   private async findActiveUserByEmail(email: string): Promise<User | null> {
     const user = await this.usersRepository.findByEmail(email);
 

@@ -1,44 +1,21 @@
-import { INestApplication, ValidationPipe, RequestMethod } from '@nestjs/common';
+import { ValidationPipe, RequestMethod } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import express, { type Express } from 'express';
 import { DataSource } from 'typeorm';
-import { AppModule } from './app.module';
 import {
   logBootError,
   registerGlobalProcessHandlers,
 } from './common/bootstrap-observability';
+import {
+  ProbeHealthState,
+  registerProbeHealthRoutes,
+} from './health/probe-health';
 
 registerGlobalProcessHandlers();
 console.log('[BOOT 1] Process started');
-
-let nestReady = false;
-
-/** Rutas de health sin prefijo global (Cloud Run startup/liveness). */
-function registerProbeHealthRoutes(app: Express): void {
-  app.get('/health', (_req, res) => {
-    res.status(200).json({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-    });
-  });
-
-  app.get('/health/ready', (_req, res) => {
-    if (!nestReady) {
-      res.status(503).json({
-        status: 'starting',
-        timestamp: new Date().toISOString(),
-      });
-      return;
-    }
-
-    res.status(200).json({
-      status: 'ready',
-      timestamp: new Date().toISOString(),
-    });
-  });
-}
 
 async function listenEarly(expressApp: Express, port: number): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -65,21 +42,20 @@ function logTypeOrmState(app: INestApplication): boolean {
 async function bootstrap() {
   const port = parseInt(process.env.PORT ?? '3001', 10);
   const expressApp = express();
-  registerProbeHealthRoutes(expressApp);
+  const healthState = new ProbeHealthState();
+  registerProbeHealthRoutes(expressApp, healthState);
 
   console.log('[BOOT 3] Opening early listener');
   // Cloud Run startup probe (TCP/HTTP) debe pasar mientras Nest + DB inicializan.
   await listenEarly(expressApp, port);
   console.log(`Probe health listening on http://0.0.0.0:${port}`);
 
-  console.log('[BOOT 4] Creating Nest application');
+  console.log('[BOOT 4] Loading AppModule');
+  const { AppModule } = await import('./app.module.js');
   console.log('[BOOT 4A] Calling NestFactory.create()');
   let app: INestApplication;
   try {
-    app = await NestFactory.create(
-      AppModule,
-      new ExpressAdapter(expressApp),
-    );
+    app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp));
   } catch (error) {
     logBootError('NestFactory.create', error);
   }
@@ -123,8 +99,9 @@ async function bootstrap() {
 
   console.log('[BOOT 7] Modules initialized');
   console.log('[BOOT 8] app.init() completed');
-  nestReady = true;
-  console.log('[BOOT 9] nestReady=true');
+  const dataSource = app.get(DataSource, { strict: false });
+  healthState.markNestReady(dataSource);
+  console.log('[BOOT 9] readiness enabled');
 
   console.log(`Novex Backend ready on http://0.0.0.0:${port}/${apiPrefix}`);
   console.log('[BOOT 10] Bootstrap finished');

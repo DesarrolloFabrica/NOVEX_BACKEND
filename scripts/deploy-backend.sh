@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Despliega omega-backend (NOVEX) en Cloud Run — Operacion Producto y LMS.
+# Despliega novex-backend en Cloud Run — Operacion Producto y LMS.
 # No contiene secretos. No crea ni sobrescribe secretos.
 # No usa Cloud SQL de producto-backend-db ni carga-lms.
 set -euo pipefail
 
 PROJECT_ID="it-fab-contenido-edu-5"
 REGION="us-central1"
-SERVICE="omega-backend"
+SERVICE="novex-backend"
 REPOSITORY="novex"
-IMAGE="omega-backend"
+IMAGE="novex-backend"
 CLOUD_SQL_INSTANCE="it-fab-contenido-edu-5:us-central1:novex-db"
 SERVICE_ACCOUNT="550902908078-compute@developer.gserviceaccount.com"
 
@@ -87,7 +87,7 @@ if ! gcloud artifacts repositories describe "${REPOSITORY}" \
   gcloud artifacts repositories create "${REPOSITORY}" \
     --repository-format=docker \
     --location="${REGION}" \
-    --description="OMEGA backend images" \
+    --description="NOVEX backend images" \
     --project="${PROJECT_ID}"
 fi
 
@@ -111,6 +111,12 @@ gcloud run deploy "${SERVICE}" \
   --platform=managed \
   --execution-environment=gen2 \
   --port=8080 \
+  --command="" \
+  --args="" \
+  --cpu-boost \
+  --startup-probe="httpGet.path=/health/ready,httpGet.port=8080,initialDelaySeconds=0,timeoutSeconds=3,periodSeconds=5,failureThreshold=48" \
+  --liveness-probe="httpGet.path=/health,httpGet.port=8080,timeoutSeconds=3,periodSeconds=10,failureThreshold=3" \
+  --readiness-probe="httpGet.path=/health/ready,httpGet.port=8080,timeoutSeconds=3,periodSeconds=5,failureThreshold=3,successThreshold=1" \
   --cpu="${CPU}" \
   --memory="${MEMORY}" \
   --concurrency="${CONCURRENCY}" \

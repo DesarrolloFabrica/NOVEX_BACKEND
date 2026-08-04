@@ -5,6 +5,7 @@ import {
   logLifecycleFinish,
   logLifecycleStart,
 } from '../../common/bootstrap-observability';
+import { isCatalogSeedEnabled } from '../../configuration/catalog-seed.guard';
 import { Permission } from '../entities/permission.entity';
 import { CATALOG_PERMISSIONS } from './permissions.catalog.seed';
 
@@ -19,6 +20,14 @@ export class PermissionCatalogSeedService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     logLifecycleStart('PermissionCatalogSeedService');
+    if (!isCatalogSeedEnabled()) {
+      logLifecycleFinish(
+        'PermissionCatalogSeedService',
+        'skipped: catalog seed disabled',
+      );
+      return;
+    }
+
     try {
       for (const item of CATALOG_PERMISSIONS) {
         const existing = await this.permissionsRepository.findOne({

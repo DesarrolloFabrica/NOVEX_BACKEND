@@ -22,8 +22,6 @@ import { CoordinationsModule } from './coordinations/coordinations.module';
 
 import { DashboardModule } from './dashboard/dashboard.module';
 
-import { HealthModule } from './health/health.module';
-
 import { DatabaseSeedsModule } from './database/seeds/database-seeds.module';
 
 import { DemoUsersModule } from './demo-users/demo-users.module';
@@ -91,8 +89,6 @@ import { UsersModule } from './users/users.module';
     RecommendedActionsModule,
 
     DashboardModule,
-
-    HealthModule,
 
     AuthModule,
 

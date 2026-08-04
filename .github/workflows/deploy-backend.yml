@@ -4,7 +4,7 @@
 #
 # Triggers: push a main | workflow_dispatch
 # Imagen: {REGION}-docker.pkg.dev/{PROJECT}/novex/novex-backend:{sha7}
-# Deploy: solo --image (preserva Cloud SQL, env, secretos novex-*).
+# Deploy: imagen por digest + contrato de runtime; preserva Cloud SQL y secretos.
 #
 # Vars: GCP_PROJECT_ID, GCP_REGION (req)
 #       ARTIFACT_REGISTRY_REPOSITORY, BACKEND_IMAGE_NAME, CLOUD_RUN_SERVICE_BACKEND (opc)
@@ -145,6 +145,50 @@ jobs:
             --label "novex.git.sha=${{ steps.meta.outputs.short_sha }}" \
             .
 
+      - name: Validate container runtime contract
+        run: |
+          set -euo pipefail
+          IMAGE="${{ steps.meta.outputs.image_tag }}"
+          IMAGE_CMD="$(docker image inspect --format '{{json .Config.Cmd}}' "${IMAGE}")"
+          if [[ "${IMAGE_CMD}" != '["node","dist/main.js"]' ]]; then
+            echo "::error::CMD inesperado en la imagen: ${IMAGE_CMD}"
+            exit 1
+          fi
+
+          CONTAINER_ID="$(docker run --detach --rm \
+            --publish 127.0.0.1:18080:8080 \
+            --env DB_HOST=127.0.0.1 \
+            --env DB_PORT=9 \
+            --env DB_USERNAME=runtime-check \
+            --env DB_PASSWORD=runtime-check \
+            --env DB_DATABASE=runtime-check \
+            --env JWT_SECRET=runtime-check \
+            --env GOOGLE_CLIENT_ID=runtime-check \
+            "${IMAGE}")"
+          cleanup() {
+            docker rm --force "${CONTAINER_ID}" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 20); do
+            if curl -fsS "http://127.0.0.1:18080/health" | grep -q '"status":"ok"'; then
+              break
+            fi
+            if [[ "${attempt}" -eq 20 ]]; then
+              echo "::error::La imagen no abrio PORT=8080 ni respondio /health"
+              docker logs "${CONTAINER_ID}" || true
+              exit 1
+            fi
+            sleep 1
+          done
+
+          READY_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/health/ready)"
+          if [[ "${READY_STATUS}" != "503" ]]; then
+            echo "::error::/health/ready debe permanecer en 503 sin PostgreSQL; devolvio ${READY_STATUS}"
+            exit 1
+          fi
+          echo "::notice::Imagen validada: CMD=${IMAGE_CMD}, PORT=8080, liveness=200, readiness=503 sin DB"
+
       - name: Push image to Artifact Registry
         run: |
           set -euo pipefail
@@ -160,16 +204,70 @@ jobs:
           echo "fully_qualified_digest=${DIGEST}" >> "$GITHUB_OUTPUT"
           echo "::notice::Deploy digest=${DIGEST}"
 
-      - name: Deploy to Cloud Run (preserve existing config)
+      - name: Validate preserved Cloud SQL and secrets
+        run: |
+          set -euo pipefail
+          SERVICE_JSON="$(gcloud run services describe "${{ steps.meta.outputs.service_name }}" \
+            --region="${{ steps.meta.outputs.region }}" \
+            --project="${{ steps.meta.outputs.project_id }}" \
+            --format=json)"
+          CONTAINER_JSON="$(jq -c '.spec.template.spec.containers[0]' <<< "${SERVICE_JSON}")"
+
+          for required in DB_HOST DB_PORT DB_USERNAME DB_PASSWORD DB_DATABASE JWT_SECRET GOOGLE_CLIENT_ID; do
+            if ! jq -e --arg name "${required}" '.env[]? | select(.name == $name)' <<< "${CONTAINER_JSON}" >/dev/null; then
+              echo "::error::Cloud Run no tiene configurada la variable obligatoria ${required}"
+              exit 1
+            fi
+          done
+
+          for secret_env in DB_PASSWORD JWT_SECRET; do
+            if ! jq -e --arg name "${secret_env}" \
+              '.env[]? | select(.name == $name) | .valueFrom.secretKeyRef.name | strings | select(length > 0)' \
+              <<< "${CONTAINER_JSON}" >/dev/null; then
+              echo "::error::${secret_env} debe provenir de Secret Manager"
+              exit 1
+            fi
+          done
+
+          CLOUDSQL="$(jq -r '.spec.template.metadata.annotations["run.googleapis.com/cloudsql-instances"] // empty' <<< "${SERVICE_JSON}" | tr -d ' ')"
+          DB_HOST="$(jq -r '.env[]? | select(.name == "DB_HOST") | .value // empty' <<< "${CONTAINER_JSON}")"
+          if [[ -z "${CLOUDSQL}" || "${DB_HOST}" != /cloudsql/* ]]; then
+            echo "::error::Cloud SQL debe estar adjunto y DB_HOST debe usar /cloudsql/INSTANCE_CONNECTION_NAME"
+            exit 1
+          fi
+          CONNECTION_NAME="${DB_HOST#/cloudsql/}"
+          if [[ ",${CLOUDSQL}," != *",${CONNECTION_NAME},"* ]]; then
+            echo "::error::DB_HOST no coincide con una instancia Cloud SQL adjunta"
+            exit 1
+          fi
+          echo "::notice::Cloud SQL socket y referencias de secretos validados sin exponer valores"
+
+      - name: Deploy to Cloud Run (controlled runtime contract)
         id: deploy
         run: |
           set -euo pipefail
-          # Solo --image: no pisar Cloud SQL / env / secretos de novex-backend.
+          # Preserva instancia Cloud SQL, service account y referencias de secretos.
+          # Restablece el CMD de la imagen y fija el contrato que decide readiness.
           gcloud run deploy "${{ steps.meta.outputs.service_name }}" \
             --image="${{ steps.digest.outputs.fully_qualified_digest }}" \
             --region="${{ steps.meta.outputs.region }}" \
             --platform=managed \
             --project="${{ steps.meta.outputs.project_id }}" \
+            --execution-environment=gen2 \
+            --port=8080 \
+            --command="" \
+            --args="" \
+            --cpu-boost \
+            --cpu=1 \
+            --memory=1Gi \
+            --concurrency=40 \
+            --min-instances=0 \
+            --max-instances=5 \
+            --timeout=300 \
+            --startup-probe="httpGet.path=/health/ready,httpGet.port=8080,initialDelaySeconds=0,timeoutSeconds=3,periodSeconds=5,failureThreshold=48" \
+            --liveness-probe="httpGet.path=/health,httpGet.port=8080,timeoutSeconds=3,periodSeconds=10,failureThreshold=3" \
+            --readiness-probe="httpGet.path=/health/ready,httpGet.port=8080,timeoutSeconds=3,periodSeconds=5,failureThreshold=3,successThreshold=1" \
+            --update-env-vars="NODE_ENV=production,DB_SSL=false,DB_SYNCHRONIZE=false,CATALOG_SEED_ON_BOOT=false,DEMO_SEED_ENABLED=false,ENABLE_EMAIL_LOGIN=false" \
             --quiet
 
           SERVICE_URL="$(gcloud run services describe "${{ steps.meta.outputs.service_name }}" \
@@ -177,6 +275,26 @@ jobs:
             --project="${{ steps.meta.outputs.project_id }}" \
             --format='value(status.url)')"
           echo "service_url=${SERVICE_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Cloud Run failure diagnostics
+        if: failure() && steps.deploy.outcome == 'failure'
+        continue-on-error: true
+        run: |
+          REVISION="$(gcloud run revisions list \
+            --service="${{ steps.meta.outputs.service_name }}" \
+            --region="${{ steps.meta.outputs.region }}" \
+            --project="${{ steps.meta.outputs.project_id }}" \
+            --sort-by='~metadata.creationTimestamp' \
+            --limit=1 \
+            --format='value(metadata.name)')"
+          echo "::error::Revision fallida: ${REVISION}"
+          gcloud logging read \
+            "resource.type=cloud_run_revision AND resource.labels.service_name=${{ steps.meta.outputs.service_name }} AND resource.labels.revision_name=${REVISION}" \
+            --project="${{ steps.meta.outputs.project_id }}" \
+            --freshness=30m \
+            --limit=100 \
+            --order=asc \
+            --format='value(timestamp,severity,logName,textPayload,jsonPayload.message)' || true
 
       - name: Smoke test (Nest API routes)
         id: smoke
@@ -226,5 +344,5 @@ jobs:
             echo "| Smoke | \`${{ steps.smoke.outputs.result || 'failed' }}\` |"
             echo "| Job | \`${{ job.status }}\` |"
             echo ""
-            echo "Configuración previa (Cloud SQL, variables, secretos) **preservada**."
+            echo "Cloud SQL y secretos **preservados**; CMD, puerto y probes gestionados por el workflow."
           } >> "$GITHUB_STEP_SUMMARY"

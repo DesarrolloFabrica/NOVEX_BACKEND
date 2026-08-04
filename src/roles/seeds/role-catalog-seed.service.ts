@@ -5,6 +5,7 @@ import {
   logLifecycleFinish,
   logLifecycleStart,
 } from '../../common/bootstrap-observability';
+import { isCatalogSeedEnabled } from '../../configuration/catalog-seed.guard';
 import { Role } from '../entities/role.entity';
 import { CATALOG_ROLES } from './roles.catalog.seed';
 
@@ -19,6 +20,14 @@ export class RoleCatalogSeedService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     logLifecycleStart('RoleCatalogSeedService');
+    if (!isCatalogSeedEnabled()) {
+      logLifecycleFinish(
+        'RoleCatalogSeedService',
+        'skipped: catalog seed disabled',
+      );
+      return;
+    }
+
     try {
       for (const item of CATALOG_ROLES) {
         const existing = await this.rolesRepository.findOne({

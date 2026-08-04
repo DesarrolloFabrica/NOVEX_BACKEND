@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Despliega omega-backend (NOVEX) en Cloud Run — proyecto Operacion Producto y LMS.
+  Despliega novex-backend en Cloud Run — proyecto Operacion Producto y LMS.
 
 .DESCRIPTION
   No contiene secretos. No crea ni sobrescribe secretos en Secret Manager.
@@ -16,9 +16,9 @@ $ErrorActionPreference = 'Stop'
 # -----------------------------------------------------------------------------
 $PROJECT_ID = "it-fab-contenido-edu-5"
 $REGION = "us-central1"
-$SERVICE = "omega-backend"
+$SERVICE = "novex-backend"
 $REPOSITORY = "novex"
-$IMAGE = "omega-backend"
+$IMAGE = "novex-backend"
 
 # Cloud SQL NOVEX (creada para este backend; no usar producto-backend-db ni carga-lms)
 $CLOUD_SQL_INSTANCE = "it-fab-contenido-edu-5:us-central1:novex-db"
@@ -43,8 +43,8 @@ $MAX_INSTANCES = "5"
 $CONCURRENCY = "40"
 $TIMEOUT = "300"
 
-# Primera carga de esquema (no hay migraciones TypeORM aún). Cambiar a false tras el primer deploy estable.
-$DB_SYNCHRONIZE = "true"
+# El esquema se administra exclusivamente mediante migraciones TypeORM.
+$DB_SYNCHRONIZE = "false"
 
 $IMAGE_URI = "$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/${IMAGE}:manual-$(Get-Date -Format 'yyyyMMddHHmmss')"
 $IMAGE_LATEST = "$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/${IMAGE}:latest"
@@ -144,7 +144,7 @@ if (-not $repoExists) {
     'artifacts', 'repositories', 'create', $REPOSITORY,
     '--repository-format=docker',
     "--location=$REGION",
-    '--description=NOVEX/OMEGA backend images',
+    '--description=NOVEX backend images',
     "--project=$PROJECT_ID"
   ) | Write-Host
 } else {
@@ -183,6 +183,12 @@ Invoke-GCloud -GcloudArgs @(
   '--platform=managed',
   '--execution-environment=gen2',
   '--port=8080',
+  '--command=',
+  '--args=',
+  '--cpu-boost',
+  '--startup-probe=httpGet.path=/health/ready,httpGet.port=8080,initialDelaySeconds=0,timeoutSeconds=3,periodSeconds=5,failureThreshold=48',
+  '--liveness-probe=httpGet.path=/health,httpGet.port=8080,timeoutSeconds=3,periodSeconds=10,failureThreshold=3',
+  '--readiness-probe=httpGet.path=/health/ready,httpGet.port=8080,timeoutSeconds=3,periodSeconds=5,failureThreshold=3,successThreshold=1',
   "--cpu=$CPU",
   "--memory=$MEMORY",
   "--concurrency=$CONCURRENCY",

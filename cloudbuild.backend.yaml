@@ -1,13 +1,13 @@
-# Cloud Build — OMEGA / Novex Backend
+# Cloud Build — NOVEX Backend
 # Proyecto: it-fab-contenido-edu-5 (Operacion Producto y LMS) | Región: us-central1
 # No incluir secretos en texto plano. No ejecutar este archivo desde el agente.
 # No reutilizar Cloud SQL de producto-backend-db ni carga-lms.
 
 substitutions:
   _REGION: us-central1
-  _SERVICE: omega-backend
+  _SERVICE: novex-backend
   _REPOSITORY: novex
-  _IMAGE: omega-backend
+  _IMAGE: novex-backend
   _CLOUD_SQL_INSTANCE: 'it-fab-contenido-edu-5:us-central1:novex-db'
   _SERVICE_ACCOUNT: '550902908078-compute@developer.gserviceaccount.com'
   _CORS_ORIGINS: 'http://localhost:5173'
@@ -70,6 +70,12 @@ steps:
       - --platform=managed
       - --execution-environment=gen2
       - --port=8080
+      - --command=
+      - --args=
+      - --cpu-boost
+      - --startup-probe=httpGet.path=/health/ready,httpGet.port=8080,initialDelaySeconds=0,timeoutSeconds=3,periodSeconds=5,failureThreshold=48
+      - --liveness-probe=httpGet.path=/health,httpGet.port=8080,timeoutSeconds=3,periodSeconds=10,failureThreshold=3
+      - --readiness-probe=httpGet.path=/health/ready,httpGet.port=8080,timeoutSeconds=3,periodSeconds=5,failureThreshold=3,successThreshold=1
       - --cpu=${_CPU}
       - --memory=${_MEMORY}
       - --concurrency=${_CONCURRENCY}

@@ -41,11 +41,12 @@ export const typeOrmAsyncConfig: TypeOrmModuleAsyncOptions = {
       migrations: [join(__dirname, '../database/migrations/*{.ts,.js}')],
       migrationsTableName: 'typeorm_migrations',
       migrationsRun: false,
-      retryAttempts: isProduction ? 15 : 5,
+      // Mantener el peor caso por debajo de la ventana maxima del startup probe
+      // de Cloud Run (240 s), sin renunciar a reintentos de cold start.
+      retryAttempts: isProduction ? 6 : 5,
       retryDelay: isProduction ? 3000 : 2000,
       extra: {
-        // Cloud SQL en cold start puede tardar; evitar fail-fast que tumba el contenedor.
-        connectionTimeoutMillis: isProduction ? 20000 : 10000,
+        connectionTimeoutMillis: isProduction ? 15000 : 10000,
       },
       ssl: sslEnabled ? { rejectUnauthorized: false } : false,
     };

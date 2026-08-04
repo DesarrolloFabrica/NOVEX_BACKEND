@@ -23,6 +23,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV PORT=8080
 
 RUN addgroup -S novex && adduser -S novex -G novex
 
@@ -33,5 +34,7 @@ COPY --from=builder --chown=novex:novex /app/dist ./dist
 
 USER novex
 
-# Cloud Run inyecta PORT; no fijar un puerto concreto.
-CMD ["node", "dist/main"]
+EXPOSE 8080
+
+# CMD explicito; Cloud Run inyecta PORT=8080 y el workflow limpia overrides.
+CMD ["node", "dist/main.js"]
