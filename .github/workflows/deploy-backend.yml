@@ -184,9 +184,23 @@ jobs:
           set -euo pipefail
           BASE="${{ steps.deploy.outputs.service_url }}"
           PROBE_URL="${BASE}/health"
+          READY_URL="${BASE}/health/ready"
           AUTH_ME_URL="${BASE}/api/v1/auth/me"
           echo "::notice::Smoke GET ${PROBE_URL}"
           curl -fsS --retry 5 --retry-delay 3 --retry-all-errors "${PROBE_URL}" | grep -q '"status":"ok"'
+          echo "::notice::Waiting for Nest ready ${READY_URL}"
+          for attempt in $(seq 1 30); do
+            READY_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' "${READY_URL}")"
+            if [[ "${READY_STATUS}" == "200" ]]; then
+              echo "::notice::Nest ready after ${attempt} attempt(s)"
+              break
+            fi
+            if [[ "${attempt}" -eq 30 ]]; then
+              echo "::error::/health/ready no respondió 200 tras 30 intentos (último ${READY_STATUS})"
+              exit 1
+            fi
+            sleep 5
+          done
           echo "::notice::Smoke GET ${AUTH_ME_URL} (expect 401 — Nest route mounted)"
           STATUS="$(curl -sS -o /dev/null -w '%{http_code}' --retry 5 --retry-delay 3 --retry-all-errors "${AUTH_ME_URL}")"
           if [[ "${STATUS}" != "401" ]]; then
