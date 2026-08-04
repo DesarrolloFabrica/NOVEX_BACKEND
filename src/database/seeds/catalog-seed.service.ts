@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { isCatalogSeedEnabled } from '../../configuration/catalog-seed.guard';
 import { IncidentCategory } from '../../intelligence/entities/incident-category.entity';
 import { OperationalArea } from '../../operational-areas/entities/operational-area.entity';
 import { OperationalEvent } from '../../operational-events/entities/operational-event.entity';
@@ -24,6 +25,10 @@ export class CatalogSeedService implements OnApplicationBootstrap {
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
+    if (!isCatalogSeedEnabled()) {
+      return;
+    }
+
     await this.purgeDemoOperationalData();
     await this.seedOperationalAreas();
     await this.seedIncidentCategories();

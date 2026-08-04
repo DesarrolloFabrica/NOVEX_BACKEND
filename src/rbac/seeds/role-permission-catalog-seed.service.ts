@@ -28,7 +28,10 @@ export class RolePermissionCatalogSeedService implements OnApplicationBootstrap 
     )) {
       const role = rolesByCode.get(roleCode);
       if (!role) {
-        throw new Error(`Rol no encontrado para asignación RBAC: ${roleCode}`);
+        this.logger.warn(
+          `Rol no encontrado para asignación RBAC: ${roleCode}. Omitiendo.`,
+        );
+        continue;
       }
 
       const expected = new Set(permissionCodes);
@@ -49,10 +52,16 @@ export class RolePermissionCatalogSeedService implements OnApplicationBootstrap 
       }
 
       for (const permissionCode of permissionCodes) {
-        const permission =
-          await this.permissionsService.findByCode(permissionCode);
-        await this.permissionsService.assignToRole(role.id, permission.id);
-        totalAssignments += 1;
+        try {
+          const permission =
+            await this.permissionsService.findByCode(permissionCode);
+          await this.permissionsService.assignToRole(role.id, permission.id);
+          totalAssignments += 1;
+        } catch (error) {
+          this.logger.warn(
+            `Permiso no encontrado para RBAC (${permissionCode}): omitiendo asignación.`,
+          );
+        }
       }
     }
 

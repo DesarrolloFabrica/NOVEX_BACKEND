@@ -182,9 +182,9 @@ jobs:
         id: smoke
         run: |
           set -euo pipefail
-          URL="${{ steps.deploy.outputs.service_url }}/api/v1/auth/health"
-          echo "::notice::Smoke GET ${URL}"
-          BODY="$(curl -fsS --retry 5 --retry-delay 3 --retry-all-errors "${URL}")"
+          BASE="${{ steps.deploy.outputs.service_url }}"
+          echo "::notice::Smoke GET ${BASE}/health"
+          BODY="$(curl -fsS --retry 5 --retry-delay 3 --retry-all-errors "${BASE}/health")"
           echo "${BODY}" | grep -q '"status":"ok"'
           echo "result=ok" >> "$GITHUB_OUTPUT"
           echo "body=${BODY}" >> "$GITHUB_OUTPUT"

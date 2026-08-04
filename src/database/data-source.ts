@@ -14,10 +14,15 @@ loadEnv({
  */
 export function buildDataSourceOptions(): DataSourceOptions {
   const isProduction = (process.env.NODE_ENV ?? 'development') === 'production';
+  const host = process.env.DB_HOST ?? 'localhost';
+  const dbSslFlag = process.env.DB_SSL?.trim().toLowerCase();
+  const sslEnabled =
+    dbSslFlag === 'true' ||
+    (dbSslFlag !== 'false' && isProduction && !host.startsWith('/cloudsql/'));
 
   return {
     type: 'postgres',
-    host: process.env.DB_HOST ?? 'localhost',
+    host,
     port: parseInt(process.env.DB_PORT ?? '5432', 10),
     username: process.env.DB_USERNAME ?? 'novex',
     password: process.env.DB_PASSWORD ?? 'novex',
@@ -28,7 +33,7 @@ export function buildDataSourceOptions(): DataSourceOptions {
     migrations: [join(__dirname, './migrations/*{.ts,.js}')],
     migrationsTableName: 'typeorm_migrations',
     migrationsRun: false,
-    ssl: isProduction ? { rejectUnauthorized: false } : false,
+    ssl: sslEnabled ? { rejectUnauthorized: false } : false,
   };
 }
 

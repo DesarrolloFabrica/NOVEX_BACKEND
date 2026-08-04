@@ -14,10 +14,17 @@ export const typeOrmAsyncConfig: TypeOrmModuleAsyncOptions = {
   useFactory: (configService: ConfigService) => {
     const isProduction =
       configService.get<string>('nodeEnv') === 'production';
+    const host = configService.get<string>('database.host') ?? '';
+    const dbSslFlag = process.env.DB_SSL?.trim().toLowerCase();
+    const sslEnabled =
+      dbSslFlag === 'true' ||
+      (dbSslFlag !== 'false' &&
+        isProduction &&
+        !host.startsWith('/cloudsql/'));
 
     return {
       type: 'postgres' as const,
-      host: configService.get<string>('database.host'),
+      host,
       port: configService.get<number>('database.port'),
       username: configService.get<string>('database.username'),
       password: configService.get<string>('database.password'),
@@ -28,7 +35,7 @@ export const typeOrmAsyncConfig: TypeOrmModuleAsyncOptions = {
       migrations: [join(__dirname, '../database/migrations/*{.ts,.js}')],
       migrationsTableName: 'typeorm_migrations',
       migrationsRun: false,
-      ssl: isProduction ? { rejectUnauthorized: false } : false,
+      ssl: sslEnabled ? { rejectUnauthorized: false } : false,
     };
   },
 };

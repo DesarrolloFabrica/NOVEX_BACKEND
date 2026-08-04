@@ -8,6 +8,7 @@ import {
   CATALOG_COORDINATIONS,
   IMPACT_AREA_COORDINATION_CODE,
 } from './coordinations.catalog.seed';
+import { isCatalogSeedEnabled } from '../../configuration/catalog-seed.guard';
 
 @Injectable()
 export class CoordinationCatalogSeedService implements OnApplicationBootstrap {
@@ -21,6 +22,10 @@ export class CoordinationCatalogSeedService implements OnApplicationBootstrap {
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
+    if (!isCatalogSeedEnabled()) {
+      return;
+    }
+
     const coordinationsByCode = await this.seedCoordinations();
     await this.seedDependencies(coordinationsByCode);
   }
