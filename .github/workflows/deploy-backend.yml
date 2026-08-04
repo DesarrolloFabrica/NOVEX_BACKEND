@@ -323,6 +323,10 @@ jobs:
               echo "::notice::Nest ready after ${attempt} attempt(s)"
               break
             fi
+            if [[ "${READY_BODY}" == *'"failure"'* ]]; then
+              echo "::error::Candidate bootstrap failed: ${READY_BODY}"
+              exit 1
+            fi
             if [[ "${attempt}" -eq 60 ]]; then
               echo "::error::Candidate /health/ready no respondio 200 tras 5 minutos (ultimo ${READY_STATUS})"
               echo "::error::Readiness body: ${READY_BODY}"
@@ -337,16 +341,6 @@ jobs:
             exit 1
           fi
           echo "result=ok" >> "$GITHUB_OUTPUT"
-
-      - name: Remove failed candidate tag
-        if: failure() && steps.smoke.outcome == 'failure'
-        continue-on-error: true
-        run: |
-          gcloud run services update-traffic "${{ steps.meta.outputs.service_name }}" \
-            --remove-tags="candidate-${{ steps.meta.outputs.short_sha }}" \
-            --region="${{ steps.meta.outputs.region }}" \
-            --project="${{ steps.meta.outputs.project_id }}" \
-            --quiet
 
       - name: Promote verified revision
         id: promote
