@@ -124,7 +124,7 @@ gcloud run deploy "${SERVICE}" \
   --max-instances="${MAX_INSTANCES}" \
   --service-account="${SERVICE_ACCOUNT}" \
   --add-cloudsql-instances="${CLOUD_SQL_INSTANCE}" \
-  --set-secrets="DB_PASSWORD=omega-db-password:latest,JWT_SECRET=omega-jwt-secret:latest,GEMINI_API_KEY=omega-gemini-api-key:latest" \
+  --set-secrets="DB_PASSWORD=novex-db-password:latest,JWT_SECRET=novex-jwt-secret:latest,GEMINI_API_KEY=novex-gemini-api-key:latest" \
   --set-env-vars="NODE_ENV=production,API_PREFIX=api/v1,CORS_ORIGINS=${CORS_ORIGINS},DB_HOST=${DB_HOST},DB_PORT=5432,DB_USERNAME=${DB_USERNAME},DB_DATABASE=${DB_DATABASE},DB_SSL=false,DB_SYNCHRONIZE=false,DB_LOGGING=false,INSTANCE_CONNECTION_NAME=${CLOUD_SQL_INSTANCE},JWT_EXPIRES_IN=${JWT_EXPIRES_IN},GEMINI_MODEL=${GEMINI_MODEL},GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID},CATALOG_SEED_ON_BOOT=false,DEMO_SEED_ENABLED=false" \
   --allow-unauthenticated
 
@@ -143,5 +143,5 @@ fi
 
 echo
 echo "Despliegue finalizado."
-echo "Nota: cree previamente los secretos omega-db-password, omega-jwt-secret, omega-gemini-api-key."
+echo "Nota: cree previamente los secretos novex-db-password, novex-jwt-secret, novex-gemini-api-key."
 echo "Rote GEMINI_API_KEY si estuvo expuesta en entornos locales."

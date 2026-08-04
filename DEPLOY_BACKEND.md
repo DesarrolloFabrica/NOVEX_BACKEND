@@ -68,35 +68,35 @@ us-central1-docker.pkg.dev/it-fab-contenido-edu-5/novex/novex-backend
 
 ## 7. Variables públicas (no secretos)
 
-| Variable | Ejemplo / notas |
-|----------|-----------------|
-| `NODE_ENV` | `production` |
-| `PORT` | `8080` (inyectado por Cloud Run) |
-| `API_PREFIX` | `api/v1` |
-| `CORS_ORIGINS` | `https://URL-FRONTEND,http://localhost:5173` |
-| `DB_HOST` | `/cloudsql/PROJECT:REGION:INSTANCE` |
-| `DB_PORT` | `5432` |
-| `DB_USERNAME` | usuario Cloud SQL |
-| `DB_DATABASE` | nombre de base |
-| `DB_SSL` | `false` con socket Unix Cloud SQL |
-| `DB_SYNCHRONIZE` | **`false`** en producción |
-| `DB_LOGGING` | `false` |
-| `INSTANCE_CONNECTION_NAME` | `PROJECT:REGION:INSTANCE` |
-| `JWT_EXPIRES_IN` | `1h` |
-| `GEMINI_MODEL` | `gemini-3-flash-preview` |
-| `GOOGLE_CLIENT_ID` | Client ID OAuth (no es contraseña) |
-| `CATALOG_SEED_ON_BOOT` | `false` en producción |
-| `DEMO_SEED_ENABLED` | `false` |
+| Variable                   | Ejemplo / notas                              |
+| -------------------------- | -------------------------------------------- |
+| `NODE_ENV`                 | `production`                                 |
+| `PORT`                     | `8080` (inyectado por Cloud Run)             |
+| `API_PREFIX`               | `api/v1`                                     |
+| `CORS_ORIGINS`             | `https://URL-FRONTEND,http://localhost:5173` |
+| `DB_HOST`                  | `/cloudsql/PROJECT:REGION:INSTANCE`          |
+| `DB_PORT`                  | `5432`                                       |
+| `DB_USERNAME`              | usuario Cloud SQL                            |
+| `DB_DATABASE`              | nombre de base                               |
+| `DB_SSL`                   | `false` con socket Unix Cloud SQL            |
+| `DB_SYNCHRONIZE`           | **`false`** en producción                    |
+| `DB_LOGGING`               | `false`                                      |
+| `INSTANCE_CONNECTION_NAME` | `PROJECT:REGION:INSTANCE`                    |
+| `JWT_EXPIRES_IN`           | `1h`                                         |
+| `GEMINI_MODEL`             | `gemini-3-flash-preview`                     |
+| `GOOGLE_CLIENT_ID`         | Client ID OAuth (no es contraseña)           |
+| `CATALOG_SEED_ON_BOOT`     | `false` en producción                        |
+| `DEMO_SEED_ENABLED`        | `false`                                      |
 
 Plantilla local: `.env.example`.
 
 ## 8. Secretos (Secret Manager)
 
-| Secret Manager | Env var |
-|----------------|---------|
-| `omega-db-password` | `DB_PASSWORD` |
-| `omega-jwt-secret` | `JWT_SECRET` |
-| `omega-gemini-api-key` | `GEMINI_API_KEY` |
+| Secret Manager         | Env var          |
+| ---------------------- | ---------------- |
+| `novex-db-password`    | `DB_PASSWORD`    |
+| `novex-jwt-secret`     | `JWT_SECRET`     |
+| `novex-gemini-api-key` | `GEMINI_API_KEY` |
 
 `GOOGLE_CLIENT_SECRET` **no aplica**: el backend valida ID tokens con `GOOGLE_CLIENT_ID` únicamente.
 
@@ -157,14 +157,14 @@ $PROJECT_ID = "it-fab-contenido-edu-5"
 
 # Crear (solo si no existen). Pegará el valor por stdin — no lo deje en historial de scripts versionados.
 # DB
-gcloud secrets create omega-db-password --project=$PROJECT_ID
+gcloud secrets create novex-db-password --project=$PROJECT_ID
 # JWT (mín. 32 chars, no usar secretos locales de desarrollo)
-gcloud secrets create omega-jwt-secret --project=$PROJECT_ID
+gcloud secrets create novex-jwt-secret --project=$PROJECT_ID
 # Gemini (rote la key si estuvo en .env local)
-gcloud secrets create omega-gemini-api-key --project=$PROJECT_ID
+gcloud secrets create novex-gemini-api-key --project=$PROJECT_ID
 
 # Añadir versión (ejemplo interactivo):
-# Write-Output -NoNewline 'VALOR' | gcloud secrets versions add omega-jwt-secret --project=$PROJECT_ID --data-file=-
+# Write-Output -NoNewline 'VALOR' | gcloud secrets versions add novex-jwt-secret --project=$PROJECT_ID --data-file=-
 ```
 
 Otorgue acceso a la SA sobre cada secreto (`roles/secretmanager.secretAccessor`).
@@ -241,11 +241,11 @@ Hay dos migraciones TypeORM versionadas en `src/database/migrations`:
 
 ## 18. Health check
 
-| Endpoint | Propósito |
-|----------|-----------|
-| `GET /health` | Proceso HTTP vivo (liveness probe) |
-| `GET /health/ready` | Listo (incluye `SELECT 1` a PostgreSQL) |
-| `GET /api/v1/auth/health` | Health legacy del módulo auth |
+| Endpoint                  | Propósito                               |
+| ------------------------- | --------------------------------------- |
+| `GET /health`             | Proceso HTTP vivo (liveness probe)      |
+| `GET /health/ready`       | Listo (incluye `SELECT 1` a PostgreSQL) |
+| `GET /api/v1/auth/health` | Health legacy del módulo auth           |
 
 No exponen secretos ni hosts sensibles.
 
@@ -293,14 +293,15 @@ gcloud run services update-traffic novex-backend `
 
 ## 23. Solución de errores comunes
 
-| Síntoma | Acción |
-|---------|--------|
-| Contenedor no arranca | Revisar variables obligatorias; Cloud Run inyecta `PORT` |
-| Error JWT en producción | `JWT_SECRET` débil o de desarrollo — generar secreto fuerte en SM |
-| `ECONNREFUSED` DB | Revisar Cloud SQL instance attachment y `DB_HOST=/cloudsql/...` |
-| CORS bloqueado | Completar `CORS_ORIGINS` con URL exacta del frontend |
-| Gemini 503 | Timeout/cuota/key; el proceso no debe tumbar el proceso |
-| Seeds inesperados | En prod `CATALOG_SEED_ON_BOOT=false` |
+| Síntoma                 | Acción                                                                                                          |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Contenedor no arranca   | Revisar variables obligatorias; Cloud Run inyecta `PORT`                                                        |
+| Error JWT en producción | `JWT_SECRET` débil o de desarrollo — generar secreto fuerte en SM                                               |
+| `ECONNREFUSED` DB       | Revisar Cloud SQL instance attachment y `DB_HOST=/cloudsql/...`                                                 |
+| PostgreSQL `28P01`      | Reconciliar la contraseña del usuario `DB_USERNAME` con la versión de Secret Manager montada como `DB_PASSWORD` |
+| CORS bloqueado          | Completar `CORS_ORIGINS` con URL exacta del frontend                                                            |
+| Gemini 503              | Timeout/cuota/key; el proceso no debe tumbar el proceso                                                         |
+| Seeds inesperados       | En prod `CATALOG_SEED_ON_BOOT=false`                                                                            |
 
 ## 24. CORS
 
@@ -328,23 +329,23 @@ gcloud run services update-traffic novex-backend `
 
 ## Configuración Cloud Run recomendada
 
-| Parámetro | Valor inicial |
-|-----------|---------------|
-| Región | us-central1 |
-| Puerto | 8080 |
-| CPU | 1 |
-| Memoria | 1Gi |
-| Min instances | 0 |
-| Max instances | 5 |
-| Concurrency | 40 |
-| Timeout | 300s |
-| Execution | gen2 |
-| Startup probe | `/health` en revisión candidata sin tráfico |
-| Liveness probe | `/health` (proceso HTTP vivo) |
-| Gate de promoción | `/health/ready` (Nest inicializado + `SELECT 1`) |
-| Health legacy | `/api/v1/auth/health` (uptime check existente) |
-| Ingress | all (API pública para frontend) |
-| Auth | allow unauthenticated en el servicio (autorización vía JWT de aplicación) |
+| Parámetro         | Valor inicial                                                             |
+| ----------------- | ------------------------------------------------------------------------- |
+| Región            | us-central1                                                               |
+| Puerto            | 8080                                                                      |
+| CPU               | 1                                                                         |
+| Memoria           | 1Gi                                                                       |
+| Min instances     | 0                                                                         |
+| Max instances     | 5                                                                         |
+| Concurrency       | 40                                                                        |
+| Timeout           | 300s                                                                      |
+| Execution         | gen2                                                                      |
+| Startup probe     | `/health` en revisión candidata sin tráfico                               |
+| Liveness probe    | `/health` (proceso HTTP vivo)                                             |
+| Gate de promoción | `/health/ready` (Nest inicializado + `SELECT 1`)                          |
+| Health legacy     | `/api/v1/auth/health` (uptime check existente)                            |
+| Ingress           | all (API pública para frontend)                                           |
+| Auth              | allow unauthenticated en el servicio (autorización vía JWT de aplicación) |
 
 Ajuste memoria/CPU según métricas reales tras las primeras semanas.
 

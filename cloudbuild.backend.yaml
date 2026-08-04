@@ -83,7 +83,7 @@ steps:
       - --max-instances=${_MAX_INSTANCES}
       - --service-account=${_SERVICE_ACCOUNT}
       - --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
-      - --set-secrets=DB_PASSWORD=omega-db-password:latest,JWT_SECRET=omega-jwt-secret:latest,GEMINI_API_KEY=omega-gemini-api-key:latest
+      - --set-secrets=DB_PASSWORD=novex-db-password:latest,JWT_SECRET=novex-jwt-secret:latest,GEMINI_API_KEY=novex-gemini-api-key:latest
       - --set-env-vars=NODE_ENV=production,API_PREFIX=${_API_PREFIX},CORS_ORIGINS=${_CORS_ORIGINS},DB_HOST=${_DB_HOST},DB_PORT=${_DB_PORT},DB_USERNAME=${_DB_USERNAME},DB_DATABASE=${_DB_DATABASE},DB_SSL=${_DB_SSL},DB_SYNCHRONIZE=${_DB_SYNCHRONIZE},DB_LOGGING=${_DB_LOGGING},INSTANCE_CONNECTION_NAME=${_INSTANCE_CONNECTION_NAME},JWT_EXPIRES_IN=${_JWT_EXPIRES_IN},GEMINI_MODEL=${_GEMINI_MODEL},GOOGLE_CLIENT_ID=${_GOOGLE_CLIENT_ID},CATALOG_SEED_ON_BOOT=false,DEMO_SEED_ENABLED=false
       - --allow-unauthenticated
 

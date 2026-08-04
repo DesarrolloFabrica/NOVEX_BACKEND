@@ -196,7 +196,7 @@ Invoke-GCloud -GcloudArgs @(
   "--max-instances=$MAX_INSTANCES",
   "--service-account=$SERVICE_ACCOUNT",
   "--add-cloudsql-instances=$CLOUD_SQL_INSTANCE",
-  '--set-secrets=DB_PASSWORD=omega-db-password:latest,JWT_SECRET=omega-jwt-secret:latest,GEMINI_API_KEY=omega-gemini-api-key:latest',
+  '--set-secrets=DB_PASSWORD=novex-db-password:latest,JWT_SECRET=novex-jwt-secret:latest,GEMINI_API_KEY=novex-gemini-api-key:latest',
   "--set-env-vars=NODE_ENV=production,API_PREFIX=api/v1,CORS_ORIGINS=$CORS_ORIGINS,DB_HOST=$DB_HOST,DB_PORT=5432,DB_USERNAME=$DB_USERNAME,DB_DATABASE=$DB_DATABASE,DB_SSL=false,DB_SYNCHRONIZE=$DB_SYNCHRONIZE,ALLOW_PRODUCTION_DB_SYNC=$DB_SYNCHRONIZE,DB_LOGGING=false,INSTANCE_CONNECTION_NAME=$CLOUD_SQL_INSTANCE,JWT_EXPIRES_IN=$JWT_EXPIRES_IN,GEMINI_MODEL=$GEMINI_MODEL,GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID,CATALOG_SEED_ON_BOOT=false,DEMO_SEED_ENABLED=false",
   '--allow-unauthenticated'
 ) | Write-Host
