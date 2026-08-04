@@ -32,8 +32,11 @@ export const typeOrmAsyncConfig: TypeOrmModuleAsyncOptions = {
       migrations: [join(__dirname, '../database/migrations/*{.ts,.js}')],
       migrationsTableName: 'typeorm_migrations',
       migrationsRun: false,
-      retryAttempts: 10,
-      retryDelay: 3000,
+      retryAttempts: 5,
+      retryDelay: 2000,
+      extra: {
+        connectionTimeoutMillis: 10000,
+      },
       ssl: sslEnabled ? { rejectUnauthorized: false } : false,
     };
   },

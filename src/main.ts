@@ -5,7 +5,7 @@ import { ExpressAdapter } from '@nestjs/platform-express';
 import express, { type Express } from 'express';
 import { AppModule } from './app.module';
 
-/** Rutas que Cloud Run usa en startup/liveness probe (preservadas en el servicio). */
+/** Rutas de health sin prefijo global (Cloud Run startup/liveness). */
 function registerProbeHealthRoutes(app: Express): void {
   app.get('/health', (_req, res) => {
     res.status(200).json({
@@ -20,25 +20,12 @@ function registerProbeHealthRoutes(app: Express): void {
       timestamp: new Date().toISOString(),
     });
   });
-
-  app.get('/api/v1/auth/health', (_req, res) => {
-    res.status(200).json({ status: 'ok', module: 'auth' });
-  });
-}
-
-async function listenEarly(expressApp: Express, port: number): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const server = expressApp.listen(port, '0.0.0.0', () => resolve());
-    server.on('error', reject);
-  });
 }
 
 async function bootstrap() {
   const port = parseInt(process.env.PORT ?? '3001', 10);
   const expressApp = express();
   registerProbeHealthRoutes(expressApp);
-  await listenEarly(expressApp, port);
-  console.log(`Probe health listening on http://0.0.0.0:${port}`);
 
   const app = await NestFactory.create(
     AppModule,
@@ -68,9 +55,19 @@ async function bootstrap() {
     credentials: true,
   });
 
+  // Nest debe inicializar antes de aceptar tráfico: si listen() ocurre antes,
+  // Cloud Run ve /health OK pero las rutas API (auth/google, etc.) devuelven 404.
   await app.init();
+
+  await new Promise<void>((resolve, reject) => {
+    const server = expressApp.listen(port, '0.0.0.0', () => resolve());
+    server.on('error', reject);
+  });
 
   console.log(`Novex Backend ready on http://0.0.0.0:${port}/${apiPrefix}`);
 }
 
-void bootstrap();
+bootstrap().catch((error) => {
+  console.error('Bootstrap failed:', error);
+  process.exit(1);
+});
