@@ -198,6 +198,41 @@ docker build -t novex-backend-local .
 
 La imagen escucha en `0.0.0.0:8080` y ejecuta `node dist/main.js`.
 
+### Conexión local segura a Cloud SQL
+
+En Windows, el proxy escucha exclusivamente en `127.0.0.1:15432` y usa las
+credenciales ADC de `gcloud`. La contraseña se obtiene desde Secret Manager en
+memoria; no se copia a `.env`.
+
+```powershell
+# Una sola vez por equipo
+gcloud auth application-default login
+gcloud auth application-default set-quota-project it-fab-contenido-edu-5
+
+# Iniciar o comprobar el proxy local
+npm run cloud:proxy
+
+# Abrir una consola psql conectada a novex-db
+npm run cloud:psql
+
+# Ejecutar Nest en watch usando la base Cloud
+npm run start:dev:cloud
+```
+
+Conexión para otros clientes locales:
+
+```text
+Host: 127.0.0.1
+Port: 15432
+Database: novex
+User: novex
+Password: Secret Manager / novex-db-password:latest
+SSL: desactivado entre el cliente local y el proxy
+```
+
+El proxy cifra y autentica el tramo hacia Cloud SQL. No cambie su escucha a
+`0.0.0.0`, porque eso expondría el puerto a otros equipos de la red.
+
 ## 15. Despliegue manual
 
 1. Complete variables al inicio de `scripts/deploy-backend.ps1`

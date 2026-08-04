@@ -10,6 +10,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
+    "start:dev:cloud": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/start-cloud-dev.ps1",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
@@ -30,7 +31,9 @@
     "docker:down:volumes": "docker compose down -v",
     "docker:logs": "docker compose logs -f",
     "docker:ps": "docker compose ps",
-    "docker:restart": "docker compose restart"
+    "docker:restart": "docker compose restart",
+    "cloud:proxy": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/start-cloud-sql-proxy.ps1",
+    "cloud:psql": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/cloud-db-shell.ps1"
   },
   "dependencies": {
     "@google/genai": "^2.13.0",
