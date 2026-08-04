@@ -2,6 +2,11 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import {
+  logLifecycleError,
+  logLifecycleFinish,
+  logLifecycleStart,
+} from '../../common/bootstrap-observability';
 import { UserStatus } from '../../common/enums/identity.enums';
 import { Coordination } from '../../coordinations/entities/coordination.entity';
 import { Role } from '../../roles/entities/role.entity';
@@ -26,16 +31,26 @@ export class DevelopmentUserSeedService implements OnApplicationBootstrap {
   ) {}
 
   onApplicationBootstrap(): void {
+    logLifecycleStart('DevelopmentUserSeedService');
     if (this.configService.get<string>('nodeEnv') !== 'development') {
+      logLifecycleFinish(
+        'DevelopmentUserSeedService',
+        'skipped: not development',
+      );
       return;
     }
 
-    void this.seedDevelopmentUser().catch((error: unknown) => {
-      this.logger.error(
-        'Seed de usuario de desarrollo falló.',
-        error instanceof Error ? error.stack : String(error),
-      );
-    });
+    void this.seedDevelopmentUser()
+      .then(() => {
+        logLifecycleFinish('DevelopmentUserSeedService');
+      })
+      .catch((error: unknown) => {
+        logLifecycleError('DevelopmentUserSeedService', error);
+        this.logger.error(
+          'Seed de usuario de desarrollo falló.',
+          error instanceof Error ? error.stack : String(error),
+        );
+      });
   }
 
   private async seedDevelopmentUser(): Promise<void> {

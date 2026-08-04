@@ -19,6 +19,15 @@ export const typeOrmAsyncConfig: TypeOrmModuleAsyncOptions = {
       dbSslFlag === 'true' ||
       (dbSslFlag !== 'false' && isProduction && !host.startsWith('/cloudsql/'));
 
+    console.log('TypeORM connection parameters:');
+    console.log('DB_HOST:', host);
+    console.log('DB_PORT:', configService.get<number>('database.port'));
+    console.log('DB_DATABASE:', configService.get<string>('database.name'));
+    console.log('DB_USERNAME:', configService.get<string>('database.username'));
+    console.log('DB_SSL:', dbSslFlag ?? '(unset)');
+    console.log('NODE_ENV:', configService.get<string>('nodeEnv'));
+    console.log('Connecting to PostgreSQL...');
+
     return {
       type: 'postgres' as const,
       host,

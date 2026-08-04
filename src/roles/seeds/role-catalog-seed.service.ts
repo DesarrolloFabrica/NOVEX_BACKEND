@@ -1,6 +1,10 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import {
+  logLifecycleFinish,
+  logLifecycleStart,
+} from '../../common/bootstrap-observability';
 import { Role } from '../entities/role.entity';
 import { CATALOG_ROLES } from './roles.catalog.seed';
 
@@ -14,35 +18,42 @@ export class RoleCatalogSeedService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    for (const item of CATALOG_ROLES) {
-      const existing = await this.rolesRepository.findOne({
-        where: { code: item.code },
-      });
-
-      if (existing) {
-        await this.rolesRepository.save({
-          ...existing,
-          name: item.name,
-          description: item.description,
-          isSystem: item.isSystem,
-          isActive: item.isActive,
+    logLifecycleStart('RoleCatalogSeedService');
+    try {
+      for (const item of CATALOG_ROLES) {
+        const existing = await this.rolesRepository.findOne({
+          where: { code: item.code },
         });
-        continue;
+
+        if (existing) {
+          await this.rolesRepository.save({
+            ...existing,
+            name: item.name,
+            description: item.description,
+            isSystem: item.isSystem,
+            isActive: item.isActive,
+          });
+          continue;
+        }
+
+        await this.rolesRepository.save(
+          this.rolesRepository.create({
+            code: item.code,
+            name: item.name,
+            description: item.description,
+            isSystem: item.isSystem,
+            isActive: item.isActive,
+          }),
+        );
       }
 
-      await this.rolesRepository.save(
-        this.rolesRepository.create({
-          code: item.code,
-          name: item.name,
-          description: item.description,
-          isSystem: item.isSystem,
-          isActive: item.isActive,
-        }),
+      this.logger.log(
+        `Catálogo de roles sincronizado: ${CATALOG_ROLES.length} roles.`,
       );
+      logLifecycleFinish('RoleCatalogSeedService');
+    } catch (error) {
+      logLifecycleFinish('RoleCatalogSeedService', 'failed');
+      throw error;
     }
-
-    this.logger.log(
-      `Catálogo de roles sincronizado: ${CATALOG_ROLES.length} roles.`,
-    );
   }
 }

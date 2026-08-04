@@ -1,6 +1,12 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import {
+  logLifecycleError,
+  logLifecycleFinish,
+  logLifecycleStart,
+} from '../../common/bootstrap-observability';
+import { isCatalogSeedEnabled } from '../../configuration/catalog-seed.guard';
 import { CoordinationDependency } from '../entities/coordination-dependency.entity';
 import { Coordination } from '../entities/coordination.entity';
 import {
@@ -8,7 +14,6 @@ import {
   CATALOG_COORDINATIONS,
   IMPACT_AREA_COORDINATION_CODE,
 } from './coordinations.catalog.seed';
-import { isCatalogSeedEnabled } from '../../configuration/catalog-seed.guard';
 
 @Injectable()
 export class CoordinationCatalogSeedService implements OnApplicationBootstrap {
@@ -22,16 +27,26 @@ export class CoordinationCatalogSeedService implements OnApplicationBootstrap {
   ) {}
 
   onApplicationBootstrap(): void {
+    logLifecycleStart('CoordinationCatalogSeedService');
     if (!isCatalogSeedEnabled()) {
+      logLifecycleFinish(
+        'CoordinationCatalogSeedService',
+        'skipped: catalog seed disabled',
+      );
       return;
     }
 
-    void this.runCoordinationCatalogSeed().catch((error: unknown) => {
-      this.logger.error(
-        'Seed de coordinaciones falló en arranque.',
-        error instanceof Error ? error.stack : String(error),
-      );
-    });
+    void this.runCoordinationCatalogSeed()
+      .then(() => {
+        logLifecycleFinish('CoordinationCatalogSeedService');
+      })
+      .catch((error: unknown) => {
+        logLifecycleError('CoordinationCatalogSeedService', error);
+        this.logger.error(
+          'Seed de coordinaciones falló en arranque.',
+          error instanceof Error ? error.stack : String(error),
+        );
+      });
   }
 
   private async runCoordinationCatalogSeed(): Promise<void> {

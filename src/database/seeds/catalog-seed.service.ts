@@ -1,6 +1,11 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import {
+  logLifecycleError,
+  logLifecycleFinish,
+  logLifecycleStart,
+} from '../../common/bootstrap-observability';
 import { isCatalogSeedEnabled } from '../../configuration/catalog-seed.guard';
 import { IncidentCategory } from '../../intelligence/entities/incident-category.entity';
 import { OperationalArea } from '../../operational-areas/entities/operational-area.entity';
@@ -25,16 +30,23 @@ export class CatalogSeedService implements OnApplicationBootstrap {
   ) {}
 
   onApplicationBootstrap(): void {
+    logLifecycleStart('CatalogSeedService');
     if (!isCatalogSeedEnabled()) {
+      logLifecycleFinish('CatalogSeedService', 'skipped: catalog seed disabled');
       return;
     }
 
-    void this.runCatalogSeed().catch((error: unknown) => {
-      this.logger.error(
-        'Seed de catálogo operacional falló en arranque.',
-        error instanceof Error ? error.stack : String(error),
-      );
-    });
+    void this.runCatalogSeed()
+      .then(() => {
+        logLifecycleFinish('CatalogSeedService');
+      })
+      .catch((error: unknown) => {
+        logLifecycleError('CatalogSeedService', error);
+        this.logger.error(
+          'Seed de catálogo operacional falló en arranque.',
+          error instanceof Error ? error.stack : String(error),
+        );
+      });
   }
 
   private async runCatalogSeed(): Promise<void> {

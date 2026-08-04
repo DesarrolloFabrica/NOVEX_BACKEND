@@ -1,6 +1,11 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import {
+  logLifecycleError,
+  logLifecycleFinish,
+  logLifecycleStart,
+} from '../../common/bootstrap-observability';
 import { PermissionsService } from '../../permissions/permissions.service';
 import { ROLE_PERMISSION_CODES } from '../../permissions/seeds/permissions.catalog.seed';
 import { RolePermissionsRepository } from '../../permissions/repositories/role-permissions.repository';
@@ -18,12 +23,18 @@ export class RolePermissionCatalogSeedService implements OnApplicationBootstrap 
   ) {}
 
   onApplicationBootstrap(): void {
-    void this.syncRolePermissions().catch((error: unknown) => {
-      this.logger.error(
-        'RBAC sync en arranque falló; el servicio sigue operativo.',
-        error instanceof Error ? error.stack : String(error),
-      );
-    });
+    logLifecycleStart('RolePermissionCatalogSeedService');
+    void this.syncRolePermissions()
+      .then(() => {
+        logLifecycleFinish('RolePermissionCatalogSeedService');
+      })
+      .catch((error: unknown) => {
+        logLifecycleError('RolePermissionCatalogSeedService', error);
+        this.logger.error(
+          'RBAC sync en arranque falló; el servicio sigue operativo.',
+          error instanceof Error ? error.stack : String(error),
+        );
+      });
   }
 
   private async syncRolePermissions(): Promise<void> {

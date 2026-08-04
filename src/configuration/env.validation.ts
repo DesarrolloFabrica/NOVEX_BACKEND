@@ -107,5 +107,7 @@ export function validateEnvironment(config: Record<string, unknown>) {
     throw new Error(`Configuración de entorno inválida: ${errors.toString()}`);
   }
 
+  console.log('[BOOT 2] Environment validated');
+
   return validated;
 }
