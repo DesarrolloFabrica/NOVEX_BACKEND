@@ -205,6 +205,7 @@ jobs:
           echo "::notice::Deploy digest=${DIGEST}"
 
       - name: Validate preserved Cloud SQL and secrets
+        id: runtime
         run: |
           set -euo pipefail
           SERVICE_JSON="$(gcloud run services describe "${{ steps.meta.outputs.service_name }}" \
@@ -240,7 +241,43 @@ jobs:
             echo "::error::DB_HOST no coincide con una instancia Cloud SQL adjunta"
             exit 1
           fi
+          DB_USERNAME="$(jq -r '.env[]? | select(.name == "DB_USERNAME") | .value // empty' <<< "${CONTAINER_JSON}")"
+          DB_PASSWORD_SECRET="$(jq -r '.env[]? | select(.name == "DB_PASSWORD") | .valueFrom.secretKeyRef.name // empty' <<< "${CONTAINER_JSON}")"
+          DB_PASSWORD_VERSION="$(jq -r '.env[]? | select(.name == "DB_PASSWORD") | .valueFrom.secretKeyRef.key // "latest"' <<< "${CONTAINER_JSON}")"
+          DB_INSTANCE="${CONNECTION_NAME##*:}"
+          {
+            echo "db_username=${DB_USERNAME}"
+            echo "db_password_secret=${DB_PASSWORD_SECRET}"
+            echo "db_password_version=${DB_PASSWORD_VERSION}"
+            echo "db_instance=${DB_INSTANCE}"
+          } >> "$GITHUB_OUTPUT"
           echo "::notice::Cloud SQL socket y referencias de secretos validados sin exponer valores"
+
+      # Reparacion controlada de 28P01: retirar este paso despues del primer
+      # despliegue verificado para no actualizar el usuario en cada deploy.
+      - name: Reconcile Cloud SQL password with configured secret (one-time)
+        env:
+          DB_USERNAME: ${{ steps.runtime.outputs.db_username }}
+          DB_PASSWORD_SECRET: ${{ steps.runtime.outputs.db_password_secret }}
+          DB_PASSWORD_VERSION: ${{ steps.runtime.outputs.db_password_version }}
+          DB_INSTANCE: ${{ steps.runtime.outputs.db_instance }}
+        run: |
+          set -euo pipefail
+          DB_PASSWORD="$(gcloud secrets versions access "${DB_PASSWORD_VERSION}" \
+            --secret="${DB_PASSWORD_SECRET}" \
+            --project="${{ steps.meta.outputs.project_id }}")"
+          if [[ -z "${DB_PASSWORD}" ]]; then
+            echo "::error::La version configurada de DB_PASSWORD esta vacia"
+            exit 1
+          fi
+          echo "::add-mask::${DB_PASSWORD}"
+          gcloud sql users set-password "${DB_USERNAME}" \
+            --instance="${DB_INSTANCE}" \
+            --password="${DB_PASSWORD}" \
+            --project="${{ steps.meta.outputs.project_id }}" \
+            --quiet
+          unset DB_PASSWORD
+          echo "::notice::Usuario Cloud SQL reconciliado con el secreto configurado en Cloud Run"
 
       - name: Deploy to Cloud Run (controlled runtime contract)
         id: deploy
