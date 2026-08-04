@@ -45,6 +45,7 @@ export const typeOrmAsyncConfig: TypeOrmModuleAsyncOptions = {
       // de Cloud Run (240 s), sin renunciar a reintentos de cold start.
       retryAttempts: isProduction ? 6 : 5,
       retryDelay: isProduction ? 3000 : 2000,
+      connectTimeoutMS: isProduction ? 15000 : 10000,
       extra: {
         connectionTimeoutMillis: isProduction ? 15000 : 10000,
       },

@@ -13,6 +13,7 @@ import {
   ProbeHealthState,
   registerProbeHealthRoutes,
 } from './health/probe-health';
+import { verifyDatabaseConnection } from './database/database-preflight';
 
 registerGlobalProcessHandlers();
 console.log('[BOOT 1] Process started');
@@ -50,6 +51,10 @@ async function bootstrap() {
   // Cloud Run startup probe (TCP/HTTP) debe pasar mientras Nest + DB inicializan.
   await listenEarly(expressApp, port);
   console.log(`Probe health listening on http://0.0.0.0:${port}`);
+
+  console.log('[BOOT 3A] Verifying PostgreSQL connection');
+  await verifyDatabaseConnection();
+  console.log('[BOOT 3B] PostgreSQL preflight completed');
 
   console.log('[BOOT 4] Loading AppModule');
   const { AppModule } = await import('./app.module.js');
