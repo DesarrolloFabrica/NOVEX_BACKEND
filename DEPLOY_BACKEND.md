@@ -336,7 +336,9 @@ gcloud run services update-traffic omega-backend `
 | Concurrency | 40 |
 | Timeout | 300s |
 | Execution | gen2 |
-| Startup probe | `/health` |
+| Startup probe | `/api/v1/auth/health` (configurado en Cloud Run) |
+| Liveness probe | `/api/v1/auth/health` |
+| Health auxiliar | `/health`, `/health/ready` |
 | Ingress | all (API pública para frontend) |
 | Auth | allow unauthenticated en el servicio (autorización vía JWT de aplicación) |
 
