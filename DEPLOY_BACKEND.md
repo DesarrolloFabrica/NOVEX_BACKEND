@@ -341,7 +341,7 @@ gcloud run services update-traffic novex-backend `
 | Execution | gen2 |
 | Startup probe | `/health/ready` (Nest inicializado + `SELECT 1`) |
 | Liveness probe | `/health` (proceso HTTP vivo) |
-| Readiness probe | `/health/ready` |
+| Readiness endpoint / smoke test | `/health/ready` |
 | Health legacy | `/api/v1/auth/health` (uptime check existente) |
 | Ingress | all (API pública para frontend) |
 | Auth | allow unauthenticated en el servicio (autorización vía JWT de aplicación) |

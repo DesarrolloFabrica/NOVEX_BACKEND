@@ -188,7 +188,6 @@ Invoke-GCloud -GcloudArgs @(
   '--cpu-boost',
   '--startup-probe=httpGet.path=/health/ready,httpGet.port=8080,initialDelaySeconds=0,timeoutSeconds=3,periodSeconds=5,failureThreshold=48',
   '--liveness-probe=httpGet.path=/health,httpGet.port=8080,timeoutSeconds=3,periodSeconds=10,failureThreshold=3',
-  '--readiness-probe=httpGet.path=/health/ready,httpGet.port=8080,timeoutSeconds=3,periodSeconds=5,failureThreshold=3,successThreshold=1',
   "--cpu=$CPU",
   "--memory=$MEMORY",
   "--concurrency=$CONCURRENCY",
