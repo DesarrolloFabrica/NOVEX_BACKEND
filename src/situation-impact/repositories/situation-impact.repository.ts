@@ -8,7 +8,9 @@ export class SituationImpactRepository extends Repository<SituationImpactAssessm
     super(SituationImpactAssessment, dataSource.createEntityManager());
   }
 
-  findBySituationId(situationId: string): Promise<SituationImpactAssessment | null> {
+  findBySituationId(
+    situationId: string,
+  ): Promise<SituationImpactAssessment | null> {
     return this.findOne({
       where: { situationId },
       relations: {

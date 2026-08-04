@@ -28,7 +28,8 @@ export class GeminiService {
   ): Promise<GeminiInterpretationResult> {
     const apiKey = this.configService.get<string>('gemini.apiKey') ?? '';
     const modelName =
-      this.configService.get<string>('gemini.model') ?? 'gemini-3-flash-preview';
+      this.configService.get<string>('gemini.model') ??
+      'gemini-3-flash-preview';
 
     if (!apiKey.trim()) {
       throw new ServiceUnavailableException(

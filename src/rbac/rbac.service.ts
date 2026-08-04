@@ -21,15 +21,16 @@ export class RbacService {
     private readonly usersRepository: Repository<User>,
   ) {}
 
-  async getRolePermissions(roleId: string): Promise<RolePermissionsResponseDto> {
+  async getRolePermissions(
+    roleId: string,
+  ): Promise<RolePermissionsResponseDto> {
     const role = await this.rolesRepository.findOne({ where: { id: roleId } });
     if (!role) {
       throw new NotFoundException(`Rol no encontrado: ${roleId}`);
     }
 
-    const permissions = await this.rolePermissionsRepository.findPermissionsByRoleId(
-      roleId,
-    );
+    const permissions =
+      await this.rolePermissionsRepository.findPermissionsByRoleId(roleId);
 
     return {
       roleId: role.id,
@@ -40,7 +41,9 @@ export class RbacService {
     };
   }
 
-  async getUserPermissions(userId: string): Promise<UserPermissionsResponseDto> {
+  async getUserPermissions(
+    userId: string,
+  ): Promise<UserPermissionsResponseDto> {
     const user = await this.usersRepository.findOne({
       where: { id: userId },
       relations: { role: true },

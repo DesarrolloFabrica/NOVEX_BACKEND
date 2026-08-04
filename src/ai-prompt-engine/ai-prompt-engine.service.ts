@@ -23,7 +23,8 @@ export class AIPromptEngineService {
     situationId: string,
     version?: PromptVersion,
   ): Promise<PromptEngineResult> {
-    const context = await this.contextBuilder.buildOperationalContext(situationId);
+    const context =
+      await this.contextBuilder.buildOperationalContext(situationId);
     const template = version
       ? (getPromptTemplateByVersion(version) ?? getActivePromptTemplate())
       : getActivePromptTemplate();

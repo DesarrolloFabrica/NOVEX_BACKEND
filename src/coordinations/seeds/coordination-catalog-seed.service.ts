@@ -21,11 +21,20 @@ export class CoordinationCatalogSeedService implements OnApplicationBootstrap {
     private readonly dependenciesRepository: Repository<CoordinationDependency>,
   ) {}
 
-  async onApplicationBootstrap(): Promise<void> {
+  onApplicationBootstrap(): void {
     if (!isCatalogSeedEnabled()) {
       return;
     }
 
+    void this.runCoordinationCatalogSeed().catch((error: unknown) => {
+      this.logger.error(
+        'Seed de coordinaciones falló en arranque.',
+        error instanceof Error ? error.stack : String(error),
+      );
+    });
+  }
+
+  private async runCoordinationCatalogSeed(): Promise<void> {
     const coordinationsByCode = await this.seedCoordinations();
     await this.seedDependencies(coordinationsByCode);
   }
@@ -67,7 +76,9 @@ export class CoordinationCatalogSeedService implements OnApplicationBootstrap {
     }
 
     const coordinations = await this.coordinationsRepository.find();
-    return new Map(coordinations.map((coordination) => [coordination.code, coordination]));
+    return new Map(
+      coordinations.map((coordination) => [coordination.code, coordination]),
+    );
   }
 
   private async seedDependencies(
@@ -76,10 +87,8 @@ export class CoordinationCatalogSeedService implements OnApplicationBootstrap {
     const seen = new Set<string>();
 
     for (const item of CATALOG_COORDINATION_DEPENDENCIES) {
-      const sourceCode =
-        IMPACT_AREA_COORDINATION_CODE[item.sourceImpactAreaId];
-      const targetCode =
-        IMPACT_AREA_COORDINATION_CODE[item.targetImpactAreaId];
+      const sourceCode = IMPACT_AREA_COORDINATION_CODE[item.sourceImpactAreaId];
+      const targetCode = IMPACT_AREA_COORDINATION_CODE[item.targetImpactAreaId];
 
       if (!sourceCode || !targetCode) {
         throw new Error(

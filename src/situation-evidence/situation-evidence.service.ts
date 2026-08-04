@@ -148,15 +148,15 @@ export class SituationEvidenceService {
       situationId,
     );
     if (!evidence) {
-      throw new NotFoundException(
-        `Evidencia no encontrada: ${evidenceId}`,
-      );
+      throw new NotFoundException(`Evidencia no encontrada: ${evidenceId}`);
     }
 
     return evidence;
   }
 
-  private toResponse(evidence: SituationEvidence): SituationEvidenceResponseDto {
+  private toResponse(
+    evidence: SituationEvidence,
+  ): SituationEvidenceResponseDto {
     return {
       id: evidence.id,
       situationId: evidence.situationId,

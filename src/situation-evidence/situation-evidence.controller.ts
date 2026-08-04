@@ -34,7 +34,10 @@ export class SituationEvidenceController {
     @Body() dto: CreateSituationEvidenceDto,
     @CurrentUser() user: AuthPayload,
   ) {
-    await this.situationAccessService.requireAccessibleSituation(user, situationId);
+    await this.situationAccessService.requireAccessibleSituation(
+      user,
+      situationId,
+    );
     return this.evidenceService.create(situationId, dto, user.sub);
   }
 
@@ -44,7 +47,10 @@ export class SituationEvidenceController {
     @Param('id', ParseUUIDPipe) situationId: string,
     @CurrentUser() user: AuthPayload,
   ) {
-    await this.situationAccessService.requireAccessibleSituation(user, situationId);
+    await this.situationAccessService.requireAccessibleSituation(
+      user,
+      situationId,
+    );
     return this.evidenceService.findBySituation(situationId);
   }
 
@@ -55,7 +61,10 @@ export class SituationEvidenceController {
     @Param('evidenceId', ParseUUIDPipe) evidenceId: string,
     @CurrentUser() user: AuthPayload,
   ) {
-    await this.situationAccessService.requireAccessibleSituation(user, situationId);
+    await this.situationAccessService.requireAccessibleSituation(
+      user,
+      situationId,
+    );
     return this.evidenceService.getById(situationId, evidenceId);
   }
 
@@ -67,7 +76,10 @@ export class SituationEvidenceController {
     @Param('evidenceId', ParseUUIDPipe) evidenceId: string,
     @CurrentUser() user: AuthPayload,
   ) {
-    await this.situationAccessService.requireAccessibleSituation(user, situationId);
+    await this.situationAccessService.requireAccessibleSituation(
+      user,
+      situationId,
+    );
     return this.evidenceService.delete(situationId, evidenceId);
   }
 }

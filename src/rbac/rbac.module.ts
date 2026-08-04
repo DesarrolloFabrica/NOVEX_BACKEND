@@ -7,10 +7,7 @@ import { RbacService } from './rbac.service';
 import { RolePermissionCatalogSeedService } from './seeds/role-permission-catalog-seed.service';
 
 @Module({
-  imports: [
-    PermissionsModule,
-    TypeOrmModule.forFeature([Role, User]),
-  ],
+  imports: [PermissionsModule, TypeOrmModule.forFeature([Role, User])],
   providers: [RbacService, RolePermissionCatalogSeedService],
   exports: [RbacService],
 })

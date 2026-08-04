@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { In } from 'typeorm';
 import { AuthPayload } from '../auth/contracts/auth-payload.contract';
-import { OperationalScopeService } from '../auth/services/operational-scope.service';import {
+import { OperationalScopeService } from '../auth/services/operational-scope.service';
+import {
   SituationSeverity,
   SituationStatus,
 } from '../common/enums/situation.enums';
@@ -107,7 +108,9 @@ export class CoordinationsService {
         },
         select: ['id', 'coordinationId', 'severity', 'status'],
       })
-    ).filter((situation) => scopedCoordinationIds.has(situation.coordinationId));
+    ).filter((situation) =>
+      scopedCoordinationIds.has(situation.coordinationId),
+    );
 
     const scores = activeSituations.map(
       (situation) => SEVERITY_SCORE[situation.severity] ?? 0,

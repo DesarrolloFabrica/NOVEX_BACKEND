@@ -6,10 +6,7 @@ import type { SituationRecommendationResponseDto } from '../../situation-recomme
 
 import type { SituationTimelineEntryResponseDto } from '../../situation-timeline/dto/situation-timeline.dto';
 
-
-
 export class ExecuteAIAnalysisResponseDto {
-
   situationId!: string;
 
   sessionId!: string;
@@ -29,13 +26,9 @@ export class ExecuteAIAnalysisResponseDto {
   confidence!: number;
 
   analysis!: AIAnalysisResult;
-
 }
 
-
-
 export class SituationAIAnalysisResponseDto {
-
   situationId!: string;
 
   sessionId!: string;
@@ -51,6 +44,4 @@ export class SituationAIAnalysisResponseDto {
   createdAt!: Date;
 
   updatedAt!: Date;
-
 }
-

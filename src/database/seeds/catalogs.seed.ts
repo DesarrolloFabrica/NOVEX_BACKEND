@@ -16,42 +16,43 @@ export interface IncidentCategoryCatalogItem {
   description: string;
 }
 
-export const CATALOG_OPERATIONAL_AREAS: readonly OperationalAreaCatalogItem[] = [
-  {
-    code: 'TEC',
-    name: 'Tecnologia',
-    description:
-      'Soporte de plataformas, infraestructura y servicios digitales.',
-  },
-  {
-    code: 'REG',
-    name: 'Registro y Control',
-    description:
-      'Gestion de matriculas, historia academica y registros institucionales.',
-  },
-  {
-    code: 'ACA',
-    name: 'Coordinacion Academica',
-    description:
-      'Programacion academica, carga docente y seguimiento curricular.',
-  },
-  {
-    code: 'FIN',
-    name: 'Financiera',
-    description: 'Pagos, conciliaciones y habilitaciones administrativas.',
-  },
-  {
-    code: 'BIEN',
-    name: 'Bienestar Universitario',
-    description: 'Atencion, acompanamiento y comunicaciones a estudiantes.',
-  },
-  {
-    code: 'DIR',
-    name: 'Direccion de Operaciones',
-    description: 'Coordinacion ejecutiva y priorizacion transversal.',
-    isGlobal: true,
-  },
-] as const;
+export const CATALOG_OPERATIONAL_AREAS: readonly OperationalAreaCatalogItem[] =
+  [
+    {
+      code: 'TEC',
+      name: 'Tecnologia',
+      description:
+        'Soporte de plataformas, infraestructura y servicios digitales.',
+    },
+    {
+      code: 'REG',
+      name: 'Registro y Control',
+      description:
+        'Gestion de matriculas, historia academica y registros institucionales.',
+    },
+    {
+      code: 'ACA',
+      name: 'Coordinacion Academica',
+      description:
+        'Programacion academica, carga docente y seguimiento curricular.',
+    },
+    {
+      code: 'FIN',
+      name: 'Financiera',
+      description: 'Pagos, conciliaciones y habilitaciones administrativas.',
+    },
+    {
+      code: 'BIEN',
+      name: 'Bienestar Universitario',
+      description: 'Atencion, acompanamiento y comunicaciones a estudiantes.',
+    },
+    {
+      code: 'DIR',
+      name: 'Direccion de Operaciones',
+      description: 'Coordinacion ejecutiva y priorizacion transversal.',
+      isGlobal: true,
+    },
+  ] as const;
 
 export const CATALOG_INCIDENT_CATEGORIES: readonly IncidentCategoryCatalogItem[] =
   [

@@ -8,7 +8,7 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 export class DemoSeedService implements OnApplicationBootstrap {
   private readonly logger = new Logger(DemoSeedService.name);
 
-  async onApplicationBootstrap(): Promise<void> {
+  onApplicationBootstrap(): void {
     if (!this.isEnabled()) {
       return;
     }

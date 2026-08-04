@@ -24,11 +24,20 @@ export class CatalogSeedService implements OnApplicationBootstrap {
     private readonly eventsRepository: Repository<OperationalEvent>,
   ) {}
 
-  async onApplicationBootstrap(): Promise<void> {
+  onApplicationBootstrap(): void {
     if (!isCatalogSeedEnabled()) {
       return;
     }
 
+    void this.runCatalogSeed().catch((error: unknown) => {
+      this.logger.error(
+        'Seed de catálogo operacional falló en arranque.',
+        error instanceof Error ? error.stack : String(error),
+      );
+    });
+  }
+
+  private async runCatalogSeed(): Promise<void> {
     await this.purgeDemoOperationalData();
     await this.seedOperationalAreas();
     await this.seedIncidentCategories();

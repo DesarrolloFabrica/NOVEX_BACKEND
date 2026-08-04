@@ -23,25 +23,33 @@ export class CreateSituationEvidenceDto {
   @MinLength(1)
   description!: string;
 
-  @ValidateIf((dto: CreateSituationEvidenceDto) => dto.type !== EvidenceType.NOTE)
+  @ValidateIf(
+    (dto: CreateSituationEvidenceDto) => dto.type !== EvidenceType.NOTE,
+  )
   @IsString()
   @MinLength(1)
   @MaxLength(255)
   fileName?: string;
 
-  @ValidateIf((dto: CreateSituationEvidenceDto) => dto.type !== EvidenceType.NOTE)
+  @ValidateIf(
+    (dto: CreateSituationEvidenceDto) => dto.type !== EvidenceType.NOTE,
+  )
   @IsString()
   @MinLength(1)
   @MaxLength(500)
   storagePath?: string;
 
-  @ValidateIf((dto: CreateSituationEvidenceDto) => dto.type !== EvidenceType.NOTE)
+  @ValidateIf(
+    (dto: CreateSituationEvidenceDto) => dto.type !== EvidenceType.NOTE,
+  )
   @IsString()
   @MinLength(1)
   @MaxLength(127)
   mimeType?: string;
 
-  @ValidateIf((dto: CreateSituationEvidenceDto) => dto.type !== EvidenceType.NOTE)
+  @ValidateIf(
+    (dto: CreateSituationEvidenceDto) => dto.type !== EvidenceType.NOTE,
+  )
   @Type(() => Number)
   @IsInt()
   @Min(0)

@@ -45,7 +45,10 @@ export class AIAnalysisSessionsController {
     @Param('id', ParseUUIDPipe) situationId: string,
     @CurrentUser() user: AuthPayload,
   ) {
-    await this.situationAccessService.requireAccessibleSituation(user, situationId);
+    await this.situationAccessService.requireAccessibleSituation(
+      user,
+      situationId,
+    );
     return this.sessionsService.getHistory(situationId);
   }
 
@@ -56,7 +59,10 @@ export class AIAnalysisSessionsController {
     @Param('version', ParseIntPipe) version: number,
     @CurrentUser() user: AuthPayload,
   ) {
-    await this.situationAccessService.requireAccessibleSituation(user, situationId);
+    await this.situationAccessService.requireAccessibleSituation(
+      user,
+      situationId,
+    );
     return this.sessionsService.getByVersion(situationId, version);
   }
 
@@ -67,7 +73,10 @@ export class AIAnalysisSessionsController {
     @Query() query: CompareAnalysisQueryDto,
     @CurrentUser() user: AuthPayload,
   ) {
-    await this.situationAccessService.requireAccessibleSituation(user, situationId);
+    await this.situationAccessService.requireAccessibleSituation(
+      user,
+      situationId,
+    );
     return this.comparisonService.compareVersions(
       situationId,
       query.fromVersion,

@@ -13,12 +13,7 @@ import { SituationsService } from './situations.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([
-      Situation,
-      Coordination,
-      IncidentCategory,
-      User,
-    ]),
+    TypeOrmModule.forFeature([Situation, Coordination, IncidentCategory, User]),
     AuthModule,
     forwardRef(() => SituationTimelineModule),
   ],

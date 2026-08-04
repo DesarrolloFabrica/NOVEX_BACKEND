@@ -11,7 +11,10 @@ import { SituationsModule } from '../situations/situations.module';
 import { AIOrchestrationController } from './ai-orchestration.controller';
 import { AIOrchestrator } from './ai-orchestrator.service';
 import { SituationAIAnalysisRecord } from './entities/situation-ai-analysis-record.entity';
-import { GeminiProvider, geminiProviderBinding } from './providers/gemini.provider';
+import {
+  GeminiProvider,
+  geminiProviderBinding,
+} from './providers/gemini.provider';
 import { SituationAIAnalysisRecordRepository } from './repositories/situation-ai-analysis-record.repository';
 
 @Module({

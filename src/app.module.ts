@@ -54,12 +54,8 @@ import { SituationsModule } from './situations/situations.module';
 
 import { UsersModule } from './users/users.module';
 
-
-
 @Module({
-
   imports: [
-
     ConfigurationModule,
 
     CommonModule,
@@ -111,10 +107,6 @@ import { UsersModule } from './users/users.module';
     DemoUsersModule,
 
     DatabaseSeedsModule,
-
   ],
-
 })
-
 export class AppModule {}
-

@@ -41,6 +41,8 @@ export class RoleCatalogSeedService implements OnModuleInit {
       );
     }
 
-    this.logger.log(`Catálogo de roles sincronizado: ${CATALOG_ROLES.length} roles.`);
+    this.logger.log(
+      `Catálogo de roles sincronizado: ${CATALOG_ROLES.length} roles.`,
+    );
   }
 }

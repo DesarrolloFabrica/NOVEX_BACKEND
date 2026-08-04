@@ -88,8 +88,7 @@ export class AIAnalysisMapper {
           provider: analysis.provider,
           analyzedAt: analysis.analyzedAt,
           schemaVersion: analysis.schemaVersion,
-          operationalSeverity:
-            analysis.impactAssessment.operationalSeverity,
+          operationalSeverity: analysis.impactAssessment.operationalSeverity,
           confidence: analysis.confidence.overall,
           categoryCode: analysis.incidentClassification.categoryCode,
           recommendationCount: analysis.recommendations.length,

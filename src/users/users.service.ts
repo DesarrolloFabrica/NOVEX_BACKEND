@@ -47,11 +47,15 @@ export class UsersService {
     const email = dto.email.trim().toLowerCase();
     const existing = await this.usersRepository.findByEmail(email);
     if (existing) {
-      throw new ConflictException(`Ya existe un usuario con el correo: ${email}`);
+      throw new ConflictException(
+        `Ya existe un usuario con el correo: ${email}`,
+      );
     }
 
     const role = await this.resolveActiveRole(dto.roleCode);
-    const coordination = await this.resolveActiveCoordination(dto.coordinationId);
+    const coordination = await this.resolveActiveCoordination(
+      dto.coordinationId,
+    );
 
     const created = this.usersRepository.create({
       email,
@@ -67,7 +71,9 @@ export class UsersService {
     const saved = await this.usersRepository.save(created);
     const user = await this.usersRepository.findByIdWithRelations(saved.id);
     if (!user) {
-      throw new NotFoundException(`Usuario no encontrado tras crear: ${saved.id}`);
+      throw new NotFoundException(
+        `Usuario no encontrado tras crear: ${saved.id}`,
+      );
     }
 
     return this.toResponse(user);
@@ -104,7 +110,9 @@ export class UsersService {
     await this.usersRepository.save(user);
     const refreshed = await this.usersRepository.findByIdWithRelations(id);
     if (!refreshed) {
-      throw new NotFoundException(`Usuario no encontrado tras actualizar: ${id}`);
+      throw new NotFoundException(
+        `Usuario no encontrado tras actualizar: ${id}`,
+      );
     }
 
     return this.toResponse(refreshed);

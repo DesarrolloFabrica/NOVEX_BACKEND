@@ -30,21 +30,21 @@ export class GeminiProvider implements AIProvider {
     private readonly promptEngine: AIPromptEngineService,
   ) {}
 
-  async health(): Promise<AIProviderHealthStatus> {
+  health(): Promise<AIProviderHealthStatus> {
     const apiKey = this.getApiKey();
     const model = this.getModel();
 
     if (!apiKey) {
-      return {
+      return Promise.resolve({
         ok: false,
         message: 'GEMINI_API_KEY no está configurada.',
-      };
+      });
     }
 
-    return {
+    return Promise.resolve({
       ok: true,
       message: `Gemini configurado (modelo: ${model}).`,
-    };
+    });
   }
 
   async analyzeSituation(
@@ -102,7 +102,9 @@ export class GeminiProvider implements AIProvider {
     try {
       return this.parser.parseAnalysis(raw);
     } catch (firstError) {
-      this.logger.warn('Primer intento de parseo IA falló; reintentando una vez.');
+      this.logger.warn(
+        'Primer intento de parseo IA falló; reintentando una vez.',
+      );
       try {
         return this.parser.parseAnalysis(this.stripMarkdownFences(raw));
       } catch {

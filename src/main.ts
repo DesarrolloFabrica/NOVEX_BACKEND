@@ -1,10 +1,23 @@
 import { ValidationPipe, RequestMethod } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import type { Express } from 'express';
 import { AppModule } from './app.module';
+
+function registerRootHealthRoute(app: Express): void {
+  app.get('/health', (_req, res) => {
+    res.status(200).json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+    });
+  });
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  const expressApp = app.getHttpAdapter().getInstance() as Express;
+  registerRootHealthRoute(expressApp);
 
   const configService = app.get(ConfigService);
   const apiPrefix = configService.get<string>('apiPrefix') ?? 'api/v1';
@@ -25,17 +38,14 @@ async function bootstrap() {
     }),
   );
 
-  // CORS preparado para la integración frontend (Sprint siguiente).
   app.enableCors({
     origin: true,
     credentials: true,
   });
 
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 
-  console.log(
-    `Novex Backend listening on http://localhost:${port}/${apiPrefix}`,
-  );
+  console.log(`Novex Backend listening on http://0.0.0.0:${port}/${apiPrefix}`);
 }
 
 void bootstrap();

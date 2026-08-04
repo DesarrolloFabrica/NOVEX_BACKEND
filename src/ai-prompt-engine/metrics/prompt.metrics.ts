@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import type { SituationContext } from '../contracts/situation-context.contract';
-import type { CompletePrompt, PromptMetrics } from '../contracts/prompt.contract';
+import type {
+  CompletePrompt,
+  PromptMetrics,
+} from '../contracts/prompt.contract';
 
 const CHARACTERS_PER_TOKEN_ESTIMATE = 4;
 

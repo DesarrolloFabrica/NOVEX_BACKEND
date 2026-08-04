@@ -9,10 +9,7 @@ export class UsersRepository extends Repository<User> {
     super(User, dataSource.createEntityManager());
   }
 
-  findCatalog(
-    includeInactive = false,
-    status?: UserStatus,
-  ): Promise<User[]> {
+  findCatalog(includeInactive = false, status?: UserStatus): Promise<User[]> {
     const qb = this.createQueryBuilder('user')
       .leftJoinAndSelect('user.role', 'role')
       .leftJoinAndSelect('user.coordination', 'coordination')
@@ -38,7 +35,9 @@ export class UsersRepository extends Repository<User> {
     return this.createQueryBuilder('user')
       .leftJoinAndSelect('user.role', 'role')
       .leftJoinAndSelect('user.coordination', 'coordination')
-      .where('LOWER(user.email) = :email', { email: email.trim().toLowerCase() })
+      .where('LOWER(user.email) = :email', {
+        email: email.trim().toLowerCase(),
+      })
       .getOne();
   }
 }

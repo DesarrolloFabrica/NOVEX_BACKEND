@@ -1,4 +1,10 @@
-import { Controller, Get, Param, ParseUUIDPipe, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  UseGuards,
+} from '@nestjs/common';
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
@@ -21,7 +27,10 @@ export class SituationImpactController {
     @Param('id', ParseUUIDPipe) situationId: string,
     @CurrentUser() user: AuthPayload,
   ) {
-    await this.situationAccessService.requireAccessibleSituation(user, situationId);
+    await this.situationAccessService.requireAccessibleSituation(
+      user,
+      situationId,
+    );
     return this.impactService.findBySituation(situationId);
   }
 
@@ -31,7 +40,10 @@ export class SituationImpactController {
     @Param('id', ParseUUIDPipe) situationId: string,
     @CurrentUser() user: AuthPayload,
   ) {
-    await this.situationAccessService.requireAccessibleSituation(user, situationId);
+    await this.situationAccessService.requireAccessibleSituation(
+      user,
+      situationId,
+    );
     return this.impactService.getAffectedCoordinationsBySituation(situationId);
   }
 }

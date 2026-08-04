@@ -13,10 +13,12 @@ describe('UsersService admin registration', () => {
       findByIdWithRelations: jest.fn(),
       findByEmail: jest.fn(),
       create: jest.fn((input: unknown) => input),
-      save: jest.fn(async (entity: { id?: string }) => ({
-        ...entity,
-        id: entity.id ?? 'user-1',
-      })),
+      save: jest.fn((entity: { id?: string }) =>
+        Promise.resolve({
+          ...entity,
+          id: entity.id ?? 'user-1',
+        }),
+      ),
     };
 
     const rolesRepository = {
@@ -56,8 +58,12 @@ describe('UsersService admin registration', () => {
   };
 
   it('crea un usuario real con rol, coordinación y estado', async () => {
-    const { service, usersRepository, rolesRepository, coordinationsRepository } =
-      createService();
+    const {
+      service,
+      usersRepository,
+      rolesRepository,
+      coordinationsRepository,
+    } = createService();
 
     usersRepository.findByEmail.mockResolvedValue(null);
     rolesRepository.findOne.mockResolvedValue(role);
@@ -118,8 +124,12 @@ describe('UsersService admin registration', () => {
   });
 
   it('rechaza rol inválido', async () => {
-    const { service, usersRepository, rolesRepository, coordinationsRepository } =
-      createService();
+    const {
+      service,
+      usersRepository,
+      rolesRepository,
+      coordinationsRepository,
+    } = createService();
     usersRepository.findByEmail.mockResolvedValue(null);
     rolesRepository.findOne.mockResolvedValue(null);
     coordinationsRepository.findOne.mockResolvedValue(coordination);
@@ -136,8 +146,12 @@ describe('UsersService admin registration', () => {
   });
 
   it('actualiza estado y coordinación principal', async () => {
-    const { service, usersRepository, rolesRepository, coordinationsRepository } =
-      createService();
+    const {
+      service,
+      usersRepository,
+      rolesRepository,
+      coordinationsRepository,
+    } = createService();
 
     const existing = {
       id: 'user-1',
@@ -146,7 +160,12 @@ describe('UsersService admin registration', () => {
       fullName: 'Director',
       photoUrl: null,
       roleId: 'role-dir',
-      role: { id: 'role-dir', code: 'DIRECTOR', name: 'Director', isActive: true },
+      role: {
+        id: 'role-dir',
+        code: 'DIRECTOR',
+        name: 'Director',
+        isActive: true,
+      },
       coordinationId: 'old-coord',
       coordination: {
         id: 'old-coord',

@@ -108,6 +108,7 @@ describe('SituationsService status transitions', () => {
       expect.objectContaining({
         userId: 'user-1',
         title: 'Estado actualizado',
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         metadata: expect.objectContaining({
           previousValue: SituationStatus.OPEN,
           newValue: SituationStatus.IN_PROGRESS,
@@ -205,6 +206,7 @@ describe('SituationsService status transitions', () => {
     expect(timelineService.createEntry).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Situación cerrada',
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         metadata: expect.objectContaining({
           statusComment: 'Validación final realizada.',
           commentKind: 'closure',

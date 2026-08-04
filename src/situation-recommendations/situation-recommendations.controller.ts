@@ -34,7 +34,10 @@ export class SituationRecommendationsBySituationController {
     @Param('id', ParseUUIDPipe) situationId: string,
     @CurrentUser() user: AuthPayload,
   ) {
-    await this.situationAccessService.requireAccessibleSituation(user, situationId);
+    await this.situationAccessService.requireAccessibleSituation(
+      user,
+      situationId,
+    );
     return this.recommendationsService.findBySituation(situationId);
   }
 
@@ -50,7 +53,10 @@ export class SituationRecommendationsBySituationController {
     @Body() dto: CreateManualRecommendationDto,
     @CurrentUser() user: AuthPayload,
   ) {
-    await this.situationAccessService.requireAccessibleSituation(user, situationId);
+    await this.situationAccessService.requireAccessibleSituation(
+      user,
+      situationId,
+    );
     return this.recommendationsService.createManualRecommendation(
       situationId,
       dto,

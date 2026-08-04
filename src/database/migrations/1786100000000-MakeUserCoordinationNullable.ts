@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class MakeUserCoordinationNullable1786100000000
-  implements MigrationInterface
-{
+export class MakeUserCoordinationNullable1786100000000 implements MigrationInterface {
   name = 'MakeUserCoordinationNullable1786100000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

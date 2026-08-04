@@ -1,7 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
-import { SituationStatus } from '../common/enums/situation.enums';
 import { Situation } from '../situations/entities/situation.entity';
 import {
   CreateTimelineEntryInput,
@@ -47,7 +46,9 @@ export class SituationTimelineService {
     return this.toResponse(withUser ?? saved);
   }
 
-  async findBySituation(situationId: string): Promise<SituationTimelineResponseDto> {
+  async findBySituation(
+    situationId: string,
+  ): Promise<SituationTimelineResponseDto> {
     await this.ensureSituationExists(situationId);
 
     const items = await this.timelineRepository.findBySituationId(situationId);

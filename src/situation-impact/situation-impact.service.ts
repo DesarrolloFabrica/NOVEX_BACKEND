@@ -31,7 +31,8 @@ export class SituationImpactService {
   ): Promise<SituationImpactAssessmentResponseDto> {
     await this.ensureSituationExists(situationId);
 
-    const assessment = await this.impactRepository.findBySituationId(situationId);
+    const assessment =
+      await this.impactRepository.findBySituationId(situationId);
     if (!assessment) {
       throw new NotFoundException(
         `Evaluación de impacto no encontrada para la situación: ${situationId}`,
@@ -46,7 +47,8 @@ export class SituationImpactService {
   ): Promise<SituationAffectedCoordinationsResponseDto> {
     await this.ensureSituationExists(situationId);
 
-    const assessment = await this.impactRepository.findBySituationId(situationId);
+    const assessment =
+      await this.impactRepository.findBySituationId(situationId);
     if (!assessment) {
       return {
         situationId,
@@ -73,7 +75,9 @@ export class SituationImpactService {
   ): Promise<SituationImpactAssessmentResponseDto> {
     await this.ensureSituationExists(input.situationId);
 
-    const existing = await this.impactRepository.findBySituationId(input.situationId);
+    const existing = await this.impactRepository.findBySituationId(
+      input.situationId,
+    );
     if (existing) {
       throw new ConflictException(
         `Ya existe una evaluación de impacto para la situación: ${input.situationId}`,
@@ -109,7 +113,9 @@ export class SituationImpactService {
   ): Promise<SituationImpactAssessmentResponseDto> {
     await this.ensureSituationExists(input.situationId);
 
-    const existing = await this.impactRepository.findBySituationId(input.situationId);
+    const existing = await this.impactRepository.findBySituationId(
+      input.situationId,
+    );
     if (!existing) {
       throw new NotFoundException(
         `Evaluación de impacto no encontrada para la situación: ${input.situationId}`,

@@ -24,7 +24,13 @@ import { SituationRecommendationsService } from './situation-recommendations.ser
     SituationRecommendationsBySituationController,
     SituationRecommendationsController,
   ],
-  providers: [SituationRecommendationsService, SituationRecommendationsRepository],
-  exports: [SituationRecommendationsService, SituationRecommendationsRepository],
+  providers: [
+    SituationRecommendationsService,
+    SituationRecommendationsRepository,
+  ],
+  exports: [
+    SituationRecommendationsService,
+    SituationRecommendationsRepository,
+  ],
 })
 export class SituationRecommendationsModule {}

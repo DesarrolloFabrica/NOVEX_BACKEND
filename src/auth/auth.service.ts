@@ -80,10 +80,8 @@ export class AuthService {
   }
 
   async loginWithEmail(email: string): Promise<GoogleLoginResponseDto> {
-    const emailLoginEnabled = this.configService.get<boolean>(
-      'enableEmailLogin',
-      { infer: true },
-    );
+    const emailLoginEnabled =
+      this.configService.get<boolean>('enableEmailLogin') ?? false;
 
     if (!emailLoginEnabled) {
       throw new ForbiddenException(

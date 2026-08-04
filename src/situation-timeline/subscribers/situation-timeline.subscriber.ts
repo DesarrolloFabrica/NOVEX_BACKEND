@@ -11,9 +11,7 @@ import { CreateTimelineEntryInput } from '../dto/situation-timeline.dto';
 import { SituationTimelineService } from '../situation-timeline.service';
 
 @Injectable()
-export class SituationTimelineSubscriber
-  implements EntitySubscriberInterface<Situation>
-{
+export class SituationTimelineSubscriber implements EntitySubscriberInterface<Situation> {
   constructor(
     dataSource: DataSource,
     private readonly timelineService: SituationTimelineService,

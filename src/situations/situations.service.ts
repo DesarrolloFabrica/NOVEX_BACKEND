@@ -143,7 +143,10 @@ export class SituationsService {
 
     this.scopeService.assertCanUpdateSituation(actor, situation);
 
-    if (situation.status === SituationStatus.CLOSED && dto.status !== undefined) {
+    if (
+      situation.status === SituationStatus.CLOSED &&
+      dto.status !== undefined
+    ) {
       throw new BadRequestException(
         'La situación está cerrada y no admite nuevas modificaciones de estado.',
       );
@@ -299,9 +302,7 @@ export class SituationsService {
         ? 'Situación cerrada'
         : 'Estado actualizado';
 
-    const descriptionParts = [
-      `El estado cambió de ${fromLabel} a ${toLabel}.`,
-    ];
+    const descriptionParts = [`El estado cambió de ${fromLabel} a ${toLabel}.`];
     if (
       input.nextStatus === SituationStatus.IN_PROGRESS &&
       input.assignedUserName

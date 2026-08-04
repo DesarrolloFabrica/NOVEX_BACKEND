@@ -9,9 +9,7 @@ export class SituationsRepository extends Repository<Situation> {
     super(Situation, dataSource.createEntityManager());
   }
 
-  async search(
-    query: ListSituationsQueryDto,
-  ): Promise<[Situation[], number]> {
+  async search(query: ListSituationsQueryDto): Promise<[Situation[], number]> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 50;
 

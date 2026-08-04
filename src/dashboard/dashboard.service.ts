@@ -48,7 +48,7 @@ export class DashboardService {
             interpretation.id === event.currentInterpretationId,
         ),
       )
-      .filter(this.isInterpretation);
+      .filter((interpretation) => this.isInterpretation(interpretation));
     const activeEvents = events.filter((event) =>
       [OperationalEventStatus.OPEN, OperationalEventStatus.MONITORING].includes(
         event.status,
@@ -61,7 +61,7 @@ export class DashboardService {
             interpretation.id === event.currentInterpretationId,
         ),
       )
-      .filter(this.isInterpretation);
+      .filter((interpretation) => this.isInterpretation(interpretation));
 
     if (totalEvents === 0) {
       return this.emptyMetrics();
@@ -220,7 +220,11 @@ export class DashboardService {
       }
     }
     return [...map.values()]
-      .map(({ riskTotal: _riskTotal, ...item }) => item)
+      .map((item) => {
+        const { riskTotal, ...rest } = item;
+        void riskTotal;
+        return rest;
+      })
       .sort(
         (a, b) =>
           b.openCount - a.openCount || b.averageRiskScore - a.averageRiskScore,

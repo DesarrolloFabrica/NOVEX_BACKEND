@@ -48,7 +48,12 @@ export class SituationEvidence {
   @Column({ type: 'varchar', length: 255, name: 'file_name', nullable: true })
   fileName!: string | null;
 
-  @Column({ type: 'varchar', length: 500, name: 'storage_path', nullable: true })
+  @Column({
+    type: 'varchar',
+    length: 500,
+    name: 'storage_path',
+    nullable: true,
+  })
   storagePath!: string | null;
 
   @Column({ type: 'varchar', length: 127, name: 'mime_type', nullable: true })

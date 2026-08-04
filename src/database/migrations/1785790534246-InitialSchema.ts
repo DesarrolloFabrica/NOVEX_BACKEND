@@ -1,265 +1,716 @@
-import { MigrationInterface, QueryRunner } from "typeorm";
+import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class InitialSchema1785790534246 implements MigrationInterface {
-    name = 'InitialSchema1785790534246'
+  name = 'InitialSchema1785790534246';
 
-    public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
-        await queryRunner.query(`CREATE TYPE "public"."coordination_dependencies_dependency_type_enum" AS ENUM('operational', 'academic', 'technical', 'communication')`);
-        await queryRunner.query(`CREATE TABLE "coordination_dependencies" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "source_coordination_id" uuid NOT NULL, "target_coordination_id" uuid NOT NULL, "dependency_weight" smallint NOT NULL DEFAULT '3', "dependency_type" "public"."coordination_dependencies_dependency_type_enum" NOT NULL DEFAULT 'operational', "bidirectional" boolean NOT NULL DEFAULT false, CONSTRAINT "uq_coordination_dependency_edge" UNIQUE ("source_coordination_id", "target_coordination_id"), CONSTRAINT "PK_7f69c35c149162293db48ca069d" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_a80bee11c32e324358e4564f19" ON "coordination_dependencies" ("source_coordination_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_25d349c17059875590b74c60e4" ON "coordination_dependencies" ("target_coordination_id") `);
-        await queryRunner.query(`CREATE TABLE "coordinations" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "code" character varying(64) NOT NULL, "name" character varying(180) NOT NULL, "short_name" character varying(80) NOT NULL, "description" text, "color" character varying(16) NOT NULL, "icon" character varying(64) NOT NULL, "image_asset" character varying(120) NOT NULL, "display_order" smallint NOT NULL DEFAULT '0', "is_active" boolean NOT NULL DEFAULT true, CONSTRAINT "PK_0c2b36758924c465608c0b64509" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_74bab438e480475bc61da0df30" ON "coordinations" ("code") `);
-        await queryRunner.query(`CREATE INDEX "IDX_06854e50ff4eb5267ece342f33" ON "coordinations" ("display_order") `);
-        await queryRunner.query(`CREATE TABLE "permissions" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "code" character varying(120) NOT NULL, "name" character varying(180) NOT NULL, "module" character varying(80) NOT NULL, "description" text, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_920331560282b8bd21bb02290df" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_8dad765629e83229da6feda1c1" ON "permissions" ("code") `);
-        await queryRunner.query(`CREATE INDEX "IDX_8b634526cdd01f2adba6c7ac07" ON "permissions" ("module") `);
-        await queryRunner.query(`CREATE TABLE "role_permissions" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "role_id" uuid NOT NULL, "permission_id" uuid NOT NULL, CONSTRAINT "uq_role_permission" UNIQUE ("role_id", "permission_id"), CONSTRAINT "PK_84059017c90bfcb701b8fa42297" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_178199805b901ccd220ab7740e" ON "role_permissions" ("role_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_17022daf3f885f7d35423e9971" ON "role_permissions" ("permission_id") `);
-        await queryRunner.query(`CREATE TABLE "roles" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "code" character varying(64) NOT NULL, "name" character varying(120) NOT NULL, "description" text, "is_system" boolean NOT NULL DEFAULT true, "is_active" boolean NOT NULL DEFAULT true, CONSTRAINT "PK_c1433d71a4838793a49dcad46ab" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_f6d54f95c31b73fb1bdd8e91d0" ON "roles" ("code") `);
-        await queryRunner.query(`CREATE INDEX "IDX_e9f58bffa9bdcc402c0438a60c" ON "roles" ("is_active") `);
-        await queryRunner.query(`CREATE TYPE "public"."users_status_enum" AS ENUM('ACTIVE', 'INACTIVE')`);
-        await queryRunner.query(`CREATE TABLE "users" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "google_sub" character varying(128), "email" character varying(320) NOT NULL, "full_name" character varying(200) NOT NULL, "photo_url" character varying(500), "role_id" uuid NOT NULL, "coordination_id" uuid NOT NULL, "status" "public"."users_status_enum" NOT NULL DEFAULT 'ACTIVE', "last_login_at" TIMESTAMP WITH TIME ZONE, CONSTRAINT "PK_a3ffb1c0c8416b9fc6f907b7433" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_68b61ba0fb359b93b517cf1073" ON "users" ("google_sub") `);
-        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_97672ac88f789774dd47f7c8be" ON "users" ("email") `);
-        await queryRunner.query(`CREATE INDEX "IDX_a2cecd1a3531c0b041e29ba46e" ON "users" ("role_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_1420898e915adb8a430f1990ea" ON "users" ("coordination_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_3676155292d72c67cd4e090514" ON "users" ("status") `);
-        await queryRunner.query(`CREATE TYPE "public"."operational_timeline_entries_type_enum" AS ENUM('event_registered', 'interpretation_generated', 'status_change', 'note')`);
-        await queryRunner.query(`CREATE TABLE "operational_timeline_entries" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "event_id" uuid NOT NULL, "type" "public"."operational_timeline_entries_type_enum" NOT NULL, "at" TIMESTAMP WITH TIME ZONE NOT NULL, "by_user_id" character varying(64), "by_user_name" character varying(160), "description" text NOT NULL, CONSTRAINT "PK_239179956936b40cbf92719a853" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_62ea9a9d71ae949c9ff467abdf" ON "operational_timeline_entries" ("event_id") `);
-        await queryRunner.query(`CREATE TYPE "public"."operational_events_status_enum" AS ENUM('open', 'monitoring', 'resolved', 'archived')`);
-        await queryRunner.query(`CREATE TABLE "operational_events" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "title" character varying(200) NOT NULL, "description" text NOT NULL, "reported_by_id" character varying(64) NOT NULL, "reported_by_name" character varying(160) NOT NULL, "reported_at" TIMESTAMP WITH TIME ZONE NOT NULL, "source_area_id" uuid NOT NULL, "source_area_name" character varying(180) NOT NULL, "status" "public"."operational_events_status_enum" NOT NULL DEFAULT 'open', "observations" text, "attachment_names" jsonb NOT NULL DEFAULT '[]', "is_mock" boolean NOT NULL DEFAULT false, "source" character varying(40) NOT NULL DEFAULT 'production', "last_update_at" TIMESTAMP WITH TIME ZONE, "current_interpretation_id" uuid, CONSTRAINT "PK_40e2e64c90dcef117b247219c13" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_4e3835a0c6d13903d9353a71d2" ON "operational_events" ("reported_at") `);
-        await queryRunner.query(`CREATE INDEX "IDX_db69325c067addae74f0227841" ON "operational_events" ("source_area_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_39847210540c7923856c0ae771" ON "operational_events" ("status") `);
-        await queryRunner.query(`CREATE TABLE "operational_areas" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "code" character varying(32) NOT NULL, "name" character varying(180) NOT NULL, "description" text, "is_global" boolean NOT NULL DEFAULT false, CONSTRAINT "PK_2ea12201aa1d04be1e0ecc35eed" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_298b31c534b892ffc334828b69" ON "operational_areas" ("code") `);
-        await queryRunner.query(`CREATE TYPE "public"."operational_indicators_direction_enum" AS ENUM('higher_is_worse', 'higher_is_better')`);
-        await queryRunner.query(`CREATE TYPE "public"."operational_indicators_source_enum" AS ENUM('engine', 'ai_suggested')`);
-        await queryRunner.query(`CREATE TABLE "operational_indicators" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "interpretation_id" uuid, "code" character varying(64) NOT NULL, "label" character varying(180) NOT NULL, "value" double precision NOT NULL, "unit" character varying(32), "direction" "public"."operational_indicators_direction_enum", "suggested_by_ai" boolean NOT NULL DEFAULT true, "source" "public"."operational_indicators_source_enum" NOT NULL DEFAULT 'ai_suggested', CONSTRAINT "PK_12cf607697800cdd527e38ca4d0" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_496dc7d3f90fc5e28a5d49e12e" ON "operational_indicators" ("interpretation_id") `);
-        await queryRunner.query(`CREATE TYPE "public"."ai_interpretations_risk_level_enum" AS ENUM('low', 'moderate', 'high', 'critical')`);
-        await queryRunner.query(`CREATE TABLE "ai_interpretations" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "event_id" uuid NOT NULL, "category_id" uuid NOT NULL, "category_name" character varying(160) NOT NULL, "impact_severity" smallint NOT NULL, "affectation_percentage" smallint NOT NULL, "impact_internal" smallint NOT NULL, "impact_external" smallint NOT NULL, "impact_students" smallint NOT NULL, "risk_level" "public"."ai_interpretations_risk_level_enum" NOT NULL, "risk_score" smallint NOT NULL, "executive_summary" text NOT NULL, "narrative" text NOT NULL, "detected_patterns" jsonb NOT NULL DEFAULT '[]', "recommendations" jsonb NOT NULL DEFAULT '[]', "model_label" character varying(64) NOT NULL DEFAULT 'gemini-mock', "interpreted_at" TIMESTAMP WITH TIME ZONE NOT NULL, "confidence" real, "executive_report" jsonb, CONSTRAINT "PK_c010089656fdb57b6d48fa4f6fd" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_a5b825125157347dab7a18c19f" ON "ai_interpretations" ("event_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_a9bd36cc7a7b4c0536c7c07c50" ON "ai_interpretations" ("category_id") `);
-        await queryRunner.query(`CREATE TABLE "incident_categories" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "code" character varying(64) NOT NULL, "name" character varying(160) NOT NULL, "description" text, CONSTRAINT "PK_2cfeab33a7bb30b307dafb8b3b1" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_e5ac03f0c03d02de1934d8ad9f" ON "incident_categories" ("code") `);
-        await queryRunner.query(`CREATE TYPE "public"."situations_severity_enum" AS ENUM('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')`);
-        await queryRunner.query(`CREATE TYPE "public"."situations_status_enum" AS ENUM('OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED')`);
-        await queryRunner.query(`CREATE TABLE "situations" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "title" character varying(200) NOT NULL, "description" text NOT NULL, "coordination_id" uuid NOT NULL, "created_by_user_id" uuid NOT NULL, "assigned_user_id" uuid, "category_id" uuid NOT NULL, "severity" "public"."situations_severity_enum" NOT NULL, "status" "public"."situations_status_enum" NOT NULL DEFAULT 'OPEN', "last_status_comment" text, "resolved_at" TIMESTAMP WITH TIME ZONE, "closed_at" TIMESTAMP WITH TIME ZONE, "occurred_at" TIMESTAMP WITH TIME ZONE NOT NULL, CONSTRAINT "PK_e3fc708166295dcff265ca2fb56" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_6c6bf9345455bf55ce6874be25" ON "situations" ("coordination_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_1608fcab79c384ab82734d14c9" ON "situations" ("created_by_user_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_2bf7861aafe7310f9acc8158ec" ON "situations" ("assigned_user_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_17876be35b5ee090046a1172cb" ON "situations" ("category_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_b3fc80c5911d6382cfb130f7a2" ON "situations" ("severity") `);
-        await queryRunner.query(`CREATE INDEX "IDX_994cd430c3a7260b2aa98867b2" ON "situations" ("status") `);
-        await queryRunner.query(`CREATE INDEX "IDX_9aef199045fb11f1936b236a36" ON "situations" ("occurred_at") `);
-        await queryRunner.query(`CREATE INDEX "idx_situations_coordination_status" ON "situations" ("coordination_id", "status") `);
-        await queryRunner.query(`CREATE INDEX "idx_situations_status_occurred_at" ON "situations" ("status", "occurred_at") `);
-        await queryRunner.query(`CREATE TYPE "public"."situation_timeline_entries_event_type_enum" AS ENUM('SITUATION_CREATED', 'STATUS_CHANGED', 'SEVERITY_CHANGED', 'UPDATED', 'COMMENT_ADDED', 'ATTACHMENT_ADDED', 'AI_ANALYZED', 'AI_ANALYSIS_STARTED', 'AI_ANALYSIS_FAILED', 'AI_ANALYSIS_VERSION_CREATED', 'AI_REANALYZED', 'RECOMMENDATION_GENERATED', 'RECOMMENDATION_UPDATED', 'RECOMMENDATION_COMPLETED', 'CLOSED', 'REOPENED')`);
-        await queryRunner.query(`CREATE TABLE "situation_timeline_entries" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "situation_id" uuid NOT NULL, "user_id" uuid, "event_type" "public"."situation_timeline_entries_event_type_enum" NOT NULL, "title" character varying(200) NOT NULL, "description" text NOT NULL, "metadata" jsonb, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_362f49e2877e8a47365b44e33e4" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_e1a88145eb0e742aa92658d86a" ON "situation_timeline_entries" ("situation_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_1e905ff1d07d89d8a619956533" ON "situation_timeline_entries" ("user_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_5733a402f1dcf24c0749022a17" ON "situation_timeline_entries" ("event_type") `);
-        await queryRunner.query(`CREATE INDEX "idx_situation_timeline_situation_created" ON "situation_timeline_entries" ("situation_id", "created_at") `);
-        await queryRunner.query(`CREATE TYPE "public"."situation_affected_coordinations_impact_level_enum" AS ENUM('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')`);
-        await queryRunner.query(`CREATE TABLE "situation_affected_coordinations" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "impact_assessment_id" uuid NOT NULL, "coordination_id" uuid NOT NULL, "impact_level" "public"."situation_affected_coordinations_impact_level_enum" NOT NULL, "description" text NOT NULL, CONSTRAINT "uq_situation_affected_coordination" UNIQUE ("impact_assessment_id", "coordination_id"), CONSTRAINT "PK_25e06a044ff0e29d4cbb7f28dc7" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_56d812da656c2269c070e803a1" ON "situation_affected_coordinations" ("impact_assessment_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_fd9c161968c63e6d0afd3bcf9f" ON "situation_affected_coordinations" ("coordination_id") `);
-        await queryRunner.query(`CREATE TYPE "public"."situation_impact_assessments_operational_severity_enum" AS ENUM('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')`);
-        await queryRunner.query(`CREATE TABLE "situation_impact_assessments" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "situation_id" uuid NOT NULL, "operational_severity" "public"."situation_impact_assessments_operational_severity_enum" NOT NULL, "confidence" numeric(5,4) NOT NULL, "estimated_duration_minutes" integer NOT NULL, "summary" text NOT NULL, "reasoning" text NOT NULL, CONSTRAINT "REL_b0e012e08d6358d065ffb20af5" UNIQUE ("situation_id"), CONSTRAINT "PK_9ecb0b020686481bc2f90f73b4e" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_b0e012e08d6358d065ffb20af5" ON "situation_impact_assessments" ("situation_id") `);
-        await queryRunner.query(`CREATE TYPE "public"."situation_recommendations_priority_enum" AS ENUM('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')`);
-        await queryRunner.query(`CREATE TYPE "public"."situation_recommendations_status_enum" AS ENUM('PENDING', 'IN_PROGRESS', 'COMPLETED', 'DISMISSED')`);
-        await queryRunner.query(`CREATE TYPE "public"."situation_recommendations_generated_by_enum" AS ENUM('AI', 'MANUAL')`);
-        await queryRunner.query(`CREATE TABLE "situation_recommendations" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "situation_id" uuid NOT NULL, "title" character varying(200) NOT NULL, "description" text NOT NULL, "priority" "public"."situation_recommendations_priority_enum" NOT NULL, "status" "public"."situation_recommendations_status_enum" NOT NULL DEFAULT 'PENDING', "generated_by" "public"."situation_recommendations_generated_by_enum" NOT NULL, "assigned_user_id" uuid, "due_at" TIMESTAMP WITH TIME ZONE, "completed_at" TIMESTAMP WITH TIME ZONE, "execution_notes" text, CONSTRAINT "PK_4ea522958917c452926d66c3f71" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_2fe1991c0a854294e356651f82" ON "situation_recommendations" ("situation_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_e1e6dee733c1cc24e1f96afada" ON "situation_recommendations" ("priority") `);
-        await queryRunner.query(`CREATE INDEX "IDX_e8f0d1e92113adeae16bc66730" ON "situation_recommendations" ("status") `);
-        await queryRunner.query(`CREATE INDEX "IDX_b9f3ee68fda6d2d050d49523b6" ON "situation_recommendations" ("generated_by") `);
-        await queryRunner.query(`CREATE INDEX "IDX_76d5ec0264049f3412d3f0583d" ON "situation_recommendations" ("assigned_user_id") `);
-        await queryRunner.query(`CREATE TYPE "public"."situation_evidences_type_enum" AS ENUM('IMAGE', 'DOCUMENT', 'VIDEO', 'EMAIL', 'LINK', 'NOTE', 'OTHER')`);
-        await queryRunner.query(`CREATE TABLE "situation_evidences" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "situation_id" uuid NOT NULL, "uploaded_by_user_id" uuid NOT NULL, "type" "public"."situation_evidences_type_enum" NOT NULL, "title" character varying(200) NOT NULL, "description" text NOT NULL, "file_name" character varying(255), "storage_path" character varying(500), "mime_type" character varying(127), "file_size" bigint, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_02126d74c635f6071c962c9751b" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_4c3fd31f7acd2f9d7e2411f545" ON "situation_evidences" ("situation_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_c1d5aa6c902ad45deb27ba82cb" ON "situation_evidences" ("uploaded_by_user_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_1136dd7b8ca11cc6ca34c58ed5" ON "situation_evidences" ("type") `);
-        await queryRunner.query(`CREATE TYPE "public"."recommended_action_executions_execution_status_enum" AS ENUM('pending', 'in_progress', 'executed', 'not_executable')`);
-        await queryRunner.query(`CREATE TABLE "recommended_action_executions" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "event_id" uuid NOT NULL, "interpretation_id" uuid NOT NULL, "action_index" smallint NOT NULL, "priority" character varying(32) NOT NULL, "action_text" text NOT NULL, "reason" text NOT NULL, "suggested_area_name" character varying(180) NOT NULL, "suggested_area_id" uuid, "recommended_time" character varying(80) NOT NULL, "execution_status" "public"."recommended_action_executions_execution_status_enum" NOT NULL DEFAULT 'pending', "status_note" text, "observation" text, "assigned_to_user_id" character varying(64), "assigned_to_user_name" character varying(160), "started_at" TIMESTAMP WITH TIME ZONE, "completed_at" TIMESTAMP WITH TIME ZONE, CONSTRAINT "uq_recommended_action_interpretation_index" UNIQUE ("interpretation_id", "action_index"), CONSTRAINT "PK_64a4141596ae0f325ead2a27886" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_8cdebc46c6b3804522a5749552" ON "recommended_action_executions" ("event_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_7d4caee989250fd8e5e5e10dbd" ON "recommended_action_executions" ("interpretation_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_ca3d1282f755e9208672ef5b57" ON "recommended_action_executions" ("suggested_area_id") `);
-        await queryRunner.query(`CREATE TABLE "demo_users" ("id" character varying(120) NOT NULL, "name" character varying(180) NOT NULL, "role" character varying(32) NOT NULL, "selected_area_id" character varying(120), "onboarding_completed" boolean NOT NULL DEFAULT false, "onboarding_seen_at" TIMESTAMP WITH TIME ZONE, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_0e62e04de6a009d13bbbaffb498" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE TABLE "situation_analysis_sessions" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "situation_id" uuid NOT NULL, "version" integer NOT NULL, "provider" character varying(64) NOT NULL, "model" character varying(120) NOT NULL, "prompt_version" character varying(16) NOT NULL, "analysis_result" jsonb NOT NULL, "prompt_snapshot" text NOT NULL, "execution_time_ms" integer NOT NULL, "token_estimate" integer NOT NULL, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "uq_situation_analysis_sessions_situation_version" UNIQUE ("situation_id", "version"), CONSTRAINT "PK_e9abb96e67cf73056c28632c447" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_32dc2018ad09f2a6498357fda1" ON "situation_analysis_sessions" ("situation_id") `);
-        await queryRunner.query(`CREATE TABLE "situation_ai_analysis_records" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "situation_id" uuid NOT NULL, "current_session_id" uuid NOT NULL, "provider" character varying(64) NOT NULL, "analysis_result" jsonb NOT NULL, CONSTRAINT "PK_5864ca424fe37816e2d96c39409" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_29702ae7f4fdab3ccf65f01291" ON "situation_ai_analysis_records" ("situation_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_92873e806925b173249c56d520" ON "situation_ai_analysis_records" ("current_session_id") `);
-        await queryRunner.query(`CREATE TABLE "ai_interpretation_affected_areas" ("interpretation_id" uuid NOT NULL, "area_id" uuid NOT NULL, CONSTRAINT "PK_bacad431acf35c085f61d0acf64" PRIMARY KEY ("interpretation_id", "area_id"))`);
-        await queryRunner.query(`CREATE INDEX "IDX_be72c2f9a662e6fab73921ed92" ON "ai_interpretation_affected_areas" ("interpretation_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_3c997d8e02e91a513086bc4ffc" ON "ai_interpretation_affected_areas" ("area_id") `);
-        await queryRunner.query(`ALTER TABLE "coordination_dependencies" ADD CONSTRAINT "FK_a80bee11c32e324358e4564f19a" FOREIGN KEY ("source_coordination_id") REFERENCES "coordinations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "coordination_dependencies" ADD CONSTRAINT "FK_25d349c17059875590b74c60e45" FOREIGN KEY ("target_coordination_id") REFERENCES "coordinations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "role_permissions" ADD CONSTRAINT "FK_178199805b901ccd220ab7740ec" FOREIGN KEY ("role_id") REFERENCES "roles"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "role_permissions" ADD CONSTRAINT "FK_17022daf3f885f7d35423e9971e" FOREIGN KEY ("permission_id") REFERENCES "permissions"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "users" ADD CONSTRAINT "FK_a2cecd1a3531c0b041e29ba46e1" FOREIGN KEY ("role_id") REFERENCES "roles"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "users" ADD CONSTRAINT "FK_1420898e915adb8a430f1990eaf" FOREIGN KEY ("coordination_id") REFERENCES "coordinations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "operational_timeline_entries" ADD CONSTRAINT "FK_62ea9a9d71ae949c9ff467abdf9" FOREIGN KEY ("event_id") REFERENCES "operational_events"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "operational_events" ADD CONSTRAINT "FK_db69325c067addae74f0227841a" FOREIGN KEY ("source_area_id") REFERENCES "operational_areas"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "operational_indicators" ADD CONSTRAINT "FK_496dc7d3f90fc5e28a5d49e12ee" FOREIGN KEY ("interpretation_id") REFERENCES "ai_interpretations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "ai_interpretations" ADD CONSTRAINT "FK_a5b825125157347dab7a18c19f5" FOREIGN KEY ("event_id") REFERENCES "operational_events"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "ai_interpretations" ADD CONSTRAINT "FK_a9bd36cc7a7b4c0536c7c07c500" FOREIGN KEY ("category_id") REFERENCES "incident_categories"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "situations" ADD CONSTRAINT "FK_6c6bf9345455bf55ce6874be25b" FOREIGN KEY ("coordination_id") REFERENCES "coordinations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "situations" ADD CONSTRAINT "FK_1608fcab79c384ab82734d14c92" FOREIGN KEY ("created_by_user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "situations" ADD CONSTRAINT "FK_2bf7861aafe7310f9acc8158ecd" FOREIGN KEY ("assigned_user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "situations" ADD CONSTRAINT "FK_17876be35b5ee090046a1172cb0" FOREIGN KEY ("category_id") REFERENCES "incident_categories"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "situation_timeline_entries" ADD CONSTRAINT "FK_e1a88145eb0e742aa92658d86a3" FOREIGN KEY ("situation_id") REFERENCES "situations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "situation_timeline_entries" ADD CONSTRAINT "FK_1e905ff1d07d89d8a619956533b" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "situation_affected_coordinations" ADD CONSTRAINT "FK_56d812da656c2269c070e803a1b" FOREIGN KEY ("impact_assessment_id") REFERENCES "situation_impact_assessments"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "situation_affected_coordinations" ADD CONSTRAINT "FK_fd9c161968c63e6d0afd3bcf9f6" FOREIGN KEY ("coordination_id") REFERENCES "coordinations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "situation_impact_assessments" ADD CONSTRAINT "FK_b0e012e08d6358d065ffb20af51" FOREIGN KEY ("situation_id") REFERENCES "situations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "situation_recommendations" ADD CONSTRAINT "FK_2fe1991c0a854294e356651f827" FOREIGN KEY ("situation_id") REFERENCES "situations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "situation_recommendations" ADD CONSTRAINT "FK_76d5ec0264049f3412d3f0583dc" FOREIGN KEY ("assigned_user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "situation_evidences" ADD CONSTRAINT "FK_4c3fd31f7acd2f9d7e2411f5454" FOREIGN KEY ("situation_id") REFERENCES "situations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "situation_evidences" ADD CONSTRAINT "FK_c1d5aa6c902ad45deb27ba82cb2" FOREIGN KEY ("uploaded_by_user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "recommended_action_executions" ADD CONSTRAINT "FK_8cdebc46c6b3804522a57495520" FOREIGN KEY ("event_id") REFERENCES "operational_events"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "recommended_action_executions" ADD CONSTRAINT "FK_7d4caee989250fd8e5e5e10dbd2" FOREIGN KEY ("interpretation_id") REFERENCES "ai_interpretations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "recommended_action_executions" ADD CONSTRAINT "FK_ca3d1282f755e9208672ef5b574" FOREIGN KEY ("suggested_area_id") REFERENCES "operational_areas"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "situation_ai_analysis_records" ADD CONSTRAINT "FK_92873e806925b173249c56d520e" FOREIGN KEY ("current_session_id") REFERENCES "situation_analysis_sessions"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "ai_interpretation_affected_areas" ADD CONSTRAINT "FK_be72c2f9a662e6fab73921ed92d" FOREIGN KEY ("interpretation_id") REFERENCES "ai_interpretations"("id") ON DELETE CASCADE ON UPDATE CASCADE`);
-        await queryRunner.query(`ALTER TABLE "ai_interpretation_affected_areas" ADD CONSTRAINT "FK_3c997d8e02e91a513086bc4ffcd" FOREIGN KEY ("area_id") REFERENCES "operational_areas"("id") ON DELETE CASCADE ON UPDATE CASCADE`);
-    }
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
+    await queryRunner.query(
+      `CREATE TYPE "public"."coordination_dependencies_dependency_type_enum" AS ENUM('operational', 'academic', 'technical', 'communication')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "coordination_dependencies" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "source_coordination_id" uuid NOT NULL, "target_coordination_id" uuid NOT NULL, "dependency_weight" smallint NOT NULL DEFAULT '3', "dependency_type" "public"."coordination_dependencies_dependency_type_enum" NOT NULL DEFAULT 'operational', "bidirectional" boolean NOT NULL DEFAULT false, CONSTRAINT "uq_coordination_dependency_edge" UNIQUE ("source_coordination_id", "target_coordination_id"), CONSTRAINT "PK_7f69c35c149162293db48ca069d" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_a80bee11c32e324358e4564f19" ON "coordination_dependencies" ("source_coordination_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_25d349c17059875590b74c60e4" ON "coordination_dependencies" ("target_coordination_id") `,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "coordinations" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "code" character varying(64) NOT NULL, "name" character varying(180) NOT NULL, "short_name" character varying(80) NOT NULL, "description" text, "color" character varying(16) NOT NULL, "icon" character varying(64) NOT NULL, "image_asset" character varying(120) NOT NULL, "display_order" smallint NOT NULL DEFAULT '0', "is_active" boolean NOT NULL DEFAULT true, CONSTRAINT "PK_0c2b36758924c465608c0b64509" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE UNIQUE INDEX "IDX_74bab438e480475bc61da0df30" ON "coordinations" ("code") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_06854e50ff4eb5267ece342f33" ON "coordinations" ("display_order") `,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "permissions" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "code" character varying(120) NOT NULL, "name" character varying(180) NOT NULL, "module" character varying(80) NOT NULL, "description" text, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_920331560282b8bd21bb02290df" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE UNIQUE INDEX "IDX_8dad765629e83229da6feda1c1" ON "permissions" ("code") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_8b634526cdd01f2adba6c7ac07" ON "permissions" ("module") `,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "role_permissions" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "role_id" uuid NOT NULL, "permission_id" uuid NOT NULL, CONSTRAINT "uq_role_permission" UNIQUE ("role_id", "permission_id"), CONSTRAINT "PK_84059017c90bfcb701b8fa42297" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_178199805b901ccd220ab7740e" ON "role_permissions" ("role_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_17022daf3f885f7d35423e9971" ON "role_permissions" ("permission_id") `,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "roles" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "code" character varying(64) NOT NULL, "name" character varying(120) NOT NULL, "description" text, "is_system" boolean NOT NULL DEFAULT true, "is_active" boolean NOT NULL DEFAULT true, CONSTRAINT "PK_c1433d71a4838793a49dcad46ab" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE UNIQUE INDEX "IDX_f6d54f95c31b73fb1bdd8e91d0" ON "roles" ("code") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_e9f58bffa9bdcc402c0438a60c" ON "roles" ("is_active") `,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."users_status_enum" AS ENUM('ACTIVE', 'INACTIVE')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "users" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "google_sub" character varying(128), "email" character varying(320) NOT NULL, "full_name" character varying(200) NOT NULL, "photo_url" character varying(500), "role_id" uuid NOT NULL, "coordination_id" uuid NOT NULL, "status" "public"."users_status_enum" NOT NULL DEFAULT 'ACTIVE', "last_login_at" TIMESTAMP WITH TIME ZONE, CONSTRAINT "PK_a3ffb1c0c8416b9fc6f907b7433" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE UNIQUE INDEX "IDX_68b61ba0fb359b93b517cf1073" ON "users" ("google_sub") `,
+    );
+    await queryRunner.query(
+      `CREATE UNIQUE INDEX "IDX_97672ac88f789774dd47f7c8be" ON "users" ("email") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_a2cecd1a3531c0b041e29ba46e" ON "users" ("role_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_1420898e915adb8a430f1990ea" ON "users" ("coordination_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_3676155292d72c67cd4e090514" ON "users" ("status") `,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."operational_timeline_entries_type_enum" AS ENUM('event_registered', 'interpretation_generated', 'status_change', 'note')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "operational_timeline_entries" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "event_id" uuid NOT NULL, "type" "public"."operational_timeline_entries_type_enum" NOT NULL, "at" TIMESTAMP WITH TIME ZONE NOT NULL, "by_user_id" character varying(64), "by_user_name" character varying(160), "description" text NOT NULL, CONSTRAINT "PK_239179956936b40cbf92719a853" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_62ea9a9d71ae949c9ff467abdf" ON "operational_timeline_entries" ("event_id") `,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."operational_events_status_enum" AS ENUM('open', 'monitoring', 'resolved', 'archived')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "operational_events" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "title" character varying(200) NOT NULL, "description" text NOT NULL, "reported_by_id" character varying(64) NOT NULL, "reported_by_name" character varying(160) NOT NULL, "reported_at" TIMESTAMP WITH TIME ZONE NOT NULL, "source_area_id" uuid NOT NULL, "source_area_name" character varying(180) NOT NULL, "status" "public"."operational_events_status_enum" NOT NULL DEFAULT 'open', "observations" text, "attachment_names" jsonb NOT NULL DEFAULT '[]', "is_mock" boolean NOT NULL DEFAULT false, "source" character varying(40) NOT NULL DEFAULT 'production', "last_update_at" TIMESTAMP WITH TIME ZONE, "current_interpretation_id" uuid, CONSTRAINT "PK_40e2e64c90dcef117b247219c13" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_4e3835a0c6d13903d9353a71d2" ON "operational_events" ("reported_at") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_db69325c067addae74f0227841" ON "operational_events" ("source_area_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_39847210540c7923856c0ae771" ON "operational_events" ("status") `,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "operational_areas" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "code" character varying(32) NOT NULL, "name" character varying(180) NOT NULL, "description" text, "is_global" boolean NOT NULL DEFAULT false, CONSTRAINT "PK_2ea12201aa1d04be1e0ecc35eed" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE UNIQUE INDEX "IDX_298b31c534b892ffc334828b69" ON "operational_areas" ("code") `,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."operational_indicators_direction_enum" AS ENUM('higher_is_worse', 'higher_is_better')`,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."operational_indicators_source_enum" AS ENUM('engine', 'ai_suggested')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "operational_indicators" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "interpretation_id" uuid, "code" character varying(64) NOT NULL, "label" character varying(180) NOT NULL, "value" double precision NOT NULL, "unit" character varying(32), "direction" "public"."operational_indicators_direction_enum", "suggested_by_ai" boolean NOT NULL DEFAULT true, "source" "public"."operational_indicators_source_enum" NOT NULL DEFAULT 'ai_suggested', CONSTRAINT "PK_12cf607697800cdd527e38ca4d0" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_496dc7d3f90fc5e28a5d49e12e" ON "operational_indicators" ("interpretation_id") `,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."ai_interpretations_risk_level_enum" AS ENUM('low', 'moderate', 'high', 'critical')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "ai_interpretations" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "event_id" uuid NOT NULL, "category_id" uuid NOT NULL, "category_name" character varying(160) NOT NULL, "impact_severity" smallint NOT NULL, "affectation_percentage" smallint NOT NULL, "impact_internal" smallint NOT NULL, "impact_external" smallint NOT NULL, "impact_students" smallint NOT NULL, "risk_level" "public"."ai_interpretations_risk_level_enum" NOT NULL, "risk_score" smallint NOT NULL, "executive_summary" text NOT NULL, "narrative" text NOT NULL, "detected_patterns" jsonb NOT NULL DEFAULT '[]', "recommendations" jsonb NOT NULL DEFAULT '[]', "model_label" character varying(64) NOT NULL DEFAULT 'gemini-mock', "interpreted_at" TIMESTAMP WITH TIME ZONE NOT NULL, "confidence" real, "executive_report" jsonb, CONSTRAINT "PK_c010089656fdb57b6d48fa4f6fd" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_a5b825125157347dab7a18c19f" ON "ai_interpretations" ("event_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_a9bd36cc7a7b4c0536c7c07c50" ON "ai_interpretations" ("category_id") `,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "incident_categories" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "code" character varying(64) NOT NULL, "name" character varying(160) NOT NULL, "description" text, CONSTRAINT "PK_2cfeab33a7bb30b307dafb8b3b1" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE UNIQUE INDEX "IDX_e5ac03f0c03d02de1934d8ad9f" ON "incident_categories" ("code") `,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."situations_severity_enum" AS ENUM('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')`,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."situations_status_enum" AS ENUM('OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "situations" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "title" character varying(200) NOT NULL, "description" text NOT NULL, "coordination_id" uuid NOT NULL, "created_by_user_id" uuid NOT NULL, "assigned_user_id" uuid, "category_id" uuid NOT NULL, "severity" "public"."situations_severity_enum" NOT NULL, "status" "public"."situations_status_enum" NOT NULL DEFAULT 'OPEN', "last_status_comment" text, "resolved_at" TIMESTAMP WITH TIME ZONE, "closed_at" TIMESTAMP WITH TIME ZONE, "occurred_at" TIMESTAMP WITH TIME ZONE NOT NULL, CONSTRAINT "PK_e3fc708166295dcff265ca2fb56" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_6c6bf9345455bf55ce6874be25" ON "situations" ("coordination_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_1608fcab79c384ab82734d14c9" ON "situations" ("created_by_user_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_2bf7861aafe7310f9acc8158ec" ON "situations" ("assigned_user_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_17876be35b5ee090046a1172cb" ON "situations" ("category_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_b3fc80c5911d6382cfb130f7a2" ON "situations" ("severity") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_994cd430c3a7260b2aa98867b2" ON "situations" ("status") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_9aef199045fb11f1936b236a36" ON "situations" ("occurred_at") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "idx_situations_coordination_status" ON "situations" ("coordination_id", "status") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "idx_situations_status_occurred_at" ON "situations" ("status", "occurred_at") `,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."situation_timeline_entries_event_type_enum" AS ENUM('SITUATION_CREATED', 'STATUS_CHANGED', 'SEVERITY_CHANGED', 'UPDATED', 'COMMENT_ADDED', 'ATTACHMENT_ADDED', 'AI_ANALYZED', 'AI_ANALYSIS_STARTED', 'AI_ANALYSIS_FAILED', 'AI_ANALYSIS_VERSION_CREATED', 'AI_REANALYZED', 'RECOMMENDATION_GENERATED', 'RECOMMENDATION_UPDATED', 'RECOMMENDATION_COMPLETED', 'CLOSED', 'REOPENED')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "situation_timeline_entries" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "situation_id" uuid NOT NULL, "user_id" uuid, "event_type" "public"."situation_timeline_entries_event_type_enum" NOT NULL, "title" character varying(200) NOT NULL, "description" text NOT NULL, "metadata" jsonb, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_362f49e2877e8a47365b44e33e4" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_e1a88145eb0e742aa92658d86a" ON "situation_timeline_entries" ("situation_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_1e905ff1d07d89d8a619956533" ON "situation_timeline_entries" ("user_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_5733a402f1dcf24c0749022a17" ON "situation_timeline_entries" ("event_type") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "idx_situation_timeline_situation_created" ON "situation_timeline_entries" ("situation_id", "created_at") `,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."situation_affected_coordinations_impact_level_enum" AS ENUM('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "situation_affected_coordinations" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "impact_assessment_id" uuid NOT NULL, "coordination_id" uuid NOT NULL, "impact_level" "public"."situation_affected_coordinations_impact_level_enum" NOT NULL, "description" text NOT NULL, CONSTRAINT "uq_situation_affected_coordination" UNIQUE ("impact_assessment_id", "coordination_id"), CONSTRAINT "PK_25e06a044ff0e29d4cbb7f28dc7" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_56d812da656c2269c070e803a1" ON "situation_affected_coordinations" ("impact_assessment_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_fd9c161968c63e6d0afd3bcf9f" ON "situation_affected_coordinations" ("coordination_id") `,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."situation_impact_assessments_operational_severity_enum" AS ENUM('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "situation_impact_assessments" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "situation_id" uuid NOT NULL, "operational_severity" "public"."situation_impact_assessments_operational_severity_enum" NOT NULL, "confidence" numeric(5,4) NOT NULL, "estimated_duration_minutes" integer NOT NULL, "summary" text NOT NULL, "reasoning" text NOT NULL, CONSTRAINT "REL_b0e012e08d6358d065ffb20af5" UNIQUE ("situation_id"), CONSTRAINT "PK_9ecb0b020686481bc2f90f73b4e" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE UNIQUE INDEX "IDX_b0e012e08d6358d065ffb20af5" ON "situation_impact_assessments" ("situation_id") `,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."situation_recommendations_priority_enum" AS ENUM('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')`,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."situation_recommendations_status_enum" AS ENUM('PENDING', 'IN_PROGRESS', 'COMPLETED', 'DISMISSED')`,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."situation_recommendations_generated_by_enum" AS ENUM('AI', 'MANUAL')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "situation_recommendations" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "situation_id" uuid NOT NULL, "title" character varying(200) NOT NULL, "description" text NOT NULL, "priority" "public"."situation_recommendations_priority_enum" NOT NULL, "status" "public"."situation_recommendations_status_enum" NOT NULL DEFAULT 'PENDING', "generated_by" "public"."situation_recommendations_generated_by_enum" NOT NULL, "assigned_user_id" uuid, "due_at" TIMESTAMP WITH TIME ZONE, "completed_at" TIMESTAMP WITH TIME ZONE, "execution_notes" text, CONSTRAINT "PK_4ea522958917c452926d66c3f71" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_2fe1991c0a854294e356651f82" ON "situation_recommendations" ("situation_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_e1e6dee733c1cc24e1f96afada" ON "situation_recommendations" ("priority") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_e8f0d1e92113adeae16bc66730" ON "situation_recommendations" ("status") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_b9f3ee68fda6d2d050d49523b6" ON "situation_recommendations" ("generated_by") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_76d5ec0264049f3412d3f0583d" ON "situation_recommendations" ("assigned_user_id") `,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."situation_evidences_type_enum" AS ENUM('IMAGE', 'DOCUMENT', 'VIDEO', 'EMAIL', 'LINK', 'NOTE', 'OTHER')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "situation_evidences" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "situation_id" uuid NOT NULL, "uploaded_by_user_id" uuid NOT NULL, "type" "public"."situation_evidences_type_enum" NOT NULL, "title" character varying(200) NOT NULL, "description" text NOT NULL, "file_name" character varying(255), "storage_path" character varying(500), "mime_type" character varying(127), "file_size" bigint, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_02126d74c635f6071c962c9751b" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_4c3fd31f7acd2f9d7e2411f545" ON "situation_evidences" ("situation_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_c1d5aa6c902ad45deb27ba82cb" ON "situation_evidences" ("uploaded_by_user_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_1136dd7b8ca11cc6ca34c58ed5" ON "situation_evidences" ("type") `,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."recommended_action_executions_execution_status_enum" AS ENUM('pending', 'in_progress', 'executed', 'not_executable')`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "recommended_action_executions" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "event_id" uuid NOT NULL, "interpretation_id" uuid NOT NULL, "action_index" smallint NOT NULL, "priority" character varying(32) NOT NULL, "action_text" text NOT NULL, "reason" text NOT NULL, "suggested_area_name" character varying(180) NOT NULL, "suggested_area_id" uuid, "recommended_time" character varying(80) NOT NULL, "execution_status" "public"."recommended_action_executions_execution_status_enum" NOT NULL DEFAULT 'pending', "status_note" text, "observation" text, "assigned_to_user_id" character varying(64), "assigned_to_user_name" character varying(160), "started_at" TIMESTAMP WITH TIME ZONE, "completed_at" TIMESTAMP WITH TIME ZONE, CONSTRAINT "uq_recommended_action_interpretation_index" UNIQUE ("interpretation_id", "action_index"), CONSTRAINT "PK_64a4141596ae0f325ead2a27886" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_8cdebc46c6b3804522a5749552" ON "recommended_action_executions" ("event_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_7d4caee989250fd8e5e5e10dbd" ON "recommended_action_executions" ("interpretation_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_ca3d1282f755e9208672ef5b57" ON "recommended_action_executions" ("suggested_area_id") `,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "demo_users" ("id" character varying(120) NOT NULL, "name" character varying(180) NOT NULL, "role" character varying(32) NOT NULL, "selected_area_id" character varying(120), "onboarding_completed" boolean NOT NULL DEFAULT false, "onboarding_seen_at" TIMESTAMP WITH TIME ZONE, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_0e62e04de6a009d13bbbaffb498" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "situation_analysis_sessions" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "situation_id" uuid NOT NULL, "version" integer NOT NULL, "provider" character varying(64) NOT NULL, "model" character varying(120) NOT NULL, "prompt_version" character varying(16) NOT NULL, "analysis_result" jsonb NOT NULL, "prompt_snapshot" text NOT NULL, "execution_time_ms" integer NOT NULL, "token_estimate" integer NOT NULL, "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "uq_situation_analysis_sessions_situation_version" UNIQUE ("situation_id", "version"), CONSTRAINT "PK_e9abb96e67cf73056c28632c447" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_32dc2018ad09f2a6498357fda1" ON "situation_analysis_sessions" ("situation_id") `,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "situation_ai_analysis_records" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "situation_id" uuid NOT NULL, "current_session_id" uuid NOT NULL, "provider" character varying(64) NOT NULL, "analysis_result" jsonb NOT NULL, CONSTRAINT "PK_5864ca424fe37816e2d96c39409" PRIMARY KEY ("id"))`,
+    );
+    await queryRunner.query(
+      `CREATE UNIQUE INDEX "IDX_29702ae7f4fdab3ccf65f01291" ON "situation_ai_analysis_records" ("situation_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_92873e806925b173249c56d520" ON "situation_ai_analysis_records" ("current_session_id") `,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "ai_interpretation_affected_areas" ("interpretation_id" uuid NOT NULL, "area_id" uuid NOT NULL, CONSTRAINT "PK_bacad431acf35c085f61d0acf64" PRIMARY KEY ("interpretation_id", "area_id"))`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_be72c2f9a662e6fab73921ed92" ON "ai_interpretation_affected_areas" ("interpretation_id") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_3c997d8e02e91a513086bc4ffc" ON "ai_interpretation_affected_areas" ("area_id") `,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "coordination_dependencies" ADD CONSTRAINT "FK_a80bee11c32e324358e4564f19a" FOREIGN KEY ("source_coordination_id") REFERENCES "coordinations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "coordination_dependencies" ADD CONSTRAINT "FK_25d349c17059875590b74c60e45" FOREIGN KEY ("target_coordination_id") REFERENCES "coordinations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "role_permissions" ADD CONSTRAINT "FK_178199805b901ccd220ab7740ec" FOREIGN KEY ("role_id") REFERENCES "roles"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "role_permissions" ADD CONSTRAINT "FK_17022daf3f885f7d35423e9971e" FOREIGN KEY ("permission_id") REFERENCES "permissions"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "users" ADD CONSTRAINT "FK_a2cecd1a3531c0b041e29ba46e1" FOREIGN KEY ("role_id") REFERENCES "roles"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "users" ADD CONSTRAINT "FK_1420898e915adb8a430f1990eaf" FOREIGN KEY ("coordination_id") REFERENCES "coordinations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "operational_timeline_entries" ADD CONSTRAINT "FK_62ea9a9d71ae949c9ff467abdf9" FOREIGN KEY ("event_id") REFERENCES "operational_events"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "operational_events" ADD CONSTRAINT "FK_db69325c067addae74f0227841a" FOREIGN KEY ("source_area_id") REFERENCES "operational_areas"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "operational_indicators" ADD CONSTRAINT "FK_496dc7d3f90fc5e28a5d49e12ee" FOREIGN KEY ("interpretation_id") REFERENCES "ai_interpretations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "ai_interpretations" ADD CONSTRAINT "FK_a5b825125157347dab7a18c19f5" FOREIGN KEY ("event_id") REFERENCES "operational_events"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "ai_interpretations" ADD CONSTRAINT "FK_a9bd36cc7a7b4c0536c7c07c500" FOREIGN KEY ("category_id") REFERENCES "incident_categories"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situations" ADD CONSTRAINT "FK_6c6bf9345455bf55ce6874be25b" FOREIGN KEY ("coordination_id") REFERENCES "coordinations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situations" ADD CONSTRAINT "FK_1608fcab79c384ab82734d14c92" FOREIGN KEY ("created_by_user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situations" ADD CONSTRAINT "FK_2bf7861aafe7310f9acc8158ecd" FOREIGN KEY ("assigned_user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situations" ADD CONSTRAINT "FK_17876be35b5ee090046a1172cb0" FOREIGN KEY ("category_id") REFERENCES "incident_categories"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situation_timeline_entries" ADD CONSTRAINT "FK_e1a88145eb0e742aa92658d86a3" FOREIGN KEY ("situation_id") REFERENCES "situations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situation_timeline_entries" ADD CONSTRAINT "FK_1e905ff1d07d89d8a619956533b" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situation_affected_coordinations" ADD CONSTRAINT "FK_56d812da656c2269c070e803a1b" FOREIGN KEY ("impact_assessment_id") REFERENCES "situation_impact_assessments"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situation_affected_coordinations" ADD CONSTRAINT "FK_fd9c161968c63e6d0afd3bcf9f6" FOREIGN KEY ("coordination_id") REFERENCES "coordinations"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situation_impact_assessments" ADD CONSTRAINT "FK_b0e012e08d6358d065ffb20af51" FOREIGN KEY ("situation_id") REFERENCES "situations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situation_recommendations" ADD CONSTRAINT "FK_2fe1991c0a854294e356651f827" FOREIGN KEY ("situation_id") REFERENCES "situations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situation_recommendations" ADD CONSTRAINT "FK_76d5ec0264049f3412d3f0583dc" FOREIGN KEY ("assigned_user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situation_evidences" ADD CONSTRAINT "FK_4c3fd31f7acd2f9d7e2411f5454" FOREIGN KEY ("situation_id") REFERENCES "situations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situation_evidences" ADD CONSTRAINT "FK_c1d5aa6c902ad45deb27ba82cb2" FOREIGN KEY ("uploaded_by_user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "recommended_action_executions" ADD CONSTRAINT "FK_8cdebc46c6b3804522a57495520" FOREIGN KEY ("event_id") REFERENCES "operational_events"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "recommended_action_executions" ADD CONSTRAINT "FK_7d4caee989250fd8e5e5e10dbd2" FOREIGN KEY ("interpretation_id") REFERENCES "ai_interpretations"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "recommended_action_executions" ADD CONSTRAINT "FK_ca3d1282f755e9208672ef5b574" FOREIGN KEY ("suggested_area_id") REFERENCES "operational_areas"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situation_ai_analysis_records" ADD CONSTRAINT "FK_92873e806925b173249c56d520e" FOREIGN KEY ("current_session_id") REFERENCES "situation_analysis_sessions"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "ai_interpretation_affected_areas" ADD CONSTRAINT "FK_be72c2f9a662e6fab73921ed92d" FOREIGN KEY ("interpretation_id") REFERENCES "ai_interpretations"("id") ON DELETE CASCADE ON UPDATE CASCADE`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "ai_interpretation_affected_areas" ADD CONSTRAINT "FK_3c997d8e02e91a513086bc4ffcd" FOREIGN KEY ("area_id") REFERENCES "operational_areas"("id") ON DELETE CASCADE ON UPDATE CASCADE`,
+    );
+  }
 
-    public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`ALTER TABLE "ai_interpretation_affected_areas" DROP CONSTRAINT "FK_3c997d8e02e91a513086bc4ffcd"`);
-        await queryRunner.query(`ALTER TABLE "ai_interpretation_affected_areas" DROP CONSTRAINT "FK_be72c2f9a662e6fab73921ed92d"`);
-        await queryRunner.query(`ALTER TABLE "situation_ai_analysis_records" DROP CONSTRAINT "FK_92873e806925b173249c56d520e"`);
-        await queryRunner.query(`ALTER TABLE "recommended_action_executions" DROP CONSTRAINT "FK_ca3d1282f755e9208672ef5b574"`);
-        await queryRunner.query(`ALTER TABLE "recommended_action_executions" DROP CONSTRAINT "FK_7d4caee989250fd8e5e5e10dbd2"`);
-        await queryRunner.query(`ALTER TABLE "recommended_action_executions" DROP CONSTRAINT "FK_8cdebc46c6b3804522a57495520"`);
-        await queryRunner.query(`ALTER TABLE "situation_evidences" DROP CONSTRAINT "FK_c1d5aa6c902ad45deb27ba82cb2"`);
-        await queryRunner.query(`ALTER TABLE "situation_evidences" DROP CONSTRAINT "FK_4c3fd31f7acd2f9d7e2411f5454"`);
-        await queryRunner.query(`ALTER TABLE "situation_recommendations" DROP CONSTRAINT "FK_76d5ec0264049f3412d3f0583dc"`);
-        await queryRunner.query(`ALTER TABLE "situation_recommendations" DROP CONSTRAINT "FK_2fe1991c0a854294e356651f827"`);
-        await queryRunner.query(`ALTER TABLE "situation_impact_assessments" DROP CONSTRAINT "FK_b0e012e08d6358d065ffb20af51"`);
-        await queryRunner.query(`ALTER TABLE "situation_affected_coordinations" DROP CONSTRAINT "FK_fd9c161968c63e6d0afd3bcf9f6"`);
-        await queryRunner.query(`ALTER TABLE "situation_affected_coordinations" DROP CONSTRAINT "FK_56d812da656c2269c070e803a1b"`);
-        await queryRunner.query(`ALTER TABLE "situation_timeline_entries" DROP CONSTRAINT "FK_1e905ff1d07d89d8a619956533b"`);
-        await queryRunner.query(`ALTER TABLE "situation_timeline_entries" DROP CONSTRAINT "FK_e1a88145eb0e742aa92658d86a3"`);
-        await queryRunner.query(`ALTER TABLE "situations" DROP CONSTRAINT "FK_17876be35b5ee090046a1172cb0"`);
-        await queryRunner.query(`ALTER TABLE "situations" DROP CONSTRAINT "FK_2bf7861aafe7310f9acc8158ecd"`);
-        await queryRunner.query(`ALTER TABLE "situations" DROP CONSTRAINT "FK_1608fcab79c384ab82734d14c92"`);
-        await queryRunner.query(`ALTER TABLE "situations" DROP CONSTRAINT "FK_6c6bf9345455bf55ce6874be25b"`);
-        await queryRunner.query(`ALTER TABLE "ai_interpretations" DROP CONSTRAINT "FK_a9bd36cc7a7b4c0536c7c07c500"`);
-        await queryRunner.query(`ALTER TABLE "ai_interpretations" DROP CONSTRAINT "FK_a5b825125157347dab7a18c19f5"`);
-        await queryRunner.query(`ALTER TABLE "operational_indicators" DROP CONSTRAINT "FK_496dc7d3f90fc5e28a5d49e12ee"`);
-        await queryRunner.query(`ALTER TABLE "operational_events" DROP CONSTRAINT "FK_db69325c067addae74f0227841a"`);
-        await queryRunner.query(`ALTER TABLE "operational_timeline_entries" DROP CONSTRAINT "FK_62ea9a9d71ae949c9ff467abdf9"`);
-        await queryRunner.query(`ALTER TABLE "users" DROP CONSTRAINT "FK_1420898e915adb8a430f1990eaf"`);
-        await queryRunner.query(`ALTER TABLE "users" DROP CONSTRAINT "FK_a2cecd1a3531c0b041e29ba46e1"`);
-        await queryRunner.query(`ALTER TABLE "role_permissions" DROP CONSTRAINT "FK_17022daf3f885f7d35423e9971e"`);
-        await queryRunner.query(`ALTER TABLE "role_permissions" DROP CONSTRAINT "FK_178199805b901ccd220ab7740ec"`);
-        await queryRunner.query(`ALTER TABLE "coordination_dependencies" DROP CONSTRAINT "FK_25d349c17059875590b74c60e45"`);
-        await queryRunner.query(`ALTER TABLE "coordination_dependencies" DROP CONSTRAINT "FK_a80bee11c32e324358e4564f19a"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_3c997d8e02e91a513086bc4ffc"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_be72c2f9a662e6fab73921ed92"`);
-        await queryRunner.query(`DROP TABLE "ai_interpretation_affected_areas"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_92873e806925b173249c56d520"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_29702ae7f4fdab3ccf65f01291"`);
-        await queryRunner.query(`DROP TABLE "situation_ai_analysis_records"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_32dc2018ad09f2a6498357fda1"`);
-        await queryRunner.query(`DROP TABLE "situation_analysis_sessions"`);
-        await queryRunner.query(`DROP TABLE "demo_users"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_ca3d1282f755e9208672ef5b57"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_7d4caee989250fd8e5e5e10dbd"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_8cdebc46c6b3804522a5749552"`);
-        await queryRunner.query(`DROP TABLE "recommended_action_executions"`);
-        await queryRunner.query(`DROP TYPE "public"."recommended_action_executions_execution_status_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_1136dd7b8ca11cc6ca34c58ed5"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_c1d5aa6c902ad45deb27ba82cb"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_4c3fd31f7acd2f9d7e2411f545"`);
-        await queryRunner.query(`DROP TABLE "situation_evidences"`);
-        await queryRunner.query(`DROP TYPE "public"."situation_evidences_type_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_76d5ec0264049f3412d3f0583d"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_b9f3ee68fda6d2d050d49523b6"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_e8f0d1e92113adeae16bc66730"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_e1e6dee733c1cc24e1f96afada"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_2fe1991c0a854294e356651f82"`);
-        await queryRunner.query(`DROP TABLE "situation_recommendations"`);
-        await queryRunner.query(`DROP TYPE "public"."situation_recommendations_generated_by_enum"`);
-        await queryRunner.query(`DROP TYPE "public"."situation_recommendations_status_enum"`);
-        await queryRunner.query(`DROP TYPE "public"."situation_recommendations_priority_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_b0e012e08d6358d065ffb20af5"`);
-        await queryRunner.query(`DROP TABLE "situation_impact_assessments"`);
-        await queryRunner.query(`DROP TYPE "public"."situation_impact_assessments_operational_severity_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_fd9c161968c63e6d0afd3bcf9f"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_56d812da656c2269c070e803a1"`);
-        await queryRunner.query(`DROP TABLE "situation_affected_coordinations"`);
-        await queryRunner.query(`DROP TYPE "public"."situation_affected_coordinations_impact_level_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."idx_situation_timeline_situation_created"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_5733a402f1dcf24c0749022a17"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_1e905ff1d07d89d8a619956533"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_e1a88145eb0e742aa92658d86a"`);
-        await queryRunner.query(`DROP TABLE "situation_timeline_entries"`);
-        await queryRunner.query(`DROP TYPE "public"."situation_timeline_entries_event_type_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."idx_situations_status_occurred_at"`);
-        await queryRunner.query(`DROP INDEX "public"."idx_situations_coordination_status"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_9aef199045fb11f1936b236a36"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_994cd430c3a7260b2aa98867b2"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_b3fc80c5911d6382cfb130f7a2"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_17876be35b5ee090046a1172cb"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_2bf7861aafe7310f9acc8158ec"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_1608fcab79c384ab82734d14c9"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_6c6bf9345455bf55ce6874be25"`);
-        await queryRunner.query(`DROP TABLE "situations"`);
-        await queryRunner.query(`DROP TYPE "public"."situations_status_enum"`);
-        await queryRunner.query(`DROP TYPE "public"."situations_severity_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_e5ac03f0c03d02de1934d8ad9f"`);
-        await queryRunner.query(`DROP TABLE "incident_categories"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_a9bd36cc7a7b4c0536c7c07c50"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_a5b825125157347dab7a18c19f"`);
-        await queryRunner.query(`DROP TABLE "ai_interpretations"`);
-        await queryRunner.query(`DROP TYPE "public"."ai_interpretations_risk_level_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_496dc7d3f90fc5e28a5d49e12e"`);
-        await queryRunner.query(`DROP TABLE "operational_indicators"`);
-        await queryRunner.query(`DROP TYPE "public"."operational_indicators_source_enum"`);
-        await queryRunner.query(`DROP TYPE "public"."operational_indicators_direction_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_298b31c534b892ffc334828b69"`);
-        await queryRunner.query(`DROP TABLE "operational_areas"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_39847210540c7923856c0ae771"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_db69325c067addae74f0227841"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_4e3835a0c6d13903d9353a71d2"`);
-        await queryRunner.query(`DROP TABLE "operational_events"`);
-        await queryRunner.query(`DROP TYPE "public"."operational_events_status_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_62ea9a9d71ae949c9ff467abdf"`);
-        await queryRunner.query(`DROP TABLE "operational_timeline_entries"`);
-        await queryRunner.query(`DROP TYPE "public"."operational_timeline_entries_type_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_3676155292d72c67cd4e090514"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_1420898e915adb8a430f1990ea"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_a2cecd1a3531c0b041e29ba46e"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_97672ac88f789774dd47f7c8be"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_68b61ba0fb359b93b517cf1073"`);
-        await queryRunner.query(`DROP TABLE "users"`);
-        await queryRunner.query(`DROP TYPE "public"."users_status_enum"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_e9f58bffa9bdcc402c0438a60c"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_f6d54f95c31b73fb1bdd8e91d0"`);
-        await queryRunner.query(`DROP TABLE "roles"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_17022daf3f885f7d35423e9971"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_178199805b901ccd220ab7740e"`);
-        await queryRunner.query(`DROP TABLE "role_permissions"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_8b634526cdd01f2adba6c7ac07"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_8dad765629e83229da6feda1c1"`);
-        await queryRunner.query(`DROP TABLE "permissions"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_06854e50ff4eb5267ece342f33"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_74bab438e480475bc61da0df30"`);
-        await queryRunner.query(`DROP TABLE "coordinations"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_25d349c17059875590b74c60e4"`);
-        await queryRunner.query(`DROP INDEX "public"."IDX_a80bee11c32e324358e4564f19"`);
-        await queryRunner.query(`DROP TABLE "coordination_dependencies"`);
-        await queryRunner.query(`DROP TYPE "public"."coordination_dependencies_dependency_type_enum"`);
-    }
-
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(
+      `ALTER TABLE "ai_interpretation_affected_areas" DROP CONSTRAINT "FK_3c997d8e02e91a513086bc4ffcd"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "ai_interpretation_affected_areas" DROP CONSTRAINT "FK_be72c2f9a662e6fab73921ed92d"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situation_ai_analysis_records" DROP CONSTRAINT "FK_92873e806925b173249c56d520e"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "recommended_action_executions" DROP CONSTRAINT "FK_ca3d1282f755e9208672ef5b574"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "recommended_action_executions" DROP CONSTRAINT "FK_7d4caee989250fd8e5e5e10dbd2"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "recommended_action_executions" DROP CONSTRAINT "FK_8cdebc46c6b3804522a57495520"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situation_evidences" DROP CONSTRAINT "FK_c1d5aa6c902ad45deb27ba82cb2"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situation_evidences" DROP CONSTRAINT "FK_4c3fd31f7acd2f9d7e2411f5454"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situation_recommendations" DROP CONSTRAINT "FK_76d5ec0264049f3412d3f0583dc"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situation_recommendations" DROP CONSTRAINT "FK_2fe1991c0a854294e356651f827"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situation_impact_assessments" DROP CONSTRAINT "FK_b0e012e08d6358d065ffb20af51"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situation_affected_coordinations" DROP CONSTRAINT "FK_fd9c161968c63e6d0afd3bcf9f6"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situation_affected_coordinations" DROP CONSTRAINT "FK_56d812da656c2269c070e803a1b"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situation_timeline_entries" DROP CONSTRAINT "FK_1e905ff1d07d89d8a619956533b"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situation_timeline_entries" DROP CONSTRAINT "FK_e1a88145eb0e742aa92658d86a3"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situations" DROP CONSTRAINT "FK_17876be35b5ee090046a1172cb0"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situations" DROP CONSTRAINT "FK_2bf7861aafe7310f9acc8158ecd"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situations" DROP CONSTRAINT "FK_1608fcab79c384ab82734d14c92"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "situations" DROP CONSTRAINT "FK_6c6bf9345455bf55ce6874be25b"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "ai_interpretations" DROP CONSTRAINT "FK_a9bd36cc7a7b4c0536c7c07c500"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "ai_interpretations" DROP CONSTRAINT "FK_a5b825125157347dab7a18c19f5"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "operational_indicators" DROP CONSTRAINT "FK_496dc7d3f90fc5e28a5d49e12ee"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "operational_events" DROP CONSTRAINT "FK_db69325c067addae74f0227841a"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "operational_timeline_entries" DROP CONSTRAINT "FK_62ea9a9d71ae949c9ff467abdf9"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "users" DROP CONSTRAINT "FK_1420898e915adb8a430f1990eaf"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "users" DROP CONSTRAINT "FK_a2cecd1a3531c0b041e29ba46e1"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "role_permissions" DROP CONSTRAINT "FK_17022daf3f885f7d35423e9971e"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "role_permissions" DROP CONSTRAINT "FK_178199805b901ccd220ab7740ec"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "coordination_dependencies" DROP CONSTRAINT "FK_25d349c17059875590b74c60e45"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "coordination_dependencies" DROP CONSTRAINT "FK_a80bee11c32e324358e4564f19a"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_3c997d8e02e91a513086bc4ffc"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_be72c2f9a662e6fab73921ed92"`,
+    );
+    await queryRunner.query(`DROP TABLE "ai_interpretation_affected_areas"`);
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_92873e806925b173249c56d520"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_29702ae7f4fdab3ccf65f01291"`,
+    );
+    await queryRunner.query(`DROP TABLE "situation_ai_analysis_records"`);
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_32dc2018ad09f2a6498357fda1"`,
+    );
+    await queryRunner.query(`DROP TABLE "situation_analysis_sessions"`);
+    await queryRunner.query(`DROP TABLE "demo_users"`);
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_ca3d1282f755e9208672ef5b57"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_7d4caee989250fd8e5e5e10dbd"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_8cdebc46c6b3804522a5749552"`,
+    );
+    await queryRunner.query(`DROP TABLE "recommended_action_executions"`);
+    await queryRunner.query(
+      `DROP TYPE "public"."recommended_action_executions_execution_status_enum"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_1136dd7b8ca11cc6ca34c58ed5"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_c1d5aa6c902ad45deb27ba82cb"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_4c3fd31f7acd2f9d7e2411f545"`,
+    );
+    await queryRunner.query(`DROP TABLE "situation_evidences"`);
+    await queryRunner.query(
+      `DROP TYPE "public"."situation_evidences_type_enum"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_76d5ec0264049f3412d3f0583d"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_b9f3ee68fda6d2d050d49523b6"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_e8f0d1e92113adeae16bc66730"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_e1e6dee733c1cc24e1f96afada"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_2fe1991c0a854294e356651f82"`,
+    );
+    await queryRunner.query(`DROP TABLE "situation_recommendations"`);
+    await queryRunner.query(
+      `DROP TYPE "public"."situation_recommendations_generated_by_enum"`,
+    );
+    await queryRunner.query(
+      `DROP TYPE "public"."situation_recommendations_status_enum"`,
+    );
+    await queryRunner.query(
+      `DROP TYPE "public"."situation_recommendations_priority_enum"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_b0e012e08d6358d065ffb20af5"`,
+    );
+    await queryRunner.query(`DROP TABLE "situation_impact_assessments"`);
+    await queryRunner.query(
+      `DROP TYPE "public"."situation_impact_assessments_operational_severity_enum"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_fd9c161968c63e6d0afd3bcf9f"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_56d812da656c2269c070e803a1"`,
+    );
+    await queryRunner.query(`DROP TABLE "situation_affected_coordinations"`);
+    await queryRunner.query(
+      `DROP TYPE "public"."situation_affected_coordinations_impact_level_enum"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."idx_situation_timeline_situation_created"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_5733a402f1dcf24c0749022a17"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_1e905ff1d07d89d8a619956533"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_e1a88145eb0e742aa92658d86a"`,
+    );
+    await queryRunner.query(`DROP TABLE "situation_timeline_entries"`);
+    await queryRunner.query(
+      `DROP TYPE "public"."situation_timeline_entries_event_type_enum"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."idx_situations_status_occurred_at"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."idx_situations_coordination_status"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_9aef199045fb11f1936b236a36"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_994cd430c3a7260b2aa98867b2"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_b3fc80c5911d6382cfb130f7a2"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_17876be35b5ee090046a1172cb"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_2bf7861aafe7310f9acc8158ec"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_1608fcab79c384ab82734d14c9"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_6c6bf9345455bf55ce6874be25"`,
+    );
+    await queryRunner.query(`DROP TABLE "situations"`);
+    await queryRunner.query(`DROP TYPE "public"."situations_status_enum"`);
+    await queryRunner.query(`DROP TYPE "public"."situations_severity_enum"`);
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_e5ac03f0c03d02de1934d8ad9f"`,
+    );
+    await queryRunner.query(`DROP TABLE "incident_categories"`);
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_a9bd36cc7a7b4c0536c7c07c50"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_a5b825125157347dab7a18c19f"`,
+    );
+    await queryRunner.query(`DROP TABLE "ai_interpretations"`);
+    await queryRunner.query(
+      `DROP TYPE "public"."ai_interpretations_risk_level_enum"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_496dc7d3f90fc5e28a5d49e12e"`,
+    );
+    await queryRunner.query(`DROP TABLE "operational_indicators"`);
+    await queryRunner.query(
+      `DROP TYPE "public"."operational_indicators_source_enum"`,
+    );
+    await queryRunner.query(
+      `DROP TYPE "public"."operational_indicators_direction_enum"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_298b31c534b892ffc334828b69"`,
+    );
+    await queryRunner.query(`DROP TABLE "operational_areas"`);
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_39847210540c7923856c0ae771"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_db69325c067addae74f0227841"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_4e3835a0c6d13903d9353a71d2"`,
+    );
+    await queryRunner.query(`DROP TABLE "operational_events"`);
+    await queryRunner.query(
+      `DROP TYPE "public"."operational_events_status_enum"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_62ea9a9d71ae949c9ff467abdf"`,
+    );
+    await queryRunner.query(`DROP TABLE "operational_timeline_entries"`);
+    await queryRunner.query(
+      `DROP TYPE "public"."operational_timeline_entries_type_enum"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_3676155292d72c67cd4e090514"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_1420898e915adb8a430f1990ea"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_a2cecd1a3531c0b041e29ba46e"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_97672ac88f789774dd47f7c8be"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_68b61ba0fb359b93b517cf1073"`,
+    );
+    await queryRunner.query(`DROP TABLE "users"`);
+    await queryRunner.query(`DROP TYPE "public"."users_status_enum"`);
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_e9f58bffa9bdcc402c0438a60c"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_f6d54f95c31b73fb1bdd8e91d0"`,
+    );
+    await queryRunner.query(`DROP TABLE "roles"`);
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_17022daf3f885f7d35423e9971"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_178199805b901ccd220ab7740e"`,
+    );
+    await queryRunner.query(`DROP TABLE "role_permissions"`);
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_8b634526cdd01f2adba6c7ac07"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_8dad765629e83229da6feda1c1"`,
+    );
+    await queryRunner.query(`DROP TABLE "permissions"`);
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_06854e50ff4eb5267ece342f33"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_74bab438e480475bc61da0df30"`,
+    );
+    await queryRunner.query(`DROP TABLE "coordinations"`);
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_25d349c17059875590b74c60e4"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_a80bee11c32e324358e4564f19"`,
+    );
+    await queryRunner.query(`DROP TABLE "coordination_dependencies"`);
+    await queryRunner.query(
+      `DROP TYPE "public"."coordination_dependencies_dependency_type_enum"`,
+    );
+  }
 }

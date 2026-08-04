@@ -136,7 +136,10 @@ export class AIAnalysisComparisonService {
     return { added, removed, changed };
   }
 
-  compareImpact(from: AIAnalysisResult, to: AIAnalysisResult): ImpactComparison {
+  compareImpact(
+    from: AIAnalysisResult,
+    to: AIAnalysisResult,
+  ): ImpactComparison {
     return {
       operationalSeverityChanged:
         from.impactAssessment.operationalSeverity !==

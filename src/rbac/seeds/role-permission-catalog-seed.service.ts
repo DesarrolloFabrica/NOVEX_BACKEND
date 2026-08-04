@@ -17,7 +17,16 @@ export class RolePermissionCatalogSeedService implements OnApplicationBootstrap 
     private readonly rolesRepository: Repository<Role>,
   ) {}
 
-  async onApplicationBootstrap(): Promise<void> {
+  onApplicationBootstrap(): void {
+    void this.syncRolePermissions().catch((error: unknown) => {
+      this.logger.error(
+        'RBAC sync en arranque falló; el servicio sigue operativo.',
+        error instanceof Error ? error.stack : String(error),
+      );
+    });
+  }
+
+  private async syncRolePermissions(): Promise<void> {
     const roles = await this.rolesRepository.find();
     const rolesByCode = new Map(roles.map((role) => [role.code, role]));
     let totalAssignments = 0;
@@ -57,7 +66,7 @@ export class RolePermissionCatalogSeedService implements OnApplicationBootstrap 
             await this.permissionsService.findByCode(permissionCode);
           await this.permissionsService.assignToRole(role.id, permission.id);
           totalAssignments += 1;
-        } catch (error) {
+        } catch {
           this.logger.warn(
             `Permiso no encontrado para RBAC (${permissionCode}): omitiendo asignación.`,
           );

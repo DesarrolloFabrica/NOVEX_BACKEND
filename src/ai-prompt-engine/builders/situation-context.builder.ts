@@ -26,7 +26,9 @@ export class SituationContextBuilder {
     private readonly impactRepository: SituationImpactRepository,
   ) {}
 
-  async buildOperationalContext(situationId: string): Promise<SituationContext> {
+  async buildOperationalContext(
+    situationId: string,
+  ): Promise<SituationContext> {
     const entity = await this.getSituationEntity(situationId);
     const [timeline, evidences, existingRecommendations, previousAssessment] =
       await Promise.all([
@@ -72,7 +74,9 @@ export class SituationContextBuilder {
     };
   }
 
-  async buildSituation(situationId: string): Promise<SituationContextSituation> {
+  async buildSituation(
+    situationId: string,
+  ): Promise<SituationContextSituation> {
     const entity = await this.getSituationEntity(situationId);
     return this.mapSituation(entity);
   }
@@ -80,7 +84,8 @@ export class SituationContextBuilder {
   async buildTimeline(
     situationId: string,
   ): Promise<SituationContextTimelineEntry[]> {
-    const entries = await this.timelineRepository.findBySituationId(situationId);
+    const entries =
+      await this.timelineRepository.findBySituationId(situationId);
     return entries.map((entry) => ({
       id: entry.id,
       eventType: entry.eventType,
@@ -92,7 +97,9 @@ export class SituationContextBuilder {
     }));
   }
 
-  async buildEvidence(situationId: string): Promise<SituationContextEvidence[]> {
+  async buildEvidence(
+    situationId: string,
+  ): Promise<SituationContextEvidence[]> {
     const items = await this.evidenceRepository.findBySituationId(situationId);
     return items.map((item) => ({
       id: item.id,
@@ -128,7 +135,8 @@ export class SituationContextBuilder {
   async buildImpact(
     situationId: string,
   ): Promise<SituationContextImpactAssessment | null> {
-    const assessment = await this.impactRepository.findBySituationId(situationId);
+    const assessment =
+      await this.impactRepository.findBySituationId(situationId);
     if (!assessment) {
       return null;
     }
@@ -154,9 +162,8 @@ export class SituationContextBuilder {
   }
 
   private async getSituationEntity(situationId: string): Promise<Situation> {
-    const situation = await this.situationsRepository.findByIdWithRelations(
-      situationId,
-    );
+    const situation =
+      await this.situationsRepository.findByIdWithRelations(situationId);
     if (!situation) {
       throw new NotFoundException(`Situación no encontrada: ${situationId}`);
     }

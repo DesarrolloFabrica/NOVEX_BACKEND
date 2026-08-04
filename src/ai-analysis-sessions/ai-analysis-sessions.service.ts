@@ -1,5 +1,4 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { AIAnalysisResult } from '../ai-analysis/contracts/ai-analysis-result.contract';
 import type { CompletePrompt } from '../ai-prompt-engine/contracts/prompt.contract';
 import {
   AnalysisHistoryResponseDto,
@@ -19,7 +18,9 @@ export class AIAnalysisSessionsService {
   async createSession(
     input: CreateAnalysisSessionInput,
   ): Promise<SituationAnalysisSession> {
-    const version = await this.sessionsRepository.getNextVersion(input.situationId);
+    const version = await this.sessionsRepository.getNextVersion(
+      input.situationId,
+    );
 
     const session = this.sessionsRepository.create({
       situationId: input.situationId,
@@ -37,14 +38,13 @@ export class AIAnalysisSessionsService {
   }
 
   async getHistory(situationId: string): Promise<AnalysisHistoryResponseDto> {
-    const sessions = await this.sessionsRepository.findBySituationId(situationId);
+    const sessions =
+      await this.sessionsRepository.findBySituationId(situationId);
     const latestVersion = sessions.at(-1)?.version ?? null;
 
     return {
       situationId,
-      items: sessions.map((session) =>
-        this.toSummary(session, latestVersion),
-      ),
+      items: sessions.map((session) => this.toSummary(session, latestVersion)),
       total: sessions.length,
       latestVersion,
     };
@@ -64,9 +64,8 @@ export class AIAnalysisSessionsService {
       );
     }
 
-    const latest = await this.sessionsRepository.findLatestBySituationId(
-      situationId,
-    );
+    const latest =
+      await this.sessionsRepository.findLatestBySituationId(situationId);
 
     return this.toDetail(session, latest?.version ?? session.version);
   }

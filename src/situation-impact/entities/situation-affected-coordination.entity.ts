@@ -20,10 +20,14 @@ export class SituationAffectedCoordination {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @ManyToOne(() => SituationImpactAssessment, (assessment) => assessment.affectedCoordinations, {
-    nullable: false,
-    onDelete: 'CASCADE',
-  })
+  @ManyToOne(
+    () => SituationImpactAssessment,
+    (assessment) => assessment.affectedCoordinations,
+    {
+      nullable: false,
+      onDelete: 'CASCADE',
+    },
+  )
   @JoinColumn({ name: 'impact_assessment_id' })
   impactAssessment!: SituationImpactAssessment;
 

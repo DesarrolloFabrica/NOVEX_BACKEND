@@ -1,11 +1,4 @@
-import {
-  Column,
-  Entity,
-  Index,
-  JoinColumn,
-  ManyToOne,
-  Unique,
-} from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToOne, Unique } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { CoordinationDependencyType } from '../../common/enums/coordination.enums';
 import { Coordination } from './coordination.entity';
@@ -16,10 +9,14 @@ import { Coordination } from './coordination.entity';
   'targetCoordinationId',
 ])
 export class CoordinationDependency extends BaseEntity {
-  @ManyToOne(() => Coordination, (coordination) => coordination.outgoingDependencies, {
-    nullable: false,
-    onDelete: 'CASCADE',
-  })
+  @ManyToOne(
+    () => Coordination,
+    (coordination) => coordination.outgoingDependencies,
+    {
+      nullable: false,
+      onDelete: 'CASCADE',
+    },
+  )
   @JoinColumn({ name: 'source_coordination_id' })
   sourceCoordination!: Coordination;
 
@@ -27,10 +24,14 @@ export class CoordinationDependency extends BaseEntity {
   @Column({ type: 'uuid', name: 'source_coordination_id' })
   sourceCoordinationId!: string;
 
-  @ManyToOne(() => Coordination, (coordination) => coordination.incomingDependencies, {
-    nullable: false,
-    onDelete: 'CASCADE',
-  })
+  @ManyToOne(
+    () => Coordination,
+    (coordination) => coordination.incomingDependencies,
+    {
+      nullable: false,
+      onDelete: 'CASCADE',
+    },
+  )
   @JoinColumn({ name: 'target_coordination_id' })
   targetCoordination!: Coordination;
 

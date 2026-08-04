@@ -59,7 +59,7 @@ export class BootstrapAdminSeedService implements OnApplicationBootstrap {
         this.logger.warn(
           `Bootstrap admin: catálogo incompleto (intento ${attempt}/30). Esperando seeds...`,
         );
-      } catch (error) {
+      } catch {
         this.logger.warn(
           `Bootstrap admin: error temporal en intento ${attempt}/30.`,
         );

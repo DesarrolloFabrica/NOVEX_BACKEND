@@ -25,12 +25,17 @@ export class DevelopmentUserSeedService implements OnApplicationBootstrap {
     private readonly coordinationsRepository: Repository<Coordination>,
   ) {}
 
-  async onApplicationBootstrap(): Promise<void> {
+  onApplicationBootstrap(): void {
     if (this.configService.get<string>('nodeEnv') !== 'development') {
       return;
     }
 
-    await this.seedDevelopmentUser();
+    void this.seedDevelopmentUser().catch((error: unknown) => {
+      this.logger.error(
+        'Seed de usuario de desarrollo falló.',
+        error instanceof Error ? error.stack : String(error),
+      );
+    });
   }
 
   private async seedDevelopmentUser(): Promise<void> {

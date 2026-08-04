@@ -1,4 +1,7 @@
-import type { SituationSeverity, SituationStatus } from '../../common/enums/situation.enums';
+import type {
+  SituationSeverity,
+  SituationStatus,
+} from '../../common/enums/situation.enums';
 import type { EvidenceType } from '../../common/enums/situation-evidence.enums';
 import type {
   RecommendationPriority,
@@ -10,11 +13,20 @@ import type {
 } from '../../common/enums/situation-impact.enums';
 import type { TimelineEventType } from '../../common/enums/situation-timeline.enums';
 
-export type { SituationSeverity, SituationStatus } from '../../common/enums/situation.enums';
+export type {
+  SituationSeverity,
+  SituationStatus,
+} from '../../common/enums/situation.enums';
 export type { EvidenceType } from '../../common/enums/situation-evidence.enums';
 export type { TimelineEventType } from '../../common/enums/situation-timeline.enums';
-export type { RecommendationPriority, RecommendationStatus } from '../../common/enums/situation-recommendation.enums';
-export type { ImpactLevel, OperationalSeverity } from '../../common/enums/situation-impact.enums';
+export type {
+  RecommendationPriority,
+  RecommendationStatus,
+} from '../../common/enums/situation-recommendation.enums';
+export type {
+  ImpactLevel,
+  OperationalSeverity,
+} from '../../common/enums/situation-impact.enums';
 
 export interface SituationContextSituation {
   id: string;

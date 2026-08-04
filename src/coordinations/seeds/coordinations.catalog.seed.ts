@@ -30,9 +30,7 @@ export interface CoordinationDependencyCatalogItem {
  * Mapeo canónico área de impacto → coordinación.
  * Alineado a IMPACT_AREA_BINDINGS y COORDINATION_ALIASES del frontend.
  */
-export const IMPACT_AREA_COORDINATION_CODE: Readonly<
-  Record<string, string>
-> = {
+export const IMPACT_AREA_COORDINATION_CODE: Readonly<Record<string, string>> = {
   planning: 'coord-general',
   infrastructure: 'coord-general',
   technology: 'coord-ingenierias',

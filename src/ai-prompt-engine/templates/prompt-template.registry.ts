@@ -135,7 +135,8 @@ const OUTPUT_FORMAT_SECTIONS_V2 = [
 export const PROMPT_TEMPLATE_V1_OPERATIONAL_ANALYSIS: PromptTemplate = {
   id: 'operational-analysis',
   version: PromptVersion.V1,
-  description: 'Análisis operacional integral del expediente NOVEX (versión legada).',
+  description:
+    'Análisis operacional integral del expediente NOVEX (versión legada).',
   isActive: false,
   system: [...SYSTEM_SECTIONS_V1],
   context: [...CONTEXT_SECTIONS],
@@ -158,7 +159,8 @@ export const PROMPT_TEMPLATE_V2_EXECUTIVE_INTELLIGENCE: PromptTemplate = {
 export const PROMPT_TEMPLATE_V3_IMPACT_FOCUS: PromptTemplate = {
   id: 'operational-analysis-impact',
   version: PromptVersion.V3,
-  description: 'Análisis con énfasis en impacto y propagación entre coordinaciones.',
+  description:
+    'Análisis con énfasis en impacto y propagación entre coordinaciones.',
   isActive: false,
   system: [
     ...SYSTEM_SECTIONS_V1,
@@ -201,5 +203,7 @@ export function getActivePromptTemplate(): PromptTemplate {
 export function getPromptTemplateByVersion(
   version: PromptVersion,
 ): PromptTemplate | null {
-  return PROMPT_TEMPLATES.find((template) => template.version === version) ?? null;
+  return (
+    PROMPT_TEMPLATES.find((template) => template.version === version) ?? null
+  );
 }

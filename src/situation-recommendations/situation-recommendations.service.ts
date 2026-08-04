@@ -244,7 +244,8 @@ export class SituationRecommendationsService {
         metadata: {
           recommendationId: recommendation.id,
           fields: Object.keys(dto).filter(
-            (key) => dto[key as keyof UpdateSituationRecommendationDto] !== undefined,
+            (key) =>
+              dto[key as keyof UpdateSituationRecommendationDto] !== undefined,
           ),
         },
       });

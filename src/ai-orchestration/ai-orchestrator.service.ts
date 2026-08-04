@@ -1,11 +1,7 @@
 import {
-
   Injectable,
-
   NotFoundException,
-
   ServiceUnavailableException,
-
 } from '@nestjs/common';
 
 import { ConfigService } from '@nestjs/config';
@@ -31,25 +27,17 @@ import { SituationTimelineService } from '../situation-timeline/situation-timeli
 import { AIPromptEngineService } from '../ai-prompt-engine/ai-prompt-engine.service';
 
 import {
-
   ExecuteAIAnalysisResponseDto,
-
   SituationAIAnalysisResponseDto,
-
 } from './dto/ai-orchestration.dto';
 
 import { GeminiProvider } from './providers/gemini.provider';
 
 import { SituationAIAnalysisRecordRepository } from './repositories/situation-ai-analysis-record.repository';
 
-
-
 @Injectable()
-
 export class AIOrchestrator {
-
   constructor(
-
     private readonly configService: ConfigService,
 
     private readonly situationsRepository: SituationsRepository,
@@ -69,31 +57,19 @@ export class AIOrchestrator {
     private readonly analysisRecordRepository: SituationAIAnalysisRecordRepository,
 
     private readonly analysisSessionsService: AIAnalysisSessionsService,
-
   ) {}
 
-
-
   async execute(
-
     situationId: string,
 
     actorUserId: string,
-
   ): Promise<ExecuteAIAnalysisResponseDto> {
-
     await this.ensureSituationExists(situationId);
 
-
-
     const previousLatest =
-
       await this.analysisSessionsService.getLatestSession(situationId);
 
-
-
     await this.timelineService.createEntry({
-
       situationId,
 
       userId: actorUserId,
@@ -102,44 +78,35 @@ export class AIOrchestrator {
 
       title: 'Análisis IA iniciado',
 
-      description: 'Se inició el análisis operacional con inteligencia artificial.',
+      description:
+        'Se inició el análisis operacional con inteligencia artificial.',
 
       metadata: {
-
         provider: this.geminiProvider.name,
-
       },
-
     });
-
-
 
     const startedAt = Date.now();
 
-
-
     try {
-
-      const engineResult = await this.promptEngine.buildForSituation(situationId);
+      const engineResult =
+        await this.promptEngine.buildForSituation(situationId);
 
       const analysis = await this.geminiProvider.executeAnalysis(
-
         engineResult.context,
 
         engineResult.prompt,
-
       );
-
-
 
       this.analysisService.validateAnalysis(analysis);
 
-      await this.analysisService.persistAnalysis(situationId, analysis, actorUserId);
-
-
+      await this.analysisService.persistAnalysis(
+        situationId,
+        analysis,
+        actorUserId,
+      );
 
       const session = await this.analysisSessionsService.createSession({
-
         situationId,
 
         provider: analysis.provider,
@@ -155,17 +122,11 @@ export class AIOrchestrator {
         executionTimeMs: Date.now() - startedAt,
 
         tokenEstimate: engineResult.metrics.estimatedTokens,
-
       });
-
-
 
       await this.updateCurrentAnalysisRecord(situationId, analysis, session);
 
-
-
       await this.timelineService.createEntry({
-
         situationId,
 
         userId: actorUserId,
@@ -177,23 +138,16 @@ export class AIOrchestrator {
         description: `Se registró la versión ${session.version} del análisis IA.`,
 
         metadata: {
-
           sessionId: session.id,
 
           analysisVersion: session.version,
 
           provider: session.provider,
-
         },
-
       });
 
-
-
       if (previousLatest) {
-
         await this.timelineService.createEntry({
-
           situationId,
 
           userId: actorUserId,
@@ -205,35 +159,24 @@ export class AIOrchestrator {
           description: `Nuevo análisis IA (v${session.version}) reemplazó la versión vigente v${previousLatest.version}.`,
 
           metadata: {
-
             fromVersion: previousLatest.version,
 
             toVersion: session.version,
 
             sessionId: session.id,
-
           },
-
         });
-
       }
 
-
-
       const [impactAssessment, recommendations, timeline] = await Promise.all([
-
         this.impactService.findBySituation(situationId),
 
         this.recommendationsService.findBySituation(situationId),
 
         this.timelineService.findBySituation(situationId),
-
       ]);
 
-
-
       return {
-
         situationId,
 
         sessionId: session.id,
@@ -253,13 +196,9 @@ export class AIOrchestrator {
         confidence: analysis.confidence.overall,
 
         analysis,
-
       };
-
     } catch (error) {
-
       await this.timelineService.createEntry({
-
         situationId,
 
         userId: actorUserId,
@@ -269,79 +208,45 @@ export class AIOrchestrator {
         title: 'Análisis IA fallido',
 
         description:
-
           error instanceof Error
-
             ? error.message
-
             : 'No fue posible completar el análisis IA.',
 
         metadata: {
-
           provider: this.geminiProvider.name,
-
         },
-
       });
 
-
-
       if (error instanceof ServiceUnavailableException) {
-
         throw error;
-
       }
 
-
-
       throw new ServiceUnavailableException(
-
         'No fue posible completar el análisis IA.',
 
         { cause: error },
-
       );
-
     }
-
   }
 
-
-
   async getPersistedAnalysis(
-
     situationId: string,
-
   ): Promise<SituationAIAnalysisResponseDto> {
-
     await this.ensureSituationExists(situationId);
 
-
-
     const record =
-
       await this.analysisRecordRepository.findBySituationId(situationId);
 
     if (!record) {
-
       throw new NotFoundException(
-
         `Análisis IA no encontrado para la situación: ${situationId}`,
-
       );
-
     }
 
-
-
     const latestSession =
-
       await this.analysisSessionsService.getLatestSession(situationId);
 
-
-
     return {
-
       situationId: record.situationId,
 
       sessionId: record.currentSessionId,
@@ -357,31 +262,20 @@ export class AIOrchestrator {
       createdAt: latestSession?.createdAt ?? record.createdAt,
 
       updatedAt: record.updatedAt,
-
     };
-
   }
 
-
-
   private async updateCurrentAnalysisRecord(
-
     situationId: string,
 
     analysis: AIAnalysisResult,
 
     session: SituationAnalysisSession,
-
   ): Promise<void> {
-
     const existing =
-
       await this.analysisRecordRepository.findBySituationId(situationId);
 
-
-
     if (existing) {
-
       existing.currentSessionId = session.id;
 
       existing.provider = analysis.provider;
@@ -391,13 +285,9 @@ export class AIOrchestrator {
       await this.analysisRecordRepository.save(existing);
 
       return;
-
     }
 
-
-
     const record = this.analysisRecordRepository.create({
-
       situationId,
 
       currentSessionId: session.id,
@@ -405,45 +295,25 @@ export class AIOrchestrator {
       provider: analysis.provider,
 
       analysisResult: analysis,
-
     });
 
     await this.analysisRecordRepository.save(record);
-
   }
-
-
 
   private getModelName(): string {
-
     return (
-
       this.configService.get<string>('gemini.model')?.trim() ??
-
       'gemini-3-flash-preview'
-
     );
-
   }
 
-
-
   private async ensureSituationExists(situationId: string): Promise<void> {
-
     const exists = await this.situationsRepository.exist({
-
       where: { id: situationId },
-
     });
 
     if (!exists) {
-
       throw new NotFoundException(`Situación no encontrada: ${situationId}`);
-
     }
-
   }
-
 }
-
-

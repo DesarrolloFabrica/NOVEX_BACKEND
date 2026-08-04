@@ -12,7 +12,11 @@ export class AIAnalysisParser {
   }
 
   validateAnalysis(payload: unknown): AIAnalysisResult {
-    if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+    if (
+      payload === null ||
+      typeof payload !== 'object' ||
+      Array.isArray(payload)
+    ) {
       throw new BadRequestException(
         'El análisis IA debe ser un objeto JSON válido.',
       );
@@ -36,7 +40,7 @@ export class AIAnalysisParser {
       });
     }
 
-    return dto as AIAnalysisResult;
+    return dto;
   }
 
   private parseJson(
@@ -52,7 +56,11 @@ export class AIAnalysisParser {
 
       try {
         const parsed = JSON.parse(trimmed) as unknown;
-        if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        if (
+          parsed === null ||
+          typeof parsed !== 'object' ||
+          Array.isArray(parsed)
+        ) {
           throw new Error('invalid root');
         }
         return parsed as Record<string, unknown>;
@@ -80,7 +88,9 @@ export class AIAnalysisParser {
       'confidence',
     ];
 
-    const missing = requiredBlocks.filter((block) => payload[block] === undefined);
+    const missing = requiredBlocks.filter(
+      (block) => payload[block] === undefined,
+    );
     if (missing.length > 0) {
       throw new BadRequestException(
         `Faltan bloques obligatorios del contrato IA: ${missing.join(', ')}`,

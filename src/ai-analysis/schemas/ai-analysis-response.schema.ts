@@ -47,12 +47,7 @@ export const AI_ANALYSIS_RESPONSE_JSON_SCHEMA = {
     },
     incidentClassification: {
       type: 'object',
-      required: [
-        'categoryCode',
-        'categoryName',
-        'operationalSeverity',
-        'tags',
-      ],
+      required: ['categoryCode', 'categoryName', 'operationalSeverity', 'tags'],
       properties: {
         categoryCode: { type: 'string' },
         categoryName: { type: 'string' },
@@ -130,7 +125,12 @@ export const AI_ANALYSIS_RESPONSE_JSON_SCHEMA = {
           type: 'array',
           items: {
             type: 'object',
-            required: ['coordinationCode', 'depth', 'impactLevel', 'description'],
+            required: [
+              'coordinationCode',
+              'depth',
+              'impactLevel',
+              'description',
+            ],
             properties: {
               coordinationCode: { type: 'string' },
               depth: { type: 'integer', minimum: 0 },

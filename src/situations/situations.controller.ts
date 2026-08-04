@@ -34,7 +34,10 @@ export class SituationsController {
 
   @Get()
   @RequirePermissions('SITUATIONS_VIEW')
-  list(@Query() query: ListSituationsQueryDto, @CurrentUser() user: AuthPayload) {
+  list(
+    @Query() query: ListSituationsQueryDto,
+    @CurrentUser() user: AuthPayload,
+  ) {
     return this.situationsService.list(query, user);
   }
 

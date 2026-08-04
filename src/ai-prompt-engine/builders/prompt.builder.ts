@@ -23,7 +23,9 @@ export class PromptBuilder {
     };
   }
 
-  buildSystemPrompt(template: PromptTemplate = getActivePromptTemplate()): string {
+  buildSystemPrompt(
+    template: PromptTemplate = getActivePromptTemplate(),
+  ): string {
     return this.renderSections('SISTEMA', template.system);
   }
 
@@ -40,18 +42,25 @@ export class PromptBuilder {
       },
     ];
 
-    const instructions = this.renderSections('INSTRUCCIONES', template.instructions);
+    const instructions = this.renderSections(
+      'INSTRUCCIONES',
+      template.instructions,
+    );
     const contextBlock = this.renderSections('CONTEXTO', contextSections);
 
     return [contextBlock, instructions].filter(Boolean).join('\n\n');
   }
 
-  buildOutputSchema(template: PromptTemplate = getActivePromptTemplate()): string {
-    const formatBlock = this.renderSections('FORMATO ESPERADO', template.outputFormat);
-    return [
-      `AIAnalysisResult/${AIAnalysisSchemaVersion.V1}`,
-      formatBlock,
-    ].join('\n');
+  buildOutputSchema(
+    template: PromptTemplate = getActivePromptTemplate(),
+  ): string {
+    const formatBlock = this.renderSections(
+      'FORMATO ESPERADO',
+      template.outputFormat,
+    );
+    return [`AIAnalysisResult/${AIAnalysisSchemaVersion.V1}`, formatBlock].join(
+      '\n',
+    );
   }
 
   private renderSections(

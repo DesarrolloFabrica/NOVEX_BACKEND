@@ -6,7 +6,7 @@ describe('AuthService Google login policy', () => {
   const createService = () => {
     const usersRepository = {
       findByEmail: jest.fn(),
-      save: jest.fn(async (user: unknown) => user),
+      save: jest.fn((user: unknown) => Promise.resolve(user)),
       findByIdWithRelations: jest.fn(),
     };
 
@@ -66,9 +66,9 @@ describe('AuthService Google login policy', () => {
     const { service, usersRepository } = createService();
     usersRepository.findByEmail.mockResolvedValue(null);
 
-    await expect(service.loginWithEmail('missing@cun.edu.co')).rejects.toBeInstanceOf(
-      UnauthorizedException,
-    );
+    await expect(
+      service.loginWithEmail('missing@cun.edu.co'),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
     expect(usersRepository.save).not.toHaveBeenCalled();
   });
 });

@@ -84,7 +84,8 @@ export const CATALOG_PERMISSIONS: readonly PermissionCatalogItem[] = [
     code: 'AI_ANALYZE',
     name: 'Ejecutar análisis IA',
     module: 'AI',
-    description: 'Permite solicitar interpretaciones de inteligencia operacional.',
+    description:
+      'Permite solicitar interpretaciones de inteligencia operacional.',
   },
   {
     code: 'AI_VIEW_REPORTS',

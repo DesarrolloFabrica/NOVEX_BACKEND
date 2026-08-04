@@ -28,7 +28,10 @@ export class AIOrchestrationController {
     @Param('id', ParseUUIDPipe) situationId: string,
     @CurrentUser() user: AuthPayload,
   ) {
-    await this.situationAccessService.requireAccessibleSituation(user, situationId);
+    await this.situationAccessService.requireAccessibleSituation(
+      user,
+      situationId,
+    );
     return this.orchestrator.execute(situationId, user.sub);
   }
 
@@ -38,7 +41,10 @@ export class AIOrchestrationController {
     @Param('id', ParseUUIDPipe) situationId: string,
     @CurrentUser() user: AuthPayload,
   ) {
-    await this.situationAccessService.requireAccessibleSituation(user, situationId);
+    await this.situationAccessService.requireAccessibleSituation(
+      user,
+      situationId,
+    );
     return this.orchestrator.getPersistedAnalysis(situationId);
   }
 }
