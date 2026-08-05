@@ -1,11 +1,11 @@
 # Novex Backend
 
-Backend oficial de **Visión general**.
+Backend oficial de **NOVEX**.
 
 Stack: **NestJS + PostgreSQL + TypeORM + Gemini**.
 
-> Sprint 7 — capa de Inteligencia Artificial (Gemini) aislada detrás de `IntelligenceFacade`.
-> El frontend **aún no está conectado** y sigue usando mocks.
+El frontend consume autenticación, usuarios, coordinaciones, situaciones,
+evidencias, impacto, recomendaciones y análisis desde esta API.
 
 ## Estructura
 
@@ -13,13 +13,15 @@ Stack: **NestJS + PostgreSQL + TypeORM + Gemini**.
 src/
 ├── configuration/          # Env, validación, TypeORM async config
 ├── common/                 # Enums, BaseEntity, utilidades transversales
-├── operational-areas/      # Catálogo de áreas
-├── operational-events/     # Eventos + timeline (sin Gemini)
-├── intelligence/
-│   ├── gemini/             # Cliente Gemini (prompt, schema, parser)
-│   ├── intelligence.facade.ts
-│   └── …                   # Persistencia AIInterpretation + catálogos
-├── dashboard/              # Contrato DashboardMetrics
+├── auth/, users/, rbac/    # Identidad, autorización y administración
+├── coordinations/          # Catálogo y grafo institucional
+├── situations/             # Registro y ciclo de situaciones
+├── situation-*/            # Evidencia, impacto, timeline y recomendaciones
+├── ai-orchestration/       # Orquestación de análisis de situaciones
+├── ai-analysis*/           # Contratos, persistencia e historial de análisis
+├── intelligence/           # Dominio operacional y cliente Gemini legado
+├── operational-*/          # Dominio operacional conservado
+├── database/               # Configuración, migraciones y seeds
 ├── app.module.ts
 └── main.ts
 ```
@@ -51,23 +53,30 @@ cp .env.example .env
 npm install
 npm run start:dev    # http://localhost:3001/api/v1
 npm run build
+npm run lint
+npm run test
+npm run test:e2e
+npm run migration:show
 npm run start:prod
 ```
 
-Con `DB_SYNCHRONIZE=true` (solo desarrollo) TypeORM crea/actualiza el esquema.
+El esquema se administra mediante migraciones TypeORM.
+`DB_SYNCHRONIZE` debe permanecer en `false`.
 
 ## Endpoints
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET/POST/PATCH | `/api/v1/operational-areas` | áreas |
-| GET/POST/PATCH | `/api/v1/operational-events` | eventos |
+| GET/POST/PATCH | `/api/v1/situations` | registro y gestión |
+| GET/POST | `/api/v1/situations/:id/evidences` | evidencias |
+| POST | `/api/v1/situations/:id/analyze` | solicitar análisis IA |
+| GET | `/api/v1/situations/:id/analysis` | consultar análisis IA |
+| GET | `/api/v1/situations/:id/impact` | impacto |
+| GET | `/api/v1/situations/:id/recommendations` | recomendaciones |
+| GET | `/api/v1/coordinations` | catálogo de coordinaciones |
+| GET | `/api/v1/coordinations/graph` | grafo institucional |
 | GET | `/api/v1/intelligence/categories` | taxonomía |
-| POST | `/api/v1/intelligence/interpretations` | persistir interpretación ya armada (mock) |
-| POST | `/api/v1/intelligence/interpret` | IA real → `GeminiInterpretationResult` (no persiste) |
-| POST | `/api/v1/intelligence/interpret/:eventId` | IA real + persiste `AIInterpretation` |
-| GET | `/api/v1/intelligence/interpretations/by-event/:eventId` | listar por evento |
-| GET | `/api/v1/dashboard/metrics` | tablero (contrato) |
+| GET/POST/PATCH | `/api/v1/operational-events` | dominio operacional conservado |
 
 ## Principio de aislamiento
 
@@ -90,9 +99,8 @@ Cliente / IntelligenceService
 - `OperationalIndicator`
 - `IncidentCategory`
 
-## Próximo Sprint
+## Documentación operativa
 
-1. Semillas de áreas/categorías
-2. Portar motor de inteligencia al backend
-3. Conectar servicios del frontend a esta API
-4. Sustituir mocks del frontend por interpretaciones reales
+- [Despliegue en Cloud Run](DEPLOY_BACKEND.md)
+- Variables locales: `.env.example`
+- Estado de migraciones: `npm run migration:show`

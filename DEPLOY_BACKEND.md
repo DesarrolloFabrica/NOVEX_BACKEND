@@ -73,7 +73,7 @@ us-central1-docker.pkg.dev/it-fab-contenido-edu-5/novex/novex-backend
 | `NODE_ENV`                 | `production`                                 |
 | `PORT`                     | `8080` (inyectado por Cloud Run)             |
 | `API_PREFIX`               | `api/v1`                                     |
-| `CORS_ORIGINS`             | `https://URL-FRONTEND,http://localhost:5173` |
+| `CORS_ORIGINS`             | Conservada en scripts; la app aún no la consume |
 | `DB_HOST`                  | `/cloudsql/PROJECT:REGION:INSTANCE`          |
 | `DB_PORT`                  | `5432`                                       |
 | `DB_USERNAME`              | usuario Cloud SQL                            |
@@ -262,13 +262,14 @@ Revise y complete todas las sustituciones `_...` antes de lanzar.
 
 ## 17. Migraciones
 
-Hay dos migraciones TypeORM versionadas en `src/database/migrations`:
+Las migraciones TypeORM versionadas viven en `src/database/migrations`.
+Consulte el estado aplicable al entorno con:
 
-- `1785790534246-InitialSchema.ts`
-- `1786100000000-MakeUserCoordinationNullable.ts`
+```powershell
+npm run migration:show
+```
 
-- Desarrollo: `DB_SYNCHRONIZE=true` (solo local)
-- Producción: `DB_SYNCHRONIZE=false`
+- Desarrollo y producción: `DB_SYNCHRONIZE=false`
 - Hay un SQL manual puntual: `scripts/migrate-intelligence-contract-version.sql`.
 - Los scripts `migration:run`, `migration:show` y `migration:revert` usan TypeORM 0.3.
 
@@ -334,15 +335,17 @@ gcloud run services update-traffic novex-backend `
 | Error JWT en producción | `JWT_SECRET` débil o de desarrollo — generar secreto fuerte en SM                                               |
 | `ECONNREFUSED` DB       | Revisar Cloud SQL instance attachment y `DB_HOST=/cloudsql/...`                                                 |
 | PostgreSQL `28P01`      | Reconciliar la contraseña del usuario `DB_USERNAME` con la versión de Secret Manager montada como `DB_PASSWORD` |
-| CORS bloqueado          | Completar `CORS_ORIGINS` con URL exacta del frontend                                                            |
+| CORS bloqueado          | Revisar `app.enableCors` en `src/main.ts`; actualmente refleja el origen solicitado                              |
 | Gemini 503              | Timeout/cuota/key; el proceso no debe tumbar el proceso                                                         |
 | Seeds inesperados       | En prod `CATALOG_SEED_ON_BOOT=false`                                                                            |
 
 ## 24. CORS
 
-- Variable: `CORS_ORIGINS` (lista separada por comas)
-- Producción: orígenes explícitos; no `*` con credenciales
-- Desarrollo sin variable: `origin: true` (solo non-prod)
+- La implementación actual usa `origin: true` en todos los entornos.
+- Los scripts todavía inyectan `CORS_ORIGINS`, pero la aplicación no consume
+  esa variable.
+- Restringir orígenes requiere un cambio funcional separado; no se realiza en
+  esta limpieza documental.
 
 ## 25. Google OAuth
 
