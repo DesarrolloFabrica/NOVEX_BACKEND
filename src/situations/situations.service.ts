@@ -57,7 +57,7 @@ export class SituationsService {
     );
 
     const [coordination, category, relatedCoordinations] = await Promise.all([
-      this.ensureCoordination(coordinationId),
+      coordinationId ? this.ensureCoordination(coordinationId) : null,
       this.ensureCategory(dto.categoryId),
       this.resolveRelatedCoordinations(
         dto.relatedCoordinationIds ?? [],
@@ -78,7 +78,7 @@ export class SituationsService {
     const situation = this.situationsRepository.create({
       title: dto.title.trim(),
       description: dto.description.trim(),
-      coordinationId: coordination.id,
+      coordinationId: coordination?.id ?? null,
       coordination,
       createdByUserId: actor.sub,
       categoryId: category.id,
@@ -383,7 +383,7 @@ export class SituationsService {
 
   private async resolveRelatedCoordinations(
     relatedCoordinationIds: string[],
-    originCoordinationId: string,
+    originCoordinationId: string | null,
   ): Promise<Coordination[]> {
     const uniqueIds = [
       ...new Set(relatedCoordinationIds.map((id) => id.trim())),
@@ -434,8 +434,8 @@ export class SituationsService {
       title: situation.title,
       description: situation.description,
       coordinationId: situation.coordinationId,
-      coordinationCode: situation.coordination.code,
-      coordinationName: situation.coordination.name,
+      coordinationCode: situation.coordination?.code ?? null,
+      coordinationName: situation.coordination?.name ?? null,
       createdByUserId: situation.createdByUserId,
       createdByUserName: situation.createdByUser.fullName,
       assignedUserId: situation.assignedUserId ?? null,

@@ -109,7 +109,11 @@ export class CoordinationsService {
         select: ['id', 'coordinationId', 'severity', 'status'],
       })
     ).filter((situation) =>
-      scopedCoordinationIds.has(situation.coordinationId),
+      // Los casos registrados por analistas no cuelgan de ninguna isla, pero sí
+      // pesan en la lectura institucional de quien ve la red completa.
+      situation.coordinationId === null
+        ? !this.scopeService.isCoordinationScoped(actor)
+        : scopedCoordinationIds.has(situation.coordinationId),
     );
 
     const scores = activeSituations.map(

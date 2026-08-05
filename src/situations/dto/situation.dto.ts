@@ -28,8 +28,10 @@ export class CreateSituationDto {
   @MaxLength(4000)
   description!: string;
 
+  /** Ausente cuando registra un analista: el caso queda a su nombre. */
+  @IsOptional()
   @IsUUID()
-  coordinationId!: string;
+  coordinationId?: string;
 
   @IsUUID()
   categoryId!: string;
@@ -151,9 +153,9 @@ export class SituationResponseDto {
   id!: string;
   title!: string;
   description!: string;
-  coordinationId!: string;
-  coordinationCode!: string;
-  coordinationName!: string;
+  coordinationId!: string | null;
+  coordinationCode!: string | null;
+  coordinationName!: string | null;
   createdByUserId!: string;
   createdByUserName!: string;
   assignedUserId!: string | null;

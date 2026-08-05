@@ -54,12 +54,14 @@ export class SituationContextBuilder {
         email: entity.createdByUser.email,
         coordinationId: entity.createdByUser.coordinationId,
       },
-      originCoordination: {
-        id: entity.coordination.id,
-        code: entity.coordination.code,
-        name: entity.coordination.name,
-        shortName: entity.coordination.shortName,
-      },
+      originCoordination: entity.coordination
+        ? {
+            id: entity.coordination.id,
+            code: entity.coordination.code,
+            name: entity.coordination.name,
+            shortName: entity.coordination.shortName,
+          }
+        : null,
       category: {
         id: entity.category.id,
         code: entity.category.code,

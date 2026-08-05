@@ -25,4 +25,14 @@ export class SituationAccessService {
     this.scopeService.assertSituationInScope(actor, situation);
     return situation;
   }
+
+  /** Para escrituras sobre el caso (evidencias, seguimiento), no solo lectura. */
+  async requireOperableSituation(
+    actor: AuthPayload,
+    situationId: string,
+  ): Promise<Situation> {
+    const situation = await this.requireAccessibleSituation(actor, situationId);
+    this.scopeService.assertCanOperateSituation(actor, situation);
+    return situation;
+  }
 }

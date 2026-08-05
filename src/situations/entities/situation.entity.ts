@@ -26,13 +26,14 @@ export class Situation extends BaseEntity {
   @Column({ type: 'text' })
   description!: string;
 
-  @ManyToOne(() => Coordination, { nullable: false, eager: true })
+  /** Nula cuando el caso lo registra un analista, que no representa área. */
+  @ManyToOne(() => Coordination, { nullable: true, eager: true })
   @JoinColumn({ name: 'coordination_id' })
-  coordination!: Coordination;
+  coordination!: Coordination | null;
 
   @Index()
-  @Column({ type: 'uuid', name: 'coordination_id' })
-  coordinationId!: string;
+  @Column({ type: 'uuid', name: 'coordination_id', nullable: true })
+  coordinationId!: string | null;
 
   @ManyToOne(() => User, { nullable: false, eager: true })
   @JoinColumn({ name: 'created_by_user_id' })

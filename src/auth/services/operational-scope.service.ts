@@ -5,10 +5,20 @@ import {
 } from '@nestjs/common';
 import { AuthPayload } from '../contracts/auth-payload.contract';
 
+/** Datos mínimos de una situación para decidir quién puede intervenirla. */
+export interface SituationOwnership {
+  coordinationId: string | null;
+  createdByUserId: string;
+}
+
 @Injectable()
 export class OperationalScopeService {
   isCoordinationScoped(actor: AuthPayload): boolean {
-    return actor.roleCode === 'COORDINADOR';
+    return this.normalizeRoleCode(actor.roleCode) === 'COORDINADOR';
+  }
+
+  isAnalyst(actor: AuthPayload): boolean {
+    return this.normalizeRoleCode(actor.roleCode) === 'ANALISTA';
   }
 
   assertPermission(actor: AuthPayload, permission: string): void {
@@ -35,7 +45,7 @@ export class OperationalScopeService {
 
   assertSituationInScope(
     actor: AuthPayload,
-    situation: { coordinationId: string },
+    situation: { coordinationId: string | null },
   ): void {
     this.assertPermission(actor, 'SITUATIONS_VIEW');
 
@@ -48,11 +58,25 @@ export class OperationalScopeService {
     }
   }
 
+  /**
+   * El coordinador registra siempre a nombre de su área. El analista no
+   * representa ninguna, así que su caso nace sin coordinación dueña y queda
+   * trazado por autoría.
+   */
   resolveCreateCoordinationId(
     actor: AuthPayload,
-    requestedCoordinationId: string,
-  ): string {
+    requestedCoordinationId?: string,
+  ): string | null {
     this.assertPermission(actor, 'SITUATIONS_CREATE');
+
+    if (this.isAnalyst(actor)) {
+      if (requestedCoordinationId) {
+        throw new ForbiddenException(
+          'El analista registra situaciones a su propio nombre, sin coordinación responsable.',
+        );
+      }
+      return null;
+    }
 
     if (this.isCoordinationScoped(actor)) {
       if (!actor.coordinationId) {
@@ -60,22 +84,67 @@ export class OperationalScopeService {
           'No tiene coordinación asignada para registrar situaciones.',
         );
       }
-      if (requestedCoordinationId !== actor.coordinationId) {
+      if (
+        requestedCoordinationId &&
+        requestedCoordinationId !== actor.coordinationId
+      ) {
         throw new ForbiddenException(
           'Solo puede registrar situaciones de su coordinación.',
         );
       }
       return actor.coordinationId;
     }
-    return requestedCoordinationId;
+
+    throw new ForbiddenException(
+      'Solo los roles Analista y Coordinador pueden registrar situaciones.',
+    );
+  }
+
+  /**
+   * Un caso pertenece a quien lo registró y a la coordinación dueña. Los roles
+   * transversales (director, admin y el analista fuera de sus propios
+   * registros) consultan la operación pero no intervienen en ella.
+   */
+  ownsSituation(actor: AuthPayload, situation: SituationOwnership): boolean {
+    if (situation.createdByUserId === actor.sub) {
+      return true;
+    }
+
+    return (
+      this.isCoordinationScoped(actor) &&
+      Boolean(actor.coordinationId) &&
+      situation.coordinationId === actor.coordinationId
+    );
+  }
+
+  canUpdateSituation(
+    actor: AuthPayload,
+    situation: SituationOwnership,
+  ): boolean {
+    return (
+      actor.permissions.includes('SITUATIONS_UPDATE') &&
+      this.ownsSituation(actor, situation)
+    );
+  }
+
+  assertCanOperateSituation(
+    actor: AuthPayload,
+    situation: SituationOwnership,
+  ): void {
+    if (!this.ownsSituation(actor, situation)) {
+      throw new ForbiddenException(
+        'Solo quien registró la situación o su coordinación pueden intervenirla.',
+      );
+    }
   }
 
   assertCanUpdateSituation(
     actor: AuthPayload,
-    situation: { coordinationId: string },
+    situation: SituationOwnership,
   ): void {
     this.assertPermission(actor, 'SITUATIONS_UPDATE');
     this.assertSituationInScope(actor, situation);
+    this.assertCanOperateSituation(actor, situation);
   }
 
   assertCoordinationInScope(actor: AuthPayload, coordinationId: string): void {
@@ -102,5 +171,9 @@ export class OperationalScopeService {
     }
 
     return items.filter((item) => item.id === actor.coordinationId);
+  }
+
+  private normalizeRoleCode(roleCode: string): string {
+    return roleCode.trim().toUpperCase();
   }
 }

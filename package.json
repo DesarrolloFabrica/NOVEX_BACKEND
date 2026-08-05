@@ -27,6 +27,7 @@
     "migration:revert": "npm run typeorm -- migration:revert -d ./src/database/data-source.ts",
     "migration:show": "npm run typeorm -- migration:show -d ./src/database/data-source.ts",
     "seed:operaciones": "ts-node -P tsconfig.typeorm.json ./src/database/seeds/run-seed-operaciones.ts",
+    "seed:rbac": "ts-node -P tsconfig.typeorm.json ./src/database/seeds/run-seed-rbac.ts",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:down:volumes": "docker compose down -v",

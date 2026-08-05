@@ -34,7 +34,7 @@ export class SituationEvidenceController {
     @Body() dto: CreateSituationEvidenceDto,
     @CurrentUser() user: AuthPayload,
   ) {
-    await this.situationAccessService.requireAccessibleSituation(
+    await this.situationAccessService.requireOperableSituation(
       user,
       situationId,
     );
@@ -76,7 +76,7 @@ export class SituationEvidenceController {
     @Param('evidenceId', ParseUUIDPipe) evidenceId: string,
     @CurrentUser() user: AuthPayload,
   ) {
-    await this.situationAccessService.requireAccessibleSituation(
+    await this.situationAccessService.requireOperableSituation(
       user,
       situationId,
     );

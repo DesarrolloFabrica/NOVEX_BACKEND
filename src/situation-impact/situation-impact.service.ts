@@ -106,7 +106,7 @@ export class SituationImpactService {
     return {
       situationId,
       originCoordinationId: situation.coordinationId,
-      originCoordinationCode: situation.coordination.code,
+      originCoordinationCode: situation.coordination?.code ?? null,
       hasDeclaredRelated,
       canSimulate: !hasDeclaredRelated,
       simulationAvailable,
@@ -326,7 +326,7 @@ export class SituationImpactService {
       .split(',')
       .map((label) => label.trim().split('·')[0]?.trim())
       .filter((code): code is string => Boolean(code))
-      .filter((code) => code !== situation.coordination.code);
+      .filter((code) => code !== situation.coordination?.code);
 
     const uniqueCodes = [...new Set(codes)];
     if (uniqueCodes.length === 0) {
@@ -355,7 +355,7 @@ export class SituationImpactService {
 
   private selectSimulatedCandidates(
     affected: SituationAffectedCoordination[],
-    originCoordinationId: string,
+    originCoordinationId: string | null,
   ): ImpactCoordinationCandidateDto[] {
     const seen = new Set<string>();
 

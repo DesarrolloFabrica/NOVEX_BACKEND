@@ -117,10 +117,24 @@ export const ALL_PERMISSION_CODES = CATALOG_PERMISSIONS.map(
   (permission) => permission.code,
 );
 
+/**
+ * La operación sobre situaciones pertenece a quien la vive: coordinaciones y
+ * analistas. La administración de plataforma no interviene en el ciclo
+ * operativo, así que ADMIN queda fuera de estos permisos.
+ */
+const OPERATIONAL_ONLY_PERMISSION_CODES = [
+  'SITUATIONS_CREATE',
+  'SITUATIONS_UPDATE',
+  'SITUATIONS_CLOSE',
+  'AI_ANALYZE',
+];
+
 export const ROLE_PERMISSION_CODES: Readonly<
   Record<'ADMIN' | 'DIRECTOR' | 'ANALISTA' | 'COORDINADOR', readonly string[]>
 > = {
-  ADMIN: ALL_PERMISSION_CODES,
+  ADMIN: ALL_PERMISSION_CODES.filter(
+    (code) => !OPERATIONAL_ONLY_PERMISSION_CODES.includes(code),
+  ),
   DIRECTOR: [
     'AUTH_VIEW_PROFILE',
     'COORDINATIONS_VIEW',

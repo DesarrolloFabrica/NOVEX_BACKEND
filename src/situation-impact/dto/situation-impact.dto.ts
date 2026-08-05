@@ -61,8 +61,8 @@ export class ImpactCoordinationCandidateDto {
 
 export class SituationImpactContextResponseDto {
   situationId!: string;
-  originCoordinationId!: string;
-  originCoordinationCode!: string;
+  originCoordinationId!: string | null;
+  originCoordinationCode!: string | null;
   hasDeclaredRelated!: boolean;
   canSimulate!: boolean;
   simulationAvailable!: boolean;

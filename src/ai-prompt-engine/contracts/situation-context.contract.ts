@@ -117,7 +117,8 @@ export interface SituationContext {
   builtAt: string;
   situation: SituationContextSituation;
   createdBy: SituationContextUser;
-  originCoordination: SituationContextCoordination;
+  /** Nula en casos registrados por analistas, que no representan un área. */
+  originCoordination: SituationContextCoordination | null;
   category: SituationContextCategory;
   evidences: SituationContextEvidence[];
   timeline: SituationContextTimelineEntry[];
