@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { OperationalScopeService } from '../auth/services/operational-scope.service';
 import { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { TimelineEventType } from '../common/enums/situation-timeline.enums';
@@ -17,11 +17,13 @@ import { User } from '../users/entities/user.entity';
 import {
   CreateSituationDto,
   ListSituationsQueryDto,
+  RelatedCoordinationResponseDto,
   SituationResponseDto,
   SituationsListResponseDto,
   UpdateSituationDto,
 } from './dto/situation.dto';
 import { Situation } from './entities/situation.entity';
+import { SituationRelatedCoordination } from './entities/situation-related-coordination.entity';
 import { SituationsRepository } from './repositories/situations.repository';
 import {
   isForwardSituationTransition,
@@ -39,6 +41,8 @@ export class SituationsService {
     private readonly categoriesRepository: Repository<IncidentCategory>,
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
+    @InjectRepository(SituationRelatedCoordination)
+    private readonly relatedCoordinationsRepository: Repository<SituationRelatedCoordination>,
     private readonly timelineService: SituationTimelineService,
     private readonly scopeService: OperationalScopeService,
   ) {}
@@ -52,9 +56,13 @@ export class SituationsService {
       dto.coordinationId,
     );
 
-    const [coordination, category] = await Promise.all([
+    const [coordination, category, relatedCoordinations] = await Promise.all([
       this.ensureCoordination(coordinationId),
       this.ensureCategory(dto.categoryId),
+      this.resolveRelatedCoordinations(
+        dto.relatedCoordinationIds ?? [],
+        coordinationId,
+      ),
     ]);
 
     const occurredAt = new Date(dto.occurredAt);
@@ -82,6 +90,13 @@ export class SituationsService {
       resolvedAt: null,
       closedAt: null,
       occurredAt: occurredAt,
+      relatedCoordinations: relatedCoordinations.map((item, index) =>
+        this.relatedCoordinationsRepository.create({
+          coordinationId: item.id,
+          coordination: item,
+          displayOrder: index,
+        }),
+      ),
     });
 
     const saved = await this.situationsRepository.save(situation);
@@ -366,7 +381,54 @@ export class SituationsService {
     return category;
   }
 
+  private async resolveRelatedCoordinations(
+    relatedCoordinationIds: string[],
+    originCoordinationId: string,
+  ): Promise<Coordination[]> {
+    const uniqueIds = [
+      ...new Set(relatedCoordinationIds.map((id) => id.trim())),
+    ]
+      .filter((id) => id.length > 0)
+      .filter((id) => id !== originCoordinationId);
+
+    if (uniqueIds.length === 0) {
+      return [];
+    }
+
+    const found = await this.coordinationsRepository.find({
+      where: { id: In(uniqueIds) },
+    });
+
+    if (found.length !== uniqueIds.length) {
+      const foundIds = new Set(found.map((item) => item.id));
+      const missing = uniqueIds.filter((id) => !foundIds.has(id));
+      throw new NotFoundException(
+        `Coordinación relacionada no encontrada: ${missing.join(', ')}`,
+      );
+    }
+
+    const byId = new Map(found.map((item) => [item.id, item]));
+    return uniqueIds.map((id) => byId.get(id)!);
+  }
+
+  private toRelatedCoordinationResponse(
+    item: SituationRelatedCoordination,
+  ): RelatedCoordinationResponseDto {
+    return {
+      id: item.id,
+      coordinationId: item.coordinationId,
+      coordinationCode: item.coordination.code,
+      coordinationName: item.coordination.name,
+      coordinationShortName: item.coordination.shortName,
+      displayOrder: item.displayOrder,
+    };
+  }
+
   private toResponse(situation: Situation): SituationResponseDto {
+    const related = [...(situation.relatedCoordinations ?? [])].sort(
+      (a, b) => a.displayOrder - b.displayOrder,
+    );
+
     return {
       id: situation.id,
       title: situation.title,
@@ -389,6 +451,9 @@ export class SituationsService {
       occurredAt: situation.occurredAt,
       createdAt: situation.createdAt,
       updatedAt: situation.updatedAt,
+      relatedCoordinations: related.map((item) =>
+        this.toRelatedCoordinationResponse(item),
+      ),
     };
   }
 }

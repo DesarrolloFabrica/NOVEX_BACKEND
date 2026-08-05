@@ -39,8 +39,8 @@ export class SituationContextBuilder {
       ]);
 
     const situation = this.mapSituation(entity);
-    const relatedCoordinations = this.extractRelatedCoordinations(
-      entity.description,
+    const relatedCoordinations = this.resolveRelatedCoordinations(
+      entity,
       previousAssessment,
     );
 
@@ -183,33 +183,31 @@ export class SituationContextBuilder {
     };
   }
 
-  private extractRelatedCoordinations(
-    description: string,
+  private resolveRelatedCoordinations(
+    entity: Situation,
     previousAssessment: SituationContextImpactAssessment | null,
   ): SituationContextCoordination[] {
     const related = new Map<string, SituationContextCoordination>();
+    const structured = [...(entity.relatedCoordinations ?? [])].sort(
+      (a, b) => a.displayOrder - b.displayOrder,
+    );
 
-    const perceptionMatch =
-      description.match(
-        /Coordinaciones relacionadas \(percepción inicial\): (.+)/i,
-      ) ??
-      description.match(/Áreas relacionadas \(percepción inicial\): (.+)/i);
-    if (perceptionMatch?.[1]) {
-      for (const label of perceptionMatch[1].split(',')) {
-        const trimmed = label.trim();
-        const code = trimmed.split('·')[0]?.trim();
-        if (!code) continue;
-        related.set(code, {
-          id: code,
-          code,
-          name: trimmed,
-          shortName: code,
-        });
-      }
+    for (const item of structured) {
+      related.set(item.coordination.code, {
+        id: item.coordination.id,
+        code: item.coordination.code,
+        name: item.coordination.name,
+        shortName: item.coordination.shortName,
+      });
+    }
+
+    if (related.size === 0) {
+      this.extractLegacyRelatedFromDescription(entity.description, related);
     }
 
     if (previousAssessment) {
       for (const item of previousAssessment.affectedCoordinations) {
+        if (related.has(item.coordinationCode)) continue;
         related.set(item.coordinationCode, {
           id: item.coordinationCode,
           code: item.coordinationCode,
@@ -220,5 +218,31 @@ export class SituationContextBuilder {
     }
 
     return [...related.values()];
+  }
+
+  private extractLegacyRelatedFromDescription(
+    description: string,
+    related: Map<string, SituationContextCoordination>,
+  ): void {
+    const perceptionMatch =
+      description.match(
+        /Coordinaciones relacionadas \(percepción inicial\): (.+)/i,
+      ) ??
+      description.match(/Áreas relacionadas \(percepción inicial\): (.+)/i);
+    if (!perceptionMatch?.[1]) {
+      return;
+    }
+
+    for (const label of perceptionMatch[1].split(',')) {
+      const trimmed = label.trim();
+      const code = trimmed.split('·')[0]?.trim();
+      if (!code) continue;
+      related.set(code, {
+        id: code,
+        code,
+        name: trimmed,
+        shortName: code,
+      });
+    }
   }
 }

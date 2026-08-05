@@ -1,4 +1,11 @@
-import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
+import {
+  Column,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  OneToMany,
+} from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import {
   SituationSeverity,
@@ -7,6 +14,7 @@ import {
 import { Coordination } from '../../coordinations/entities/coordination.entity';
 import { IncidentCategory } from '../../intelligence/entities/incident-category.entity';
 import { User } from '../../users/entities/user.entity';
+import { SituationRelatedCoordination } from './situation-related-coordination.entity';
 
 @Entity({ name: 'situations' })
 @Index('idx_situations_status_occurred_at', ['status', 'occurredAt'])
@@ -77,4 +85,11 @@ export class Situation extends BaseEntity {
   @Index()
   @Column({ type: 'timestamptz', name: 'occurred_at' })
   occurredAt!: Date;
+
+  @OneToMany(
+    () => SituationRelatedCoordination,
+    (related) => related.situation,
+    { cascade: true },
+  )
+  relatedCoordinations!: SituationRelatedCoordination[];
 }

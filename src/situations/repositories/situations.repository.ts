@@ -30,6 +30,14 @@ export class SituationsRepository extends Repository<Situation> {
         createdByUser: true,
         assignedUser: true,
         category: true,
+        relatedCoordinations: {
+          coordination: true,
+        },
+      },
+      order: {
+        relatedCoordinations: {
+          displayOrder: 'ASC',
+        },
       },
     });
   }
@@ -41,7 +49,15 @@ export class SituationsRepository extends Repository<Situation> {
       .leftJoinAndSelect('situation.coordination', 'coordination')
       .leftJoinAndSelect('situation.createdByUser', 'createdByUser')
       .leftJoinAndSelect('situation.assignedUser', 'assignedUser')
-      .leftJoinAndSelect('situation.category', 'category');
+      .leftJoinAndSelect('situation.category', 'category')
+      .leftJoinAndSelect(
+        'situation.relatedCoordinations',
+        'relatedCoordinations',
+      )
+      .leftJoinAndSelect(
+        'relatedCoordinations.coordination',
+        'relatedCoordination',
+      );
 
     if (query.status) {
       qb.andWhere('situation.status = :status', { status: query.status });

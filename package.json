@@ -11,6 +11,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:dev:cloud": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/start-cloud-dev.ps1",
+    "start:dev:cloud:direct": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/start-cloud-direct.ps1",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main.js",
     "lint": "eslint \"{src,test}/**/*.ts\" --fix",

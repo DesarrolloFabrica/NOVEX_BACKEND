@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   IsArray,
   IsDateString,
   IsEnum,
@@ -38,6 +39,25 @@ export class CreateSituationDto {
 
   @IsDateString()
   occurredAt!: string;
+
+  /**
+   * Coordinaciones que el usuario declara como potencialmente relacionadas.
+   * Opcional; si se envían, tienen prioridad sobre cualquier simulación IA.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(12)
+  @IsUUID('4', { each: true })
+  relatedCoordinationIds?: string[];
+}
+
+export class RelatedCoordinationResponseDto {
+  id!: string;
+  coordinationId!: string;
+  coordinationCode!: string;
+  coordinationName!: string;
+  coordinationShortName!: string;
+  displayOrder!: number;
 }
 
 export class UpdateSituationDto {
@@ -149,6 +169,7 @@ export class SituationResponseDto {
   occurredAt!: Date;
   createdAt!: Date;
   updatedAt!: Date;
+  relatedCoordinations!: RelatedCoordinationResponseDto[];
 }
 
 export class SituationsListResponseDto {

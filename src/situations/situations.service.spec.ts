@@ -51,6 +51,7 @@ describe('SituationsService status transitions', () => {
       coordinationsRepository as never,
       categoriesRepository as never,
       usersRepository as never,
+      { create: jest.fn((input: unknown) => input) } as never,
       timelineService as never,
       scopeService as never,
     );
@@ -84,6 +85,7 @@ describe('SituationsService status transitions', () => {
     occurredAt: new Date('2026-07-28T10:00:00.000Z'),
     createdAt: new Date('2026-07-28T10:00:00.000Z'),
     updatedAt: new Date('2026-07-28T10:00:00.000Z'),
+    relatedCoordinations: [],
   };
 
   it('avanza OPEN → IN_PROGRESS y asigna responsable automático', async () => {
@@ -215,5 +217,128 @@ describe('SituationsService status transitions', () => {
         }),
       }),
     );
+  });
+});
+
+describe('SituationsService related coordinations', () => {
+  const actor: AuthPayload = {
+    sub: 'user-1',
+    email: 'coord@cun.edu.co',
+    roleId: 'role-coord',
+    roleCode: 'COORDINADOR',
+    coordinationId: 'c1',
+    permissions: ['SITUATIONS_CREATE', 'SITUATIONS_VIEW'],
+    status: UserStatus.ACTIVE,
+  };
+
+  it('persiste relacionadas válidas y excluye la coordinación origen', async () => {
+    const situationsRepository = {
+      findByIdWithRelations: jest.fn(),
+      save: jest.fn((entity: { id?: string }) => ({
+        ...entity,
+        id: 'sit-new',
+      })),
+      create: jest.fn((input: unknown) => input),
+      search: jest.fn(),
+    };
+    const relatedRepo = {
+      create: jest.fn((input: unknown) => input),
+    };
+    const coordinationsRepository = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'c1',
+        code: 'coord-origin',
+        name: 'Origen',
+        shortName: 'Origen',
+      }),
+      find: jest.fn().mockResolvedValue([
+        {
+          id: 'c2',
+          code: 'coord-rel',
+          name: 'Relacionada',
+          shortName: 'Rel',
+        },
+      ]),
+    };
+    const categoriesRepository = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'cat',
+        code: 'TECH',
+        name: 'Tech',
+      }),
+    };
+    const scopeService = {
+      resolveCreateCoordinationId: jest.fn(
+        (_actor: AuthPayload, requested: string) => requested,
+      ),
+    };
+
+    const service = new SituationsService(
+      situationsRepository as never,
+      coordinationsRepository as never,
+      categoriesRepository as never,
+      { findOne: jest.fn() } as never,
+      relatedRepo as never,
+      { createEntry: jest.fn() } as never,
+      scopeService as never,
+    );
+
+    situationsRepository.findByIdWithRelations.mockResolvedValue({
+      id: 'sit-new',
+      title: 'Incidente',
+      description: 'Desc',
+      coordinationId: 'c1',
+      coordination: { code: 'coord-origin', name: 'Origen' },
+      createdByUserId: 'user-1',
+      createdByUser: { fullName: 'Juan' },
+      assignedUserId: null,
+      assignedUser: null,
+      categoryId: 'cat',
+      category: { code: 'TECH', name: 'Tech' },
+      severity: 'MEDIUM',
+      status: SituationStatus.OPEN,
+      lastStatusComment: null,
+      resolvedAt: null,
+      closedAt: null,
+      occurredAt: new Date('2026-08-01T10:00:00.000Z'),
+      createdAt: new Date('2026-08-01T10:00:00.000Z'),
+      updatedAt: new Date('2026-08-01T10:00:00.000Z'),
+      relatedCoordinations: [
+        {
+          id: 'rel-1',
+          coordinationId: 'c2',
+          displayOrder: 0,
+          coordination: {
+            code: 'coord-rel',
+            name: 'Relacionada',
+            shortName: 'Rel',
+          },
+        },
+      ],
+    });
+
+    const result = await service.create(
+      {
+        title: 'Incidente',
+        description: 'Desc',
+        coordinationId: 'c1',
+        categoryId: 'cat',
+        severity: 'MEDIUM' as never,
+        occurredAt: '2026-08-01T10:00:00.000Z',
+        relatedCoordinationIds: ['c1', 'c2', 'c2'],
+      },
+      actor,
+    );
+
+    expect(coordinationsRepository.find).toHaveBeenCalled();
+    expect(situationsRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        relatedCoordinations: [
+          expect.objectContaining({ coordinationId: 'c2', displayOrder: 0 }),
+        ],
+      }),
+    );
+    expect(result.relatedCoordinations).toHaveLength(1);
+    expect(result.relatedCoordinations[0]?.coordinationCode).toBe('coord-rel');
   });
 });

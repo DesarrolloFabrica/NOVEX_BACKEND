@@ -6,6 +6,7 @@ import { IncidentCategory } from '../intelligence/entities/incident-category.ent
 import { SituationTimelineModule } from '../situation-timeline/situation-timeline.module';
 import { User } from '../users/entities/user.entity';
 import { Situation } from './entities/situation.entity';
+import { SituationRelatedCoordination } from './entities/situation-related-coordination.entity';
 import { SituationsRepository } from './repositories/situations.repository';
 import { SituationsController } from './situations.controller';
 import { SituationAccessService } from './situation-access.service';
@@ -13,7 +14,13 @@ import { SituationsService } from './situations.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Situation, Coordination, IncidentCategory, User]),
+    TypeOrmModule.forFeature([
+      Situation,
+      SituationRelatedCoordination,
+      Coordination,
+      IncidentCategory,
+      User,
+    ]),
     AuthModule,
     forwardRef(() => SituationTimelineModule),
   ],

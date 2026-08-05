@@ -1,8 +1,12 @@
 import {
   Controller,
+  DefaultValuePipe,
   Get,
   Param,
+  ParseIntPipe,
   ParseUUIDPipe,
+  Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
@@ -45,5 +49,33 @@ export class SituationImpactController {
       situationId,
     );
     return this.impactService.getAffectedCoordinationsBySituation(situationId);
+  }
+
+  @Get(':id/impact-context')
+  @RequirePermissions('SITUATIONS_VIEW')
+  async getImpactContext(
+    @Param('id', ParseUUIDPipe) situationId: string,
+    @CurrentUser() user: AuthPayload,
+  ) {
+    await this.situationAccessService.requireAccessibleSituation(
+      user,
+      situationId,
+    );
+    return this.impactService.getImpactContext(situationId);
+  }
+
+  @Post(':id/simulate-impact')
+  @RequirePermissions('SITUATIONS_VIEW')
+  async simulateImpact(
+    @Param('id', ParseUUIDPipe) situationId: string,
+    @CurrentUser() user: AuthPayload,
+    @Query('horizonMinutes', new DefaultValuePipe(30), ParseIntPipe)
+    horizonMinutes: number,
+  ) {
+    await this.situationAccessService.requireAccessibleSituation(
+      user,
+      situationId,
+    );
+    return this.impactService.simulateImpact(situationId, horizonMinutes);
   }
 }
