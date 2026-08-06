@@ -25,6 +25,7 @@ import {
 import { Situation } from './entities/situation.entity';
 import { SituationRelatedCoordination } from './entities/situation-related-coordination.entity';
 import { SituationsRepository } from './repositories/situations.repository';
+import { isFutureOccurredAt } from './occurred-at.validation';
 import {
   isForwardSituationTransition,
   requiresStatusComment,
@@ -69,7 +70,7 @@ export class SituationsService {
     if (Number.isNaN(occurredAt.getTime())) {
       throw new BadRequestException('La fecha de ocurrencia no es válida.');
     }
-    if (occurredAt.getTime() > Date.now()) {
+    if (isFutureOccurredAt(occurredAt)) {
       throw new BadRequestException(
         'La fecha de ocurrencia no puede ser futura.',
       );
@@ -195,7 +196,16 @@ export class SituationsService {
       situation.severity = dto.severity;
     }
     if (dto.occurredAt !== undefined) {
-      situation.occurredAt = new Date(dto.occurredAt);
+      const occurredAt = new Date(dto.occurredAt);
+      if (Number.isNaN(occurredAt.getTime())) {
+        throw new BadRequestException('La fecha de ocurrencia no es válida.');
+      }
+      if (isFutureOccurredAt(occurredAt)) {
+        throw new BadRequestException(
+          'La fecha de ocurrencia no puede ser futura.',
+        );
+      }
+      situation.occurredAt = occurredAt;
     }
 
     const previousStatus = situation.status;
