@@ -6,6 +6,8 @@ import type { SituationRecommendationResponseDto } from '../../situation-recomme
 
 import type { SituationTimelineEntryResponseDto } from '../../situation-timeline/dto/situation-timeline.dto';
 
+import type { SituationResponseDto } from '../../situations/dto/situation.dto';
+
 export class ExecuteAIAnalysisResponseDto {
   situationId!: string;
 
@@ -44,4 +46,10 @@ export class SituationAIAnalysisResponseDto {
   createdAt!: Date;
 
   updatedAt!: Date;
+}
+
+export class RegisterSituationWithAnalysisResponseDto {
+  situation!: SituationResponseDto;
+
+  analysis!: ExecuteAIAnalysisResponseDto;
 }

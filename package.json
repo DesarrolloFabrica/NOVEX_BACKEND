@@ -28,6 +28,8 @@
     "migration:show": "npm run typeorm -- migration:show -d ./src/database/data-source.ts",
     "seed:operaciones": "ts-node -P tsconfig.typeorm.json ./src/database/seeds/run-seed-operaciones.ts",
     "seed:rbac": "ts-node -P tsconfig.typeorm.json ./src/database/seeds/run-seed-rbac.ts",
+    "sync:users:cloud": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/sync-users-from-cloud.ps1",
+    "sync:users:cloud:run": "ts-node -P tsconfig.typeorm.json ./src/database/seeds/run-sync-users-from-cloud.ts",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:down:volumes": "docker compose down -v",

@@ -27,7 +27,7 @@ $CLOUD_SQL_INSTANCE = "it-fab-contenido-edu-5:us-central1:novex-db"
 $SERVICE_ACCOUNT = "550902908078-compute@developer.gserviceaccount.com"
 
 # Frontend NOVEX en Cloud Run + desarrollo local
-$CORS_ORIGINS = "http://localhost:5173,https://omega-frontend-550902908078.us-central1.run.app"
+$CORS_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173,https://novex-frontend-550902908078.us-central1.run.app,https://novex-frontend-smazwcaz4a-uc.a.run.app"
 
 # Usuario/base de la instancia NUEVA (crear junto con Cloud SQL)
 $DB_USERNAME = "novex"
@@ -173,6 +173,7 @@ if ($LASTEXITCODE -ne 0) { $ErrorActionPreference = 'Stop'; throw "docker push f
 $ErrorActionPreference = 'Stop'
 
 $DB_HOST = "/cloudsql/$CLOUD_SQL_INSTANCE"
+$candidateTag = "candidate-manual-$(Get-Date -Format 'yyyyMMddHHmmss')"
 
 Write-Host "==> Desplegando Cloud Run..."
 Invoke-GCloud -GcloudArgs @(
@@ -197,27 +198,84 @@ Invoke-GCloud -GcloudArgs @(
   "--service-account=$SERVICE_ACCOUNT",
   "--add-cloudsql-instances=$CLOUD_SQL_INSTANCE",
   '--set-secrets=DB_PASSWORD=novex-db-password:latest,JWT_SECRET=novex-jwt-secret:latest,GEMINI_API_KEY=novex-gemini-api-key:latest',
-  "--set-env-vars=NODE_ENV=production,API_PREFIX=api/v1,CORS_ORIGINS=$CORS_ORIGINS,DB_HOST=$DB_HOST,DB_PORT=5432,DB_USERNAME=$DB_USERNAME,DB_DATABASE=$DB_DATABASE,DB_SSL=false,DB_SYNCHRONIZE=$DB_SYNCHRONIZE,ALLOW_PRODUCTION_DB_SYNC=$DB_SYNCHRONIZE,DB_LOGGING=false,INSTANCE_CONNECTION_NAME=$CLOUD_SQL_INSTANCE,JWT_EXPIRES_IN=$JWT_EXPIRES_IN,GEMINI_MODEL=$GEMINI_MODEL,GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID,CATALOG_SEED_ON_BOOT=false,DEMO_SEED_ENABLED=false",
-  '--allow-unauthenticated'
+  "--set-env-vars=^|^NODE_ENV=production|API_PREFIX=api/v1|CORS_ORIGINS=$CORS_ORIGINS|DB_HOST=$DB_HOST|DB_PORT=5432|DB_USERNAME=$DB_USERNAME|DB_DATABASE=$DB_DATABASE|DB_SSL=false|DB_SYNCHRONIZE=$DB_SYNCHRONIZE|ALLOW_PRODUCTION_DB_SYNC=$DB_SYNCHRONIZE|DB_LOGGING=false|INSTANCE_CONNECTION_NAME=$CLOUD_SQL_INSTANCE|JWT_EXPIRES_IN=$JWT_EXPIRES_IN|GEMINI_MODEL=$GEMINI_MODEL|GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID|CATALOG_SEED_ON_BOOT=false|DEMO_SEED_ENABLED=false",
+  '--allow-unauthenticated',
+  '--no-traffic',
+  "--tag=$candidateTag"
 ) | Write-Host
 
-$SERVICE_URL = (Invoke-GCloud -GcloudArgs @(
+$service = Invoke-GCloud -GcloudArgs @(
   'run', 'services', 'describe', $SERVICE,
   "--project=$PROJECT_ID",
   "--region=$REGION",
-  '--format=value(status.url)'
-)).Trim()
+  '--format=json'
+) | ConvertFrom-Json
+$SERVICE_URL = $service.status.url
+$candidate = $service.status.traffic | Where-Object { $_.tag -eq $candidateTag }
+if (-not $candidate.url -or -not $candidate.revisionName) {
+  throw "Cloud Run no publicó la URL de la revisión candidata."
+}
+$candidateUrl = $candidate.url
+$candidateRevision = $candidate.revisionName
 
 Write-Host ""
 Write-Host "URL del servicio: $SERVICE_URL"
+Write-Host "URL candidata: $candidateUrl"
 Write-Host "==> Consultando /health ..."
 try {
-  $health = Invoke-RestMethod -Uri "$SERVICE_URL/health" -Method Get -TimeoutSec 30
+  $health = Invoke-RestMethod -Uri "$candidateUrl/health/ready" -Method Get -TimeoutSec 30
   $health | ConvertTo-Json -Depth 5
 } catch {
   Write-Warning "No se pudo consultar /health todavía. Revise logs y revisiones en Cloud Run."
   Write-Warning $_.Exception.Message
 }
+
+Write-Host "==> Validando preflight CORS del análisis IA ..."
+$frontendOrigin = "https://novex-frontend-550902908078.us-central1.run.app"
+$preflight = Invoke-WebRequest `
+  -Uri "$candidateUrl/api/v1/situations/register-with-analysis" `
+  -Method Options `
+  -Headers @{
+    Origin = $frontendOrigin
+    'Access-Control-Request-Method' = 'POST'
+    'Access-Control-Request-Headers' = 'authorization,content-type'
+  } `
+  -UseBasicParsing `
+  -TimeoutSec 30
+if (
+  $preflight.StatusCode -ne 204 -or
+  $preflight.Headers['Access-Control-Allow-Origin'] -ne $frontendOrigin
+) {
+  throw "El backend desplegado no autorizó CORS para NOVEX frontend."
+}
+
+$foreignPreflight = Invoke-WebRequest `
+  -Uri "$candidateUrl/api/v1/situations/register-with-analysis" `
+  -Method Options `
+  -Headers @{
+    Origin = 'https://example.invalid'
+    'Access-Control-Request-Method' = 'POST'
+  } `
+  -UseBasicParsing `
+  -TimeoutSec 30
+if ($foreignPreflight.Headers['Access-Control-Allow-Origin']) {
+  throw "El backend autorizó un origen externo no configurado."
+}
+
+Invoke-GCloud -GcloudArgs @(
+  'run', 'services', 'update-traffic', $SERVICE,
+  "--project=$PROJECT_ID",
+  "--region=$REGION",
+  "--to-revisions=$candidateRevision=100",
+  '--quiet'
+) | Write-Host
+Invoke-GCloud -GcloudArgs @(
+  'run', 'services', 'update-traffic', $SERVICE,
+  "--project=$PROJECT_ID",
+  "--region=$REGION",
+  "--remove-tags=$candidateTag",
+  '--quiet'
+) | Write-Host
 
 Write-Host ""
 Write-Host "Despliegue finalizado."

@@ -9,6 +9,7 @@ import {
   Min,
   validateSync,
 } from 'class-validator';
+import { logBootDebug } from '../common/bootstrap-observability';
 
 function toBoolean(value: unknown): boolean {
   if (typeof value === 'string') return value.trim().toLowerCase() === 'true';
@@ -34,6 +35,10 @@ export class EnvironmentVariables {
   @IsString()
   @IsOptional()
   API_PREFIX: string = 'api/v1';
+
+  @IsString()
+  @IsOptional()
+  CORS_ORIGINS?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -107,7 +112,7 @@ export function validateEnvironment(config: Record<string, unknown>) {
     throw new Error(`Configuración de entorno inválida: ${errors.toString()}`);
   }
 
-  console.log('[BOOT 2] Environment validated');
+  logBootDebug('[BOOT 2] Environment validated');
 
   return validated;
 }

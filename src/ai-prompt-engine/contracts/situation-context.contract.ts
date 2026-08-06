@@ -119,6 +119,8 @@ export interface SituationContext {
   createdBy: SituationContextUser;
   /** Nula en casos registrados por analistas, que no representan un área. */
   originCoordination: SituationContextCoordination | null;
+  /** Catálogo cerrado de coordinaciones activas visibles en Red de Impacto. */
+  availableCoordinations: SituationContextCoordination[];
   category: SituationContextCategory;
   evidences: SituationContextEvidence[];
   timeline: SituationContextTimelineEntry[];

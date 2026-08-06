@@ -1,4 +1,4 @@
--- Migración idempotente: rebrand Omega → Cunmark → NOVEX
+-- Migración idempotente de contratos históricos a NOVEX.
 -- Actualiza contractVersion en reportes ejecutivos persistidos (JSONB).
 -- Ejecutar manualmente contra la base existente cuando se desee alinear datos históricos.
 
@@ -9,7 +9,4 @@ SET executive_report = jsonb_set(
   '"novex.intelligence.v2"'
 )
 WHERE executive_report IS NOT NULL
-  AND executive_report->>'contractVersion' IN (
-    'cunmark.intelligence.v2',
-    'omega.intelligence.v2'
-  );
+  AND executive_report->>'contractVersion' = 'cunmark.intelligence.v2';

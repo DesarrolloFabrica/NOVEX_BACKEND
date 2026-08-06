@@ -2,6 +2,12 @@
  * JSON Schema para forzar la estructura AIAnalysisResult en Gemini.
  * Debe mantenerse alineado con AIAnalysisResultDto.
  */
+import { CATALOG_COORDINATIONS } from '../../coordinations/seeds/coordinations.catalog.seed';
+
+const IMPACT_NETWORK_COORDINATION_CODES = CATALOG_COORDINATIONS.filter(
+  (coordination) => coordination.isActive,
+).map((coordination) => coordination.code);
+
 export const AI_ANALYSIS_RESPONSE_JSON_SCHEMA = {
   type: 'object',
   required: [
@@ -112,7 +118,10 @@ export const AI_ANALYSIS_RESPONSE_JSON_SCHEMA = {
             type: 'object',
             required: ['coordinationCode', 'impactLevel', 'description'],
             properties: {
-              coordinationCode: { type: 'string' },
+              coordinationCode: {
+                type: 'string',
+                enum: IMPACT_NETWORK_COORDINATION_CODES,
+              },
               impactLevel: {
                 type: 'string',
                 enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'],
@@ -132,7 +141,10 @@ export const AI_ANALYSIS_RESPONSE_JSON_SCHEMA = {
               'description',
             ],
             properties: {
-              coordinationCode: { type: 'string' },
+              coordinationCode: {
+                type: 'string',
+                enum: IMPACT_NETWORK_COORDINATION_CODES,
+              },
               depth: { type: 'integer', minimum: 0 },
               impactLevel: {
                 type: 'string',

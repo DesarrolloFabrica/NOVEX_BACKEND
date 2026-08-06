@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CoordinationsModule } from '../coordinations/coordinations.module';
 import { SituationEvidenceModule } from '../situation-evidence/situation-evidence.module';
 import { SituationImpactModule } from '../situation-impact/situation-impact.module';
 import { SituationRecommendationsModule } from '../situation-recommendations/situation-recommendations.module';
@@ -12,6 +13,7 @@ import { PromptValidator } from './validators/prompt.validator';
 
 @Module({
   imports: [
+    CoordinationsModule,
     SituationsModule,
     SituationTimelineModule,
     SituationEvidenceModule,

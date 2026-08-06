@@ -1,6 +1,7 @@
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModuleAsyncOptions } from '@nestjs/typeorm';
 import { join } from 'node:path';
+import { logBootDebug } from '../common/bootstrap-observability';
 
 /**
  * TypeORM para NestJS.
@@ -19,14 +20,17 @@ export const typeOrmAsyncConfig: TypeOrmModuleAsyncOptions = {
       dbSslFlag === 'true' ||
       (dbSslFlag !== 'false' && isProduction && !host.startsWith('/cloudsql/'));
 
-    console.log('TypeORM connection parameters:');
-    console.log('DB_HOST:', host);
-    console.log('DB_PORT:', configService.get<number>('database.port'));
-    console.log('DB_DATABASE:', configService.get<string>('database.name'));
-    console.log('DB_USERNAME:', configService.get<string>('database.username'));
-    console.log('DB_SSL:', dbSslFlag ?? '(unset)');
-    console.log('NODE_ENV:', configService.get<string>('nodeEnv'));
-    console.log('Connecting to PostgreSQL...');
+    logBootDebug('TypeORM connection parameters:');
+    logBootDebug('DB_HOST:', host);
+    logBootDebug('DB_PORT:', configService.get<number>('database.port'));
+    logBootDebug('DB_DATABASE:', configService.get<string>('database.name'));
+    logBootDebug(
+      'DB_USERNAME:',
+      configService.get<string>('database.username'),
+    );
+    logBootDebug('DB_SSL:', dbSslFlag ?? '(unset)');
+    logBootDebug('NODE_ENV:', configService.get<string>('nodeEnv'));
+    logBootDebug('Connecting to PostgreSQL...');
 
     return {
       type: 'postgres' as const,

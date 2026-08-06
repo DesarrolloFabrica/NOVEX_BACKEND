@@ -260,11 +260,7 @@ export class SituationsService {
   ): string | null {
     const trimmed = rawComment?.trim() ?? '';
     if (requiresStatusComment(nextStatus) && trimmed.length === 0) {
-      const label =
-        nextStatus === SituationStatus.RESOLVED
-          ? 'Motivo de resolución'
-          : 'Comentario de cierre';
-      throw new BadRequestException(`${label} es obligatorio.`);
+      throw new BadRequestException('Motivo de cierre es obligatorio.');
     }
     return trimmed.length > 0 ? trimmed : null;
   }
@@ -336,11 +332,7 @@ export class SituationsService {
     }
     if (input.statusComment) {
       const commentLabel =
-        input.nextStatus === SituationStatus.RESOLVED
-          ? 'Motivo'
-          : input.nextStatus === SituationStatus.CLOSED
-            ? 'Comentario'
-            : 'Nota';
+        input.nextStatus === SituationStatus.CLOSED ? 'Motivo' : 'Nota';
       descriptionParts.push(`${commentLabel}: ${input.statusComment}`);
     }
 
@@ -358,11 +350,7 @@ export class SituationsService {
         newLabel: toLabel,
         statusComment: input.statusComment,
         commentKind:
-          input.nextStatus === SituationStatus.RESOLVED
-            ? 'resolution'
-            : input.nextStatus === SituationStatus.CLOSED
-              ? 'closure'
-              : 'note',
+          input.nextStatus === SituationStatus.CLOSED ? 'closure' : 'note',
         assignedUserName: input.assignedUserName,
         /** Estructura preparada para evidencias futuras. */
         evidenceIds: input.evidenceIds,
@@ -373,7 +361,7 @@ export class SituationsService {
 
   private async ensureCoordination(id: string): Promise<Coordination> {
     const coordination = await this.coordinationsRepository.findOne({
-      where: { id },
+      where: { id, isActive: true },
     });
     if (!coordination) {
       throw new NotFoundException(`Coordinación no encontrada: ${id}`);
@@ -406,7 +394,7 @@ export class SituationsService {
     }
 
     const found = await this.coordinationsRepository.find({
-      where: { id: In(uniqueIds) },
+      where: { id: In(uniqueIds), isActive: true },
     });
 
     if (found.length !== uniqueIds.length) {

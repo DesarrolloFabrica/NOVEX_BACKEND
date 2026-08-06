@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { CoordinationsRepository } from '../../coordinations/repositories/coordinations.repository';
 import { SituationEvidenceRepository } from '../../situation-evidence/repositories/situation-evidence.repository';
 import { SituationImpactRepository } from '../../situation-impact/repositories/situation-impact.repository';
 import { SituationRecommendationsRepository } from '../../situation-recommendations/repositories/situation-recommendations.repository';
@@ -24,19 +25,26 @@ export class SituationContextBuilder {
     private readonly evidenceRepository: SituationEvidenceRepository,
     private readonly recommendationsRepository: SituationRecommendationsRepository,
     private readonly impactRepository: SituationImpactRepository,
+    private readonly coordinationsRepository: CoordinationsRepository,
   ) {}
 
   async buildOperationalContext(
     situationId: string,
   ): Promise<SituationContext> {
     const entity = await this.getSituationEntity(situationId);
-    const [timeline, evidences, existingRecommendations, previousAssessment] =
-      await Promise.all([
-        this.buildTimeline(situationId),
-        this.buildEvidence(situationId),
-        this.buildRecommendations(situationId),
-        this.buildImpact(situationId),
-      ]);
+    const [
+      timeline,
+      evidences,
+      existingRecommendations,
+      previousAssessment,
+      availableCoordinations,
+    ] = await Promise.all([
+      this.buildTimeline(situationId),
+      this.buildEvidence(situationId),
+      this.buildRecommendations(situationId),
+      this.buildImpact(situationId),
+      this.coordinationsRepository.findCatalog(false),
+    ]);
 
     const situation = this.mapSituation(entity);
     const relatedCoordinations = this.resolveRelatedCoordinations(
@@ -62,6 +70,12 @@ export class SituationContextBuilder {
             shortName: entity.coordination.shortName,
           }
         : null,
+      availableCoordinations: availableCoordinations.map((coordination) => ({
+        id: coordination.id,
+        code: coordination.code,
+        name: coordination.name,
+        shortName: coordination.shortName,
+      })),
       category: {
         id: entity.category.id,
         code: entity.category.code,

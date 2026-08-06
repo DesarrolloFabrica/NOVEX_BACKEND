@@ -6,7 +6,7 @@
 # Dependencias
 node_modules/
 
-# Build
+# Build / artefactos generados (NestJS y Jest)
 dist/
 coverage/
 *.tsbuildinfo
@@ -17,6 +17,9 @@ logs/
 .idea/
 .vscode/
 *.swp
+
+# Binarios locales de herramientas (p. ej. Cloud SQL Auth Proxy)
+.tools/
 
 # OS
 .DS_Store

@@ -1,12 +1,15 @@
 import { SituationStatus } from '../common/enums/situation.enums';
 
-/** Flujo operativo secuencial: Registrada → En atención → Resuelta → Cerrada. */
+/**
+ * Flujo operativo de tres pasos: Registrada → En atención → Cerrada.
+ * RESOLVED queda como legado (solo puede avanzar a CLOSED).
+ */
 export const SITUATION_STATUS_TRANSITIONS: Record<
   SituationStatus,
   SituationStatus[]
 > = {
   [SituationStatus.OPEN]: [SituationStatus.IN_PROGRESS],
-  [SituationStatus.IN_PROGRESS]: [SituationStatus.RESOLVED],
+  [SituationStatus.IN_PROGRESS]: [SituationStatus.CLOSED],
   [SituationStatus.RESOLVED]: [SituationStatus.CLOSED],
   [SituationStatus.CLOSED]: [],
 };
@@ -14,7 +17,8 @@ export const SITUATION_STATUS_TRANSITIONS: Record<
 export const SITUATION_STATUS_LABEL_ES: Record<SituationStatus, string> = {
   [SituationStatus.OPEN]: 'Registrada',
   [SituationStatus.IN_PROGRESS]: 'En atención',
-  [SituationStatus.RESOLVED]: 'Resuelta',
+  /** Valor legado: se presenta como En atención en la UI operativa. */
+  [SituationStatus.RESOLVED]: 'En atención',
   [SituationStatus.CLOSED]: 'Cerrada',
 };
 
@@ -32,7 +36,5 @@ export function isForwardSituationTransition(
 }
 
 export function requiresStatusComment(status: SituationStatus): boolean {
-  return (
-    status === SituationStatus.RESOLVED || status === SituationStatus.CLOSED
-  );
+  return status === SituationStatus.CLOSED;
 }

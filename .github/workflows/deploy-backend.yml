@@ -213,7 +213,7 @@ jobs:
             --format=json)"
           CONTAINER_JSON="$(jq -c '.spec.template.spec.containers[0]' <<< "${SERVICE_JSON}")"
 
-          for required in DB_HOST DB_PORT DB_USERNAME DB_PASSWORD DB_DATABASE JWT_SECRET GOOGLE_CLIENT_ID; do
+          for required in DB_HOST DB_PORT DB_USERNAME DB_PASSWORD DB_DATABASE JWT_SECRET GOOGLE_CLIENT_ID CORS_ORIGINS; do
             if ! jq -e --arg name "${required}" '.env[]? | select(.name == $name)' <<< "${CONTAINER_JSON}" >/dev/null; then
               echo "::error::Cloud Run no tiene configurada la variable obligatoria ${required}"
               exit 1
@@ -228,6 +228,12 @@ jobs:
               exit 1
             fi
           done
+
+          CORS_ORIGINS="$(jq -r '.env[]? | select(.name == "CORS_ORIGINS") | .value // empty' <<< "${CONTAINER_JSON}")"
+          if [[ "${CORS_ORIGINS}" != *"https://novex-frontend-"* ]]; then
+            echo "::error::CORS_ORIGINS debe incluir el frontend NOVEX desplegado"
+            exit 1
+          fi
 
           CLOUDSQL="$(jq -r '.spec.template.metadata.annotations["run.googleapis.com/cloudsql-instances"] // empty' <<< "${SERVICE_JSON}" | tr -d ' ')"
           DB_HOST="$(jq -r '.env[]? | select(.name == "DB_HOST") | .value // empty' <<< "${CONTAINER_JSON}")"
@@ -338,6 +344,27 @@ jobs:
           STATUS="$(curl -sS -o /dev/null -w '%{http_code}' --retry 5 --retry-delay 3 --retry-all-errors "${AUTH_ME_URL}")"
           if [[ "${STATUS}" != "401" ]]; then
             echo "::error::GET /api/v1/auth/me devolvió ${STATUS} (esperado 401). Nest no montó rutas API."
+            exit 1
+          fi
+
+          FRONTEND_ORIGIN="https://novex-frontend-550902908078.us-central1.run.app"
+          PREFLIGHT_URL="${BASE}/api/v1/situations/register-with-analysis"
+          PREFLIGHT_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' -X OPTIONS \
+            -H "Origin: ${FRONTEND_ORIGIN}" \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: authorization,content-type' \
+            "${PREFLIGHT_URL}")"
+          if [[ "${PREFLIGHT_STATUS}" != "204" ]]; then
+            echo "::error::Preflight CORS devolvió ${PREFLIGHT_STATUS}"
+            exit 1
+          fi
+          PREFLIGHT_HEADERS="$(curl -sS -D - -o /dev/null -X OPTIONS \
+            -H "Origin: ${FRONTEND_ORIGIN}" \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: authorization,content-type' \
+            "${PREFLIGHT_URL}")"
+          if ! grep -Fqi "access-control-allow-origin: ${FRONTEND_ORIGIN}" <<< "${PREFLIGHT_HEADERS}"; then
+            echo "::error::El backend no autorizó el origen NOVEX esperado"
             exit 1
           fi
           echo "result=ok" >> "$GITHUB_OUTPUT"

@@ -3,6 +3,16 @@
  * Solo observabilidad — no altera lógica de negocio.
  */
 
+export function isBootVerbose(): boolean {
+  return process.env.BOOT_VERBOSE?.trim().toLowerCase() === 'true';
+}
+
+export function logBootDebug(message: string, ...details: unknown[]): void {
+  if (isBootVerbose()) {
+    console.log(message, ...details);
+  }
+}
+
 function stringifyUnknown(value: unknown): string {
   if (
     typeof value === 'string' ||
@@ -59,16 +69,16 @@ export function logBootError(etapa: string, error: unknown): void {
 }
 
 export function logLifecycleStart(serviceName: string): void {
-  console.log(`Starting ${serviceName}`);
+  logBootDebug(`Starting ${serviceName}`);
 }
 
 export function logLifecycleFinish(serviceName: string, detail?: string): void {
   if (detail) {
-    console.log(`Finished ${serviceName} (${detail})`);
+    logBootDebug(`Finished ${serviceName} (${detail})`);
     return;
   }
 
-  console.log(`Finished ${serviceName}`);
+  logBootDebug(`Finished ${serviceName}`);
 }
 
 export function logLifecycleError(serviceName: string, error: unknown): void {

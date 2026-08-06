@@ -7,6 +7,8 @@ import { ExpressAdapter } from '@nestjs/platform-express';
 import express, { type Express } from 'express';
 import { DataSource } from 'typeorm';
 import {
+  isBootVerbose,
+  logBootDebug,
   logBootError,
   registerGlobalProcessHandlers,
 } from './common/bootstrap-observability';
@@ -15,9 +17,10 @@ import {
   registerProbeHealthRoutes,
 } from './health/probe-health';
 import { verifyDatabaseConnection } from './database/database-preflight';
+import { resolveCorsOrigins } from './configuration/cors.config';
 
 registerGlobalProcessHandlers();
-console.log('[BOOT 1] Process started');
+logBootDebug('[BOOT 1] Process started');
 
 const healthState = new ProbeHealthState();
 
@@ -33,7 +36,7 @@ function logTypeOrmState(app: INestApplication): boolean {
     const dataSource = app.get(DataSource, { strict: false });
     if (dataSource?.isInitialized) {
       console.log('PostgreSQL connected successfully');
-      console.log('[BOOT 6] TypeORM initialized');
+      logBootDebug('[BOOT 6] TypeORM initialized');
       return true;
     }
   } catch {
@@ -48,24 +51,27 @@ async function bootstrap() {
   const expressApp = express();
   registerProbeHealthRoutes(expressApp, healthState);
 
-  console.log('[BOOT 3] Opening early listener');
+  logBootDebug('[BOOT 3] Opening early listener');
   // Cloud Run startup probe (TCP/HTTP) debe pasar mientras Nest + DB inicializan.
   await listenEarly(expressApp, port);
   console.log(`Probe health listening on http://0.0.0.0:${port}`);
 
-  console.log('[BOOT 3A] Verifying PostgreSQL connection');
+  logBootDebug('[BOOT 3A] Verifying PostgreSQL connection');
   await verifyDatabaseConnection();
-  console.log('[BOOT 3B] PostgreSQL preflight completed');
+  logBootDebug('[BOOT 3B] PostgreSQL preflight completed');
 
-  console.log('[BOOT 4] Loading AppModule');
+  logBootDebug('[BOOT 4] Loading AppModule');
   const { AppModule } = await import('./app.module.js');
-  console.log('[BOOT 4A] Calling NestFactory.create()');
+  logBootDebug('[BOOT 4A] Calling NestFactory.create()');
   const app: INestApplication = await NestFactory.create(
     AppModule,
     new ExpressAdapter(expressApp),
+    {
+      logger: isBootVerbose() ? undefined : ['error', 'warn'],
+    },
   );
-  console.log('[BOOT 4B] NestFactory.create() returned');
-  console.log('[BOOT 5] AppModule created');
+  logBootDebug('[BOOT 4B] NestFactory.create() returned');
+  logBootDebug('[BOOT 5] AppModule created');
 
   let typeOrmLogged = logTypeOrmState(app);
 
@@ -88,11 +94,11 @@ async function bootstrap() {
   );
 
   app.enableCors({
-    origin: true,
+    origin: resolveCorsOrigins(),
     credentials: true,
   });
 
-  console.log('Initializing Nest application (DB, modules, routes)...');
+  logBootDebug('Initializing Nest application (DB, modules, routes)...');
   await app.init();
 
   if (!typeOrmLogged) {
@@ -102,14 +108,14 @@ async function bootstrap() {
     }
   }
 
-  console.log('[BOOT 7] Modules initialized');
-  console.log('[BOOT 8] app.init() completed');
+  logBootDebug('[BOOT 7] Modules initialized');
+  logBootDebug('[BOOT 8] app.init() completed');
   const dataSource = app.get(DataSource, { strict: false });
   healthState.markNestReady(dataSource);
-  console.log('[BOOT 9] readiness enabled');
+  logBootDebug('[BOOT 9] readiness enabled');
 
   console.log(`Novex Backend ready on http://0.0.0.0:${port}/${apiPrefix}`);
-  console.log('[BOOT 10] Bootstrap finished');
+  logBootDebug('[BOOT 10] Bootstrap finished');
 }
 
 bootstrap().catch((error) => {

@@ -42,10 +42,17 @@ export class PromptBuilder {
       },
     ];
 
-    const instructions = this.renderSections(
-      'INSTRUCCIONES',
-      template.instructions,
+    const allowedCoordinationCodes = context.availableCoordinations.map(
+      (coordination) => coordination.code,
     );
+    const instructions = this.renderSections('INSTRUCCIONES', [
+      ...template.instructions,
+      {
+        key: 'allowed_coordinations',
+        title: 'Coordinaciones permitidas',
+        body: `En impactAssessment.affectedCoordinations y impactAssessment.propagation usa exclusivamente códigos del catálogo Red de Impacto: ${allowedCoordinationCodes.join(', ')}. No inventes, traduzcas ni derives códigos nuevos.`,
+      },
+    ]);
     const contextBlock = this.renderSections('CONTEXTO', contextSections);
 
     return [contextBlock, instructions].filter(Boolean).join('\n\n');

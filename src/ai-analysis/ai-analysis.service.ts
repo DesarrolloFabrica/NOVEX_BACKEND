@@ -36,6 +36,12 @@ export class AIAnalysisService {
     return this.parser.validateAnalysis(payload);
   }
 
+  async normalizeCoordinationReferences(
+    analysis: AIAnalysisResult,
+  ): Promise<AIAnalysisResult> {
+    return this.mapper.normalizeCoordinationReferences(analysis);
+  }
+
   async mapImpact(
     situationId: string,
     analysis: AIAnalysisResult,

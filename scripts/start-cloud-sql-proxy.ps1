@@ -27,10 +27,10 @@ if (Test-LocalPort -TargetPort $Port) {
   return
 }
 
-$workspaceRoot = [System.IO.Path]::GetFullPath(
-  (Join-Path $PSScriptRoot '..\..')
+$backendRoot = [System.IO.Path]::GetFullPath(
+  (Join-Path $PSScriptRoot '..')
 )
-$proxyPath = Join-Path $workspaceRoot '.tools\cloud-sql-proxy.exe'
+$proxyPath = Join-Path $backendRoot '.tools\cloud-sql-proxy.exe'
 $adcPath = Join-Path $env:APPDATA 'gcloud\application_default_credentials.json'
 
 if (-not (Test-Path -LiteralPath $proxyPath)) {
@@ -40,7 +40,7 @@ if (-not (Test-Path -LiteralPath $adcPath)) {
   throw 'Faltan credenciales ADC. Ejecute: gcloud auth application-default login'
 }
 
-$logDirectory = Join-Path $workspaceRoot 'NOVEX_BACKEND\logs'
+$logDirectory = Join-Path $backendRoot 'logs'
 New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $stdout = Join-Path $logDirectory "cloud-sql-proxy-$stamp.out.log"

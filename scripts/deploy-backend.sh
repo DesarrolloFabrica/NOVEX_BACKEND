@@ -12,7 +12,7 @@ IMAGE="novex-backend"
 CLOUD_SQL_INSTANCE="it-fab-contenido-edu-5:us-central1:novex-db"
 SERVICE_ACCOUNT="550902908078-compute@developer.gserviceaccount.com"
 
-CORS_ORIGINS="http://localhost:5173"
+CORS_ORIGINS="http://localhost:5173,http://127.0.0.1:5173,https://novex-frontend-550902908078.us-central1.run.app,https://novex-frontend-smazwcaz4a-uc.a.run.app"
 DB_USERNAME="novex"
 DB_DATABASE="novex"
 GOOGLE_CLIENT_ID="550902908078-biqvngn6c1eufs3occ54cnritqrfhvl5.apps.googleusercontent.com"
@@ -102,6 +102,7 @@ docker push "${IMAGE_URI}"
 docker push "${IMAGE_LATEST}"
 
 DB_HOST="/cloudsql/${CLOUD_SQL_INSTANCE}"
+CANDIDATE_TAG="candidate-manual-$(date +%Y%m%d%H%M%S)"
 
 echo "==> Desplegando Cloud Run..."
 gcloud run deploy "${SERVICE}" \
@@ -125,21 +126,64 @@ gcloud run deploy "${SERVICE}" \
   --service-account="${SERVICE_ACCOUNT}" \
   --add-cloudsql-instances="${CLOUD_SQL_INSTANCE}" \
   --set-secrets="DB_PASSWORD=novex-db-password:latest,JWT_SECRET=novex-jwt-secret:latest,GEMINI_API_KEY=novex-gemini-api-key:latest" \
-  --set-env-vars="NODE_ENV=production,API_PREFIX=api/v1,CORS_ORIGINS=${CORS_ORIGINS},DB_HOST=${DB_HOST},DB_PORT=5432,DB_USERNAME=${DB_USERNAME},DB_DATABASE=${DB_DATABASE},DB_SSL=false,DB_SYNCHRONIZE=false,DB_LOGGING=false,INSTANCE_CONNECTION_NAME=${CLOUD_SQL_INSTANCE},JWT_EXPIRES_IN=${JWT_EXPIRES_IN},GEMINI_MODEL=${GEMINI_MODEL},GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID},CATALOG_SEED_ON_BOOT=false,DEMO_SEED_ENABLED=false" \
-  --allow-unauthenticated
+  --set-env-vars="^|^NODE_ENV=production|API_PREFIX=api/v1|CORS_ORIGINS=${CORS_ORIGINS}|DB_HOST=${DB_HOST}|DB_PORT=5432|DB_USERNAME=${DB_USERNAME}|DB_DATABASE=${DB_DATABASE}|DB_SSL=false|DB_SYNCHRONIZE=false|DB_LOGGING=false|INSTANCE_CONNECTION_NAME=${CLOUD_SQL_INSTANCE}|JWT_EXPIRES_IN=${JWT_EXPIRES_IN}|GEMINI_MODEL=${GEMINI_MODEL}|GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}|CATALOG_SEED_ON_BOOT=false|DEMO_SEED_ENABLED=false" \
+  --allow-unauthenticated \
+  --no-traffic \
+  --tag="${CANDIDATE_TAG}"
 
-SERVICE_URL="$(gcloud run services describe "${SERVICE}" \
+SERVICE_JSON="$(gcloud run services describe "${SERVICE}" \
   --project="${PROJECT_ID}" \
   --region="${REGION}" \
-  --format='value(status.url)')"
+  --format=json)"
+SERVICE_URL="$(printf '%s' "${SERVICE_JSON}" | python3 -c "import json,sys; print(json.load(sys.stdin)['status']['url'])")"
+CANDIDATE_URL="$(printf '%s' "${SERVICE_JSON}" | python3 -c "import json,sys; tag=sys.argv[1]; data=json.load(sys.stdin); print(next((item.get('url','') for item in data['status'].get('traffic',[]) if item.get('tag') == tag), ''))" "${CANDIDATE_TAG}")"
+CANDIDATE_REVISION="$(printf '%s' "${SERVICE_JSON}" | python3 -c "import json,sys; tag=sys.argv[1]; data=json.load(sys.stdin); print(next((item.get('revisionName','') for item in data['status'].get('traffic',[]) if item.get('tag') == tag), ''))" "${CANDIDATE_TAG}")"
+if [[ -z "${CANDIDATE_URL}" || -z "${CANDIDATE_REVISION}" ]]; then
+  echo "Cloud Run no publicó la revisión candidata." >&2
+  exit 1
+fi
 
 echo
 echo "URL del servicio: ${SERVICE_URL}"
+echo "URL candidata: ${CANDIDATE_URL}"
 echo "==> Consultando /health ..."
-if ! curl -fsS --max-time 30 "${SERVICE_URL}/health"; then
+if ! curl -fsS --max-time 30 "${CANDIDATE_URL}/health/ready"; then
   echo
   echo "No se pudo consultar /health todavía. Revise logs y revisiones en Cloud Run." >&2
 fi
+
+echo
+echo "==> Validando CORS para NOVEX frontend ..."
+FRONTEND_ORIGIN="https://novex-frontend-550902908078.us-central1.run.app"
+PREFLIGHT_URL="${CANDIDATE_URL}/api/v1/situations/register-with-analysis"
+PREFLIGHT_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' -X OPTIONS \
+  -H "Origin: ${FRONTEND_ORIGIN}" \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  "${PREFLIGHT_URL}")"
+if [[ "${PREFLIGHT_STATUS}" != "204" ]]; then
+  echo "Preflight CORS falló con HTTP ${PREFLIGHT_STATUS}." >&2
+  exit 1
+fi
+
+if curl -sS -D - -o /dev/null -X OPTIONS \
+  -H 'Origin: https://example.invalid' \
+  -H 'Access-Control-Request-Method: POST' \
+  "${PREFLIGHT_URL}" | grep -Fqi 'access-control-allow-origin'; then
+  echo "El backend autorizó un origen externo no configurado." >&2
+  exit 1
+fi
+
+gcloud run services update-traffic "${SERVICE}" \
+  --project="${PROJECT_ID}" \
+  --region="${REGION}" \
+  --to-revisions="${CANDIDATE_REVISION}=100" \
+  --quiet
+gcloud run services update-traffic "${SERVICE}" \
+  --project="${PROJECT_ID}" \
+  --region="${REGION}" \
+  --remove-tags="${CANDIDATE_TAG}" \
+  --quiet
 
 echo
 echo "Despliegue finalizado."

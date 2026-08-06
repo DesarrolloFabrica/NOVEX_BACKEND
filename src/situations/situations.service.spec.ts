@@ -123,7 +123,7 @@ describe('SituationsService status transitions', () => {
     expect(result.assignedUserName).toBe('Juan Pérez');
   });
 
-  it('exige motivo al pasar a RESOLVED', async () => {
+  it('exige motivo al pasar a CLOSED desde IN_PROGRESS', async () => {
     const { service, situationsRepository, timelineService } = createService();
     situationsRepository.findByIdWithRelations.mockResolvedValue({
       ...baseSituation,
@@ -133,14 +133,53 @@ describe('SituationsService status transitions', () => {
     });
 
     await expect(
-      service.update(
-        'sit-1',
-        { status: SituationStatus.RESOLVED },
-        analystActor,
-      ),
+      service.update('sit-1', { status: SituationStatus.CLOSED }, analystActor),
     ).rejects.toBeInstanceOf(BadRequestException);
 
     expect(timelineService.createEntry).not.toHaveBeenCalled();
+  });
+
+  it('avanza IN_PROGRESS → CLOSED con motivo', async () => {
+    const { service, situationsRepository, timelineService } = createService();
+    situationsRepository.findByIdWithRelations
+      .mockResolvedValueOnce({
+        ...baseSituation,
+        status: SituationStatus.IN_PROGRESS,
+        assignedUserId: 'user-1',
+        assignedUser: { fullName: 'Juan Pérez' },
+      })
+      .mockResolvedValueOnce({
+        ...baseSituation,
+        status: SituationStatus.CLOSED,
+        assignedUserId: 'user-1',
+        assignedUser: { fullName: 'Juan Pérez' },
+        lastStatusComment: 'Caso documentado y cerrado.',
+        closedAt: new Date(),
+        resolvedAt: new Date(),
+      });
+
+    const result = await service.update(
+      'sit-1',
+      {
+        status: SituationStatus.CLOSED,
+        statusComment: 'Caso documentado y cerrado.',
+      },
+      analystActor,
+    );
+
+    expect(timelineService.createEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Situación cerrada',
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        metadata: expect.objectContaining({
+          previousValue: SituationStatus.IN_PROGRESS,
+          newValue: SituationStatus.CLOSED,
+          statusComment: 'Caso documentado y cerrado.',
+          commentKind: 'closure',
+        }),
+      }),
+    );
+    expect(result.status).toBe(SituationStatus.CLOSED);
   });
 
   it('rechaza saltos de estado y retrocesos', async () => {
@@ -153,7 +192,7 @@ describe('SituationsService status transitions', () => {
     await expect(
       service.update(
         'sit-1',
-        { status: SituationStatus.RESOLVED, statusComment: 'Motivo' },
+        { status: SituationStatus.CLOSED, statusComment: 'Motivo' },
         analystActor,
       ),
     ).rejects.toBeInstanceOf(BadRequestException);

@@ -73,7 +73,7 @@ us-central1-docker.pkg.dev/it-fab-contenido-edu-5/novex/novex-backend
 | `NODE_ENV`                 | `production`                                 |
 | `PORT`                     | `8080` (inyectado por Cloud Run)             |
 | `API_PREFIX`               | `api/v1`                                     |
-| `CORS_ORIGINS`             | Conservada en scripts; la app aún no la consume |
+| `CORS_ORIGINS`             | Lista exacta de orígenes permitidos, separada por comas |
 | `DB_HOST`                  | `/cloudsql/PROJECT:REGION:INSTANCE`          |
 | `DB_PORT`                  | `5432`                                       |
 | `DB_USERNAME`              | usuario Cloud SQL                            |
@@ -335,17 +335,17 @@ gcloud run services update-traffic novex-backend `
 | Error JWT en producción | `JWT_SECRET` débil o de desarrollo — generar secreto fuerte en SM                                               |
 | `ECONNREFUSED` DB       | Revisar Cloud SQL instance attachment y `DB_HOST=/cloudsql/...`                                                 |
 | PostgreSQL `28P01`      | Reconciliar la contraseña del usuario `DB_USERNAME` con la versión de Secret Manager montada como `DB_PASSWORD` |
-| CORS bloqueado          | Revisar `app.enableCors` en `src/main.ts`; actualmente refleja el origen solicitado                              |
+| CORS bloqueado          | Revisar que `CORS_ORIGINS` incluya el origen exacto del frontend                                                  |
 | Gemini 503              | Timeout/cuota/key; el proceso no debe tumbar el proceso                                                         |
 | Seeds inesperados       | En prod `CATALOG_SEED_ON_BOOT=false`                                                                            |
 
 ## 24. CORS
 
-- La implementación actual usa `origin: true` en todos los entornos.
-- Los scripts todavía inyectan `CORS_ORIGINS`, pero la aplicación no consume
-  esa variable.
-- Restringir orígenes requiere un cambio funcional separado; no se realiza en
-  esta limpieza documental.
+- La aplicación consume `CORS_ORIGINS` y rechaza valores con rutas o protocolos
+  distintos de HTTP/HTTPS.
+- En producción la variable es obligatoria; el proceso falla durante el arranque
+  si falta, evitando publicar una revisión con CORS ambiguo.
+- En desarrollo, si se omite, se permiten `localhost:5173` y `127.0.0.1:5173`.
 
 ## 25. Google OAuth
 

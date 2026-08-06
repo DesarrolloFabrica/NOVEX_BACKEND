@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
@@ -12,6 +13,7 @@ import { RequirePermissions } from '../auth/decorators/require-permissions.decor
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { SituationAccessService } from '../situations/situation-access.service';
+import { CreateSituationDto } from '../situations/dto/situation.dto';
 import { AIOrchestrator } from './ai-orchestrator.service';
 
 @Controller('situations')
@@ -21,6 +23,15 @@ export class AIOrchestrationController {
     private readonly orchestrator: AIOrchestrator,
     private readonly situationAccessService: SituationAccessService,
   ) {}
+
+  @Post('register-with-analysis')
+  @RequirePermissions('SITUATIONS_CREATE', 'AI_ANALYZE')
+  registerWithAnalysis(
+    @Body() dto: CreateSituationDto,
+    @CurrentUser() user: AuthPayload,
+  ) {
+    return this.orchestrator.registerAndExecute(dto, user);
+  }
 
   @Post(':id/analyze')
   @RequirePermissions('AI_ANALYZE')

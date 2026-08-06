@@ -5,7 +5,6 @@ import {
   Param,
   ParseUUIDPipe,
   Patch,
-  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -15,7 +14,6 @@ import { RequirePermissions } from '../auth/decorators/require-permissions.decor
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import {
-  CreateSituationDto,
   ListSituationsQueryDto,
   UpdateSituationDto,
 } from './dto/situation.dto';
@@ -25,12 +23,6 @@ import { SituationsService } from './situations.service';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SituationsController {
   constructor(private readonly situationsService: SituationsService) {}
-
-  @Post()
-  @RequirePermissions('SITUATIONS_CREATE')
-  create(@Body() dto: CreateSituationDto, @CurrentUser() user: AuthPayload) {
-    return this.situationsService.create(dto, user);
-  }
 
   @Get()
   @RequirePermissions('SITUATIONS_VIEW')

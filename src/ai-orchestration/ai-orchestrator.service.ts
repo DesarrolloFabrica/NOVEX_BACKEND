@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -7,6 +8,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 
 import type { AIAnalysisResult } from '../ai-analysis/contracts/ai-analysis-result.contract';
+
+import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
 
 import { AIAnalysisService } from '../ai-analysis/ai-analysis.service';
 
@@ -18,6 +21,10 @@ import { TimelineEventType } from '../common/enums/situation-timeline.enums';
 
 import { SituationsRepository } from '../situations/repositories/situations.repository';
 
+import type { CreateSituationDto } from '../situations/dto/situation.dto';
+
+import { SituationsService } from '../situations/situations.service';
+
 import { SituationImpactService } from '../situation-impact/situation-impact.service';
 
 import { SituationRecommendationsService } from '../situation-recommendations/situation-recommendations.service';
@@ -28,6 +35,7 @@ import { AIPromptEngineService } from '../ai-prompt-engine/ai-prompt-engine.serv
 
 import {
   ExecuteAIAnalysisResponseDto,
+  RegisterSituationWithAnalysisResponseDto,
   SituationAIAnalysisResponseDto,
 } from './dto/ai-orchestration.dto';
 
@@ -37,10 +45,14 @@ import { SituationAIAnalysisRecordRepository } from './repositories/situation-ai
 
 @Injectable()
 export class AIOrchestrator {
+  private readonly logger = new Logger(AIOrchestrator.name);
+
   constructor(
     private readonly configService: ConfigService,
 
     private readonly situationsRepository: SituationsRepository,
+
+    private readonly situationsService: SituationsService,
 
     private readonly promptEngine: AIPromptEngineService,
 
@@ -58,6 +70,28 @@ export class AIOrchestrator {
 
     private readonly analysisSessionsService: AIAnalysisSessionsService,
   ) {}
+
+  async registerAndExecute(
+    dto: CreateSituationDto,
+    actor: AuthPayload,
+  ): Promise<RegisterSituationWithAnalysisResponseDto> {
+    const situation = await this.situationsService.create(dto, actor);
+
+    try {
+      const analysis = await this.execute(situation.id, actor.sub);
+      return { situation, analysis };
+    } catch (error) {
+      await this.discardFailedRegistration(situation.id);
+      const causeMessage =
+        error instanceof Error
+          ? error.message
+          : 'Error de análisis desconocido.';
+      throw new ServiceUnavailableException(
+        `La situación no fue registrada porque el análisis IA no pudo completarse: ${causeMessage}`,
+        { cause: error },
+      );
+    }
+  }
 
   async execute(
     situationId: string,
@@ -92,13 +126,19 @@ export class AIOrchestrator {
       const engineResult =
         await this.promptEngine.buildForSituation(situationId);
 
-      const analysis = await this.geminiProvider.executeAnalysis(
+      const providerAnalysis = await this.geminiProvider.executeAnalysis(
         engineResult.context,
 
         engineResult.prompt,
       );
 
-      this.analysisService.validateAnalysis(analysis);
+      const normalizedAnalysis =
+        await this.analysisService.normalizeCoordinationReferences(
+          providerAnalysis,
+        );
+
+      const analysis =
+        this.analysisService.validateAnalysis(normalizedAnalysis);
 
       await this.analysisService.persistAnalysis(
         situationId,
@@ -198,6 +238,16 @@ export class AIOrchestrator {
         analysis,
       };
     } catch (error) {
+      const causeMessage =
+        error instanceof Error
+          ? error.message
+          : 'No fue posible completar el análisis IA.';
+
+      this.logger.error(
+        `Análisis IA fallido situationId=${situationId}: ${causeMessage}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+
       await this.timelineService.createEntry({
         situationId,
 
@@ -207,13 +257,11 @@ export class AIOrchestrator {
 
         title: 'Análisis IA fallido',
 
-        description:
-          error instanceof Error
-            ? error.message
-            : 'No fue posible completar el análisis IA.',
+        description: causeMessage,
 
         metadata: {
           provider: this.geminiProvider.name,
+          errorName: error instanceof Error ? error.name : 'UnknownError',
         },
       });
 
@@ -222,8 +270,7 @@ export class AIOrchestrator {
       }
 
       throw new ServiceUnavailableException(
-        'No fue posible completar el análisis IA.',
-
+        `No fue posible completar el análisis IA: ${causeMessage}`,
         { cause: error },
       );
     }
@@ -304,6 +351,16 @@ export class AIOrchestrator {
     return (
       this.configService.get<string>('gemini.model')?.trim() ??
       'gemini-3-flash-preview'
+    );
+  }
+
+  private async discardFailedRegistration(situationId: string): Promise<void> {
+    await this.analysisRecordRepository.delete({ situationId });
+    await this.analysisSessionsService.deleteBySituationId(situationId);
+    await this.situationsRepository.delete({ id: situationId });
+
+    this.logger.warn(
+      `Registro inicial revertido porque el análisis IA no se completó situationId=${situationId}`,
     );
   }
 

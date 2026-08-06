@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { TimelineEventType } from '../../common/enums/situation-timeline.enums';
 import { Coordination } from '../../coordinations/entities/coordination.entity';
 import type { AIRecommendationInput } from '../../situation-recommendations/dto/situation-recommendation.dto';
@@ -16,6 +16,8 @@ export interface AIAnalysisMappedResult {
 
 @Injectable()
 export class AIAnalysisMapper {
+  private readonly logger = new Logger(AIAnalysisMapper.name);
+
   constructor(
     @InjectRepository(Coordination)
     private readonly coordinationsRepository: Repository<Coordination>,
@@ -64,6 +66,47 @@ export class AIAnalysisMapper {
     };
   }
 
+  async normalizeCoordinationReferences(
+    analysis: AIAnalysisResult,
+  ): Promise<AIAnalysisResult> {
+    const referencedCodes = [
+      ...analysis.impactAssessment.affectedCoordinations.map(
+        (item) => item.coordinationCode,
+      ),
+      ...analysis.impactAssessment.propagation.map(
+        (item) => item.coordinationCode,
+      ),
+    ];
+    const uniqueCodes = [...new Set(referencedCodes)];
+    const found = uniqueCodes.length
+      ? await this.coordinationsRepository.find({
+          where: { code: In(uniqueCodes), isActive: true },
+        })
+      : [];
+    const allowedCodes = new Set(found.map((item) => item.code));
+    const rejectedCodes = uniqueCodes.filter((code) => !allowedCodes.has(code));
+
+    if (rejectedCodes.length > 0) {
+      this.logger.warn(
+        `El análisis IA incluyó coordinaciones fuera de Red de Impacto; se descartaron: ${rejectedCodes.join(', ')}`,
+      );
+    }
+
+    return {
+      ...analysis,
+      impactAssessment: {
+        ...analysis.impactAssessment,
+        affectedCoordinations:
+          analysis.impactAssessment.affectedCoordinations.filter((item) =>
+            allowedCodes.has(item.coordinationCode),
+          ),
+        propagation: analysis.impactAssessment.propagation.filter((item) =>
+          allowedCodes.has(item.coordinationCode),
+        ),
+      },
+    };
+  }
+
   mapRecommendations(analysis: AIAnalysisResult): AIRecommendationInput[] {
     return analysis.recommendations.map((item) => ({
       title: item.title,
@@ -101,7 +144,7 @@ export class AIAnalysisMapper {
 
   private async resolveCoordinationId(code: string): Promise<string> {
     const coordination = await this.coordinationsRepository.findOne({
-      where: { code },
+      where: { code, isActive: true },
     });
     if (!coordination) {
       throw new NotFoundException(`Coordinación no encontrada: ${code}`);

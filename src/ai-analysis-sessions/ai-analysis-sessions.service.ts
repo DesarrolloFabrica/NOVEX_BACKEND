@@ -76,6 +76,10 @@ export class AIAnalysisSessionsService {
     return this.sessionsRepository.findLatestBySituationId(situationId);
   }
 
+  async deleteBySituationId(situationId: string): Promise<void> {
+    await this.sessionsRepository.delete({ situationId });
+  }
+
   private serializePrompt(prompt: CompletePrompt): string {
     return JSON.stringify(
       {
