@@ -55,6 +55,9 @@ jobs:
       - name: Unit tests
         run: npm test -- --passWithNoTests
 
+      - name: Critical authorization E2E
+        run: npm run test:security
+
       - name: Build
         run: npm run build
 
@@ -269,7 +272,7 @@ jobs:
             --min-instances=0 \
             --max-instances=5 \
             --timeout=300 \
-            --startup-probe="httpGet.path=/health,httpGet.port=8080,initialDelaySeconds=0,timeoutSeconds=3,periodSeconds=5,failureThreshold=48" \
+            --startup-probe="httpGet.path=/health/ready,httpGet.port=8080,initialDelaySeconds=0,timeoutSeconds=3,periodSeconds=5,failureThreshold=48" \
             --liveness-probe="httpGet.path=/health,httpGet.port=8080,timeoutSeconds=3,periodSeconds=10,failureThreshold=3" \
             --update-env-vars="NODE_ENV=production,DB_SSL=false,DB_SYNCHRONIZE=false,CATALOG_SEED_ON_BOOT=false,DEMO_SEED_ENABLED=false,ENABLE_EMAIL_LOGIN=false" \
             --no-traffic \

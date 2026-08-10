@@ -221,12 +221,12 @@ $candidateRevision = $candidate.revisionName
 Write-Host ""
 Write-Host "URL del servicio: $SERVICE_URL"
 Write-Host "URL candidata: $candidateUrl"
-Write-Host "==> Consultando /health ..."
+Write-Host "==> Consultando /health/ready ..."
 try {
   $health = Invoke-RestMethod -Uri "$candidateUrl/health/ready" -Method Get -TimeoutSec 30
   $health | ConvertTo-Json -Depth 5
 } catch {
-  Write-Warning "No se pudo consultar /health todavía. Revise logs y revisiones en Cloud Run."
+  Write-Warning "No se pudo consultar /health/ready todavía. Revise logs y revisiones en Cloud Run."
   Write-Warning $_.Exception.Message
 }
 

@@ -146,10 +146,10 @@ fi
 echo
 echo "URL del servicio: ${SERVICE_URL}"
 echo "URL candidata: ${CANDIDATE_URL}"
-echo "==> Consultando /health ..."
+echo "==> Consultando /health/ready ..."
 if ! curl -fsS --max-time 30 "${CANDIDATE_URL}/health/ready"; then
   echo
-  echo "No se pudo consultar /health todavía. Revise logs y revisiones en Cloud Run." >&2
+  echo "No se pudo consultar /health/ready todavía. Revise logs y revisiones en Cloud Run." >&2
 fi
 
 echo
