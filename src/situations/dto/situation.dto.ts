@@ -1,21 +1,19 @@
-import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
   IsDateString,
   IsEnum,
-  IsInt,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
-  Min,
   MinLength,
 } from 'class-validator';
 import {
   SituationSeverity,
   SituationStatus,
 } from '../../common/enums/situation.enums';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 
 export class CreateSituationDto {
   @IsString()
@@ -111,7 +109,7 @@ export class UpdateSituationDto {
   occurredAt?: string;
 }
 
-export class ListSituationsQueryDto {
+export class ListSituationsQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsEnum(SituationStatus)
   status?: SituationStatus;
@@ -135,18 +133,6 @@ export class ListSituationsQueryDto {
   @IsOptional()
   @IsDateString()
   occurredTo?: string;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number = 1;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  limit?: number = 50;
 }
 
 export class SituationResponseDto {

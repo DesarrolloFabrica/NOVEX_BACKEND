@@ -1,4 +1,3 @@
-import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
@@ -11,6 +10,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { OperationalEventStatus } from '../../common/enums/operational.enums';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 
 /** Captura cruda del evento (equivalente a OperationalEventDraft del frontend). */
 export class CreateOperationalEventDto {
@@ -55,7 +55,7 @@ export class UpdateOperationalEventStatusDto {
   status!: OperationalEventStatus;
 }
 
-export class ListOperationalEventsQueryDto {
+export class ListOperationalEventsQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
@@ -71,12 +71,4 @@ export class ListOperationalEventsQueryDto {
   @IsOptional()
   @IsUUID()
   categoryId?: string;
-
-  @IsOptional()
-  @Type(() => Number)
-  page?: number = 1;
-
-  @IsOptional()
-  @Type(() => Number)
-  limit?: number = 50;
 }

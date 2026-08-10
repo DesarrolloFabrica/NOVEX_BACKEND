@@ -1,4 +1,3 @@
-import { Type } from 'class-transformer';
 import {
   IsEnum,
   IsOptional,
@@ -9,8 +8,9 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { RecommendedActionExecutionStatus } from '../../common/enums/operational.enums';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 
-export class ListRecommendedActionsQueryDto {
+export class ListRecommendedActionsQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsUUID()
   areaId?: string;
@@ -23,12 +23,6 @@ export class ListRecommendedActionsQueryDto {
   @IsUUID()
   eventId?: string;
 
-  @IsOptional()
-  @Type(() => Number)
-  page?: number = 1;
-
-  @IsOptional()
-  @Type(() => Number)
   limit?: number = 100;
 }
 
