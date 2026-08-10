@@ -221,6 +221,12 @@ export const OPERACIONES_USERS: readonly OperacionesUserSeed[] = [
     coordinationCode: null,
   },
   {
+    email: 'haider_bello@cun.edu.co',
+    fullName: 'HAIDER BELLO',
+    roleCode: 'ADMIN',
+    coordinationCode: null,
+  },
+  {
     email: 'iron_fuentes@cun.edu.co',
     fullName: 'IRON FUENTES',
     roleCode: 'DIRECTOR',
