@@ -46,6 +46,10 @@ describe('SituationsService status transitions', () => {
       isCoordinationScoped: jest.fn().mockReturnValue(false),
     };
 
+    const auditLogService = {
+      record: jest.fn().mockResolvedValue(null),
+    };
+
     const service = new SituationsService(
       situationsRepository as never,
       coordinationsRepository as never,
@@ -54,6 +58,7 @@ describe('SituationsService status transitions', () => {
       { create: jest.fn((input: unknown) => input) } as never,
       timelineService as never,
       scopeService as never,
+      auditLogService as never,
     );
 
     return {
@@ -62,6 +67,7 @@ describe('SituationsService status transitions', () => {
       usersRepository,
       timelineService,
       scopeService,
+      auditLogService,
     };
   };
 
@@ -320,6 +326,7 @@ describe('SituationsService related coordinations', () => {
       relatedRepo as never,
       { createEntry: jest.fn() } as never,
       scopeService as never,
+      { record: jest.fn().mockResolvedValue(null) } as never,
     );
 
     situationsRepository.findByIdWithRelations.mockResolvedValue({

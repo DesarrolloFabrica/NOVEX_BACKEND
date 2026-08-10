@@ -29,10 +29,15 @@ describe('UsersService admin registration', () => {
       findOne: jest.fn(),
     };
 
+    const auditLogService = {
+      record: jest.fn().mockResolvedValue(null),
+    };
+
     const service = new UsersService(
       usersRepository as never,
       rolesRepository as never,
       coordinationsRepository as never,
+      auditLogService as never,
     );
 
     return {
@@ -40,8 +45,19 @@ describe('UsersService admin registration', () => {
       usersRepository,
       rolesRepository,
       coordinationsRepository,
+      auditLogService,
     };
   };
+
+  const adminActor = {
+    sub: 'admin-1',
+    email: 'admin@cun.edu.co',
+    roleId: 'role-admin',
+    roleCode: 'ADMIN',
+    coordinationId: null,
+    permissions: ['USERS_CREATE', 'USERS_UPDATE'],
+    status: UserStatus.ACTIVE,
+  } as const;
 
   const role = {
     id: 'role-coord',
@@ -84,13 +100,16 @@ describe('UsersService admin registration', () => {
       updatedAt: new Date('2026-08-03T00:00:00.000Z'),
     });
 
-    const result = await service.create({
-      fullName: 'Ana Coordinadora',
-      email: 'Coord@cun.edu.co',
-      roleCode: 'coordinador',
-      coordinationId: coordination.id,
-      status: UserStatus.ACTIVE,
-    });
+    const result = await service.create(
+      {
+        fullName: 'Ana Coordinadora',
+        email: 'Coord@cun.edu.co',
+        roleCode: 'coordinador',
+        coordinationId: coordination.id,
+        status: UserStatus.ACTIVE,
+      },
+      adminActor,
+    );
 
     expect(usersRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -113,13 +132,16 @@ describe('UsersService admin registration', () => {
     usersRepository.findByEmail.mockResolvedValue({ id: 'existing' });
 
     await expect(
-      service.create({
-        fullName: 'Duplicado',
-        email: 'dup@cun.edu.co',
-        roleCode: 'ANALISTA',
-        coordinationId: coordination.id,
-        status: UserStatus.ACTIVE,
-      }),
+      service.create(
+        {
+          fullName: 'Duplicado',
+          email: 'dup@cun.edu.co',
+          roleCode: 'ANALISTA',
+          coordinationId: coordination.id,
+          status: UserStatus.ACTIVE,
+        },
+        adminActor,
+      ),
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
@@ -135,13 +157,16 @@ describe('UsersService admin registration', () => {
     coordinationsRepository.findOne.mockResolvedValue(coordination);
 
     await expect(
-      service.create({
-        fullName: 'Sin rol',
-        email: 'x@cun.edu.co',
-        roleCode: 'DESCONOCIDO',
-        coordinationId: coordination.id,
-        status: UserStatus.ACTIVE,
-      }),
+      service.create(
+        {
+          fullName: 'Sin rol',
+          email: 'x@cun.edu.co',
+          roleCode: 'DESCONOCIDO',
+          coordinationId: coordination.id,
+          status: UserStatus.ACTIVE,
+        },
+        adminActor,
+      ),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -189,10 +214,14 @@ describe('UsersService admin registration', () => {
       });
     coordinationsRepository.findOne.mockResolvedValue(coordination);
 
-    const result = await service.update('user-1', {
-      status: UserStatus.INACTIVE,
-      coordinationId: coordination.id,
-    });
+    const result = await service.update(
+      'user-1',
+      {
+        status: UserStatus.INACTIVE,
+        coordinationId: coordination.id,
+      },
+      adminActor,
+    );
 
     expect(usersRepository.save).toHaveBeenCalled();
     expect(rolesRepository.findOne).not.toHaveBeenCalled();
@@ -205,7 +234,7 @@ describe('UsersService admin registration', () => {
     usersRepository.findByIdWithRelations.mockResolvedValue(null);
 
     await expect(
-      service.update('missing', { status: UserStatus.INACTIVE }),
+      service.update('missing', { status: UserStatus.INACTIVE }, adminActor),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 

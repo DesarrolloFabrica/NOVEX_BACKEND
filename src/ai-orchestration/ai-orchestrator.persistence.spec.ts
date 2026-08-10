@@ -78,6 +78,7 @@ describe('AI-002 atomic persistence', () => {
         save: jest.fn(),
       } as never,
       analysisSessionsService as never,
+      { record: jest.fn().mockResolvedValue(null) } as never,
     );
 
     const actor: AuthPayload = {
@@ -90,7 +91,7 @@ describe('AI-002 atomic persistence', () => {
       status: UserStatus.ACTIVE,
     };
 
-    await orchestrator.execute('situation-id', actor.sub);
+    await orchestrator.execute('situation-id', actor);
 
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(analysisService.persistAnalysis).toHaveBeenCalled();
@@ -135,10 +136,21 @@ describe('AI-002 atomic persistence', () => {
       timelineService as never,
       {} as never,
       { getLatestSession: jest.fn().mockResolvedValue(null) } as never,
+      { record: jest.fn().mockResolvedValue(null) } as never,
     );
 
+    const actor: AuthPayload = {
+      sub: 'user-id',
+      email: 'user@cun.edu.co',
+      roleId: 'role-id',
+      roleCode: 'ANALISTA',
+      coordinationId: null,
+      permissions: ['AI_ANALYZE'],
+      status: UserStatus.ACTIVE,
+    };
+
     await expect(
-      orchestrator.execute('situation-id', 'user-id'),
+      orchestrator.execute('situation-id', actor),
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
 
     expect(transaction).not.toHaveBeenCalled();

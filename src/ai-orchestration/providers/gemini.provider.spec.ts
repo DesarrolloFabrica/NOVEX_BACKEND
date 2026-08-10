@@ -7,6 +7,7 @@ import { AIPromptEngineService } from '../../ai-prompt-engine/ai-prompt-engine.s
 import type { SituationContext } from '../../ai-prompt-engine/contracts/situation-context.contract';
 import type { CompletePrompt } from '../../ai-prompt-engine/contracts/prompt.contract';
 import { GeminiProvider } from './gemini.provider';
+import { RequestContextService } from '../../common/request-context/request-context.service';
 
 jest.mock('@google/genai', () => ({
   GoogleGenAI: jest.fn(),
@@ -57,6 +58,10 @@ describe('GeminiProvider timeout and error handling', () => {
         {
           provide: AIPromptEngineService,
           useValue: { buildForSituation: jest.fn() },
+        },
+        {
+          provide: RequestContextService,
+          useValue: { getRequestId: jest.fn().mockReturnValue('req-1') },
         },
       ],
     }).compile();

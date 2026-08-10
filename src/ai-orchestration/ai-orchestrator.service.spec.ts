@@ -30,6 +30,7 @@ describe('AIOrchestrator initial registration', () => {
       {} as never,
       analysisRecordRepository as never,
       analysisSessionsService as never,
+      { record: jest.fn().mockResolvedValue(null) } as never,
     );
     jest
       .spyOn(orchestrator, 'execute')
