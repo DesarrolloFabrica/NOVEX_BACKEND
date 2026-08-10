@@ -75,7 +75,7 @@ El esquema se administra mediante migraciones TypeORM.
 | GET | `/api/v1/situations/:id/recommendations` | recomendaciones |
 | GET | `/api/v1/coordinations` | catálogo de coordinaciones |
 | GET | `/api/v1/coordinations/graph` | grafo institucional |
-| GET | `/api/v1/intelligence/categories` | taxonomía |
+| GET | `/api/v1/situations/categories` | taxonomía de incidentes (auth + `SITUATIONS_VIEW`) |
 | GET/POST/PATCH | `/api/v1/operational-events` | dominio operacional conservado |
 
 ## Principio de aislamiento
