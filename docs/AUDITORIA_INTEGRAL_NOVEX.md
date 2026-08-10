@@ -14,7 +14,7 @@ NOVEX es una plataforma madura en funcionalidad de negocio (situaciones, IA, cen
 **Score inicial:** 64/100  
 **Veredicto inicial:** NOT READY FOR PRODUCTION
 
-> **Actualización:** Los P0 fueron cerrados en Fase 1. Ver [CLOSURE_PHASE_1_P0.md](./CLOSURE_PHASE_1_P0.md).
+> **Actualización Fase 2:** Rate limiting, Helmet, guard global JWT y timeout Gemini implementados. Ver [CLOSURE_PHASE_2_SECURITY_HARDENING.md](./CLOSURE_PHASE_2_SECURITY_HARDENING.md).
 
 ---
 
@@ -53,16 +53,22 @@ NOVEX es una plataforma madura en funcionalidad de negocio (situaciones, IA, cen
 | SEC-003 | Demo users público | RESOLVED |
 | CI-001 | CI no bloqueaba lint/tests | RESOLVED |
 
-### P1 (pendientes — Fase 2)
+### P1 (pendientes — post-Fase 2)
 
-- SEC-004: Sin rate limiting
-- SEC-005: Sin Helmet / security headers
-- SEC-006: Permisos embebidos en JWT (stale hasta re-login)
-- SEC-007: Sin guard global + `@Public()`
-- AI-001: Sin timeout en llamadas Gemini
+- SEC-006: Permisos embebidos en JWT (stale hasta re-login) — **análisis documentado, sin cambio**
+- SEC-008: `rejectUnauthorized: false` en SSL DB — **análisis documentado, sin cambio**
 - DB-001: Paginación sin `@Max()` en `limit`
 - TEST-001: E2E autorización no en CI
 - OPS-002: Startup probe inconsistente GH vs Cloud Build
+
+### P1 (cerrados en Fase 2)
+
+| ID | Título | Estado |
+|----|--------|--------|
+| SEC-004 | Sin rate limiting | **RESOLVED** |
+| SEC-005 | Sin Helmet / security headers | **RESOLVED** |
+| SEC-007 | Sin guard global + `@Public()` | **RESOLVED** |
+| AI-001 | Sin timeout en llamadas Gemini | **RESOLVED** |
 
 ### P2–P4
 
@@ -129,7 +135,7 @@ Ver análisis detallado en sesión de auditoría (deuda técnica, bundle, loggin
 | Fase | Contenido | Estado |
 |------|-----------|--------|
 | **A** | P0 seguridad + CI | **COMPLETADA** |
-| **B** | Rate limit, Helmet, guard global, timeout IA | Pendiente |
+| **B** | Rate limit, Helmet, guard global, timeout IA | **COMPLETADA** |
 | **C** | Optimización queries, paginación, bundle | Pendiente |
 | **D** | Audit trail, E2E CI, mejoras UX | Pendiente |
 
@@ -146,18 +152,20 @@ Ver análisis detallado en sesión de auditoría (deuda técnica, bundle, loggin
 
 ---
 
-## Checklist de producción (post-Fase 1)
+## Checklist de producción (post-Fase 2)
 
 | Área | Item | Estado |
 |------|------|--------|
-| SECURITY | Authentication | PARTIAL |
+| SECURITY | Authentication | **PASS** (private by default) |
 | SECURITY | Authorization | PASS (flujo principal + P0) |
 | SECURITY | Secrets | PASS |
-| SECURITY | Rate limiting | FAIL |
+| SECURITY | Rate limiting | **PASS** |
+| SECURITY | Security headers (Helmet) | **PASS** |
 | APPLICATION | Builds/Tests | PASS |
 | AI | Schema validation | PASS |
-| AI | Anonymous Gemini | PASS (post-Fase 1) |
-| INFRASTRUCTURE | CI/CD quality gates | PASS (post-Fase 1) |
+| AI | Anonymous Gemini | PASS |
+| AI | Gemini timeout | **PASS** |
+| INFRASTRUCTURE | CI/CD quality gates | PASS |
 | OPERATIONS | Audit trail | FAIL |
 
 ---
@@ -166,9 +174,9 @@ Ver análisis detallado en sesión de auditoría (deuda técnica, bundle, loggin
 
 1. ~~Cerrar endpoints legacy sin auth~~ ✅ Fase 1
 2. ~~Bloquear CI en lint/tests~~ ✅ Fase 1
-3. Implementar rate limiting (auth + IA)
-4. Guard global JWT + `@Public()` explícito
-5. Timeout y circuit breaker Gemini
+3. ~~Implementar rate limiting (auth + IA)~~ ✅ Fase 2
+4. ~~Guard global JWT + `@Public()` explícito~~ ✅ Fase 2
+5. ~~Timeout Gemini~~ ✅ Fase 2 (circuit breaker complejo: Fase 3+)
 6. Audit log institucional
 7. `@Max()` paginación + revisión N+1
 8. E2E autorización en CI
@@ -177,4 +185,4 @@ Ver análisis detallado en sesión de auditoría (deuda técnica, bundle, loggin
 
 ---
 
-*Documento de auditoría inicial. Cierre P0: [CLOSURE_PHASE_1_P0.md](./CLOSURE_PHASE_1_P0.md)*
+*Documento de auditoría inicial. Cierre P0: [CLOSURE_PHASE_1_P0.md](./CLOSURE_PHASE_1_P0.md). Cierre Fase 2: [CLOSURE_PHASE_2_SECURITY_HARDENING.md](./CLOSURE_PHASE_2_SECURITY_HARDENING.md)*
