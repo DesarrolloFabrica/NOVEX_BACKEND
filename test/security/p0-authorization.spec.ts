@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
@@ -24,15 +26,19 @@ import { RecommendedActionsModule } from '../../src/recommended-actions/recommen
 import { RecommendedActionsController } from '../../src/recommended-actions/recommended-actions.controller';
 import { SituationsController } from '../../src/situations/situations.controller';
 import { SituationsService } from '../../src/situations/situations.service';
-import { AppModule } from '../../src/app.module';
 
 const API_PREFIX = 'api/v1';
 const TEST_JWT_SECRET = 'p0-test-secret-with-minimum-length';
 
 function configureTestEnv(): void {
+  process.env.NODE_ENV = 'test';
+  process.env.DB_HOST = '127.0.0.1';
+  process.env.DB_PORT = '5432';
+  process.env.DB_USERNAME = 'test-user';
+  process.env.DB_PASSWORD = 'test-db-password';
+  process.env.DB_DATABASE = 'test-db';
   process.env.JWT_SECRET = TEST_JWT_SECRET;
   process.env.GOOGLE_CLIENT_ID = 'test-google-client-id';
-  process.env.DB_PASSWORD = 'test-db-password';
 }
 
 function readModuleControllers(
@@ -43,16 +49,6 @@ function readModuleControllers(
     moduleClass,
   );
   return Array.isArray(controllers) ? controllers : [];
-}
-
-function readModuleImports(
-  moduleClass: new (...args: never[]) => unknown,
-): unknown[] {
-  const imports: unknown = Reflect.getMetadata(
-    MODULE_METADATA.IMPORTS,
-    moduleClass,
-  );
-  return Array.isArray(imports) ? imports : [];
 }
 
 describe('P0 authorization closure', () => {
@@ -68,9 +64,12 @@ describe('P0 authorization closure', () => {
     });
 
     it('mantiene DemoUsersModule fuera del AppModule productivo', () => {
-      const imports = readModuleImports(AppModule);
+      const appModuleSource = readFileSync(
+        join(__dirname, '../../src/app.module.ts'),
+        'utf8',
+      );
 
-      expect(imports).not.toContain(DemoUsersModule);
+      expect(appModuleSource).not.toContain('DemoUsersModule');
       expect(readModuleControllers(OperationalEventsModule)).not.toContain(
         OperationalEventsController,
       );
