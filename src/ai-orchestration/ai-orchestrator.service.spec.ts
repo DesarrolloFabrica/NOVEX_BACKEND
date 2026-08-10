@@ -19,6 +19,7 @@ describe('AIOrchestrator initial registration', () => {
     };
     const orchestrator = new AIOrchestrator(
       {} as never,
+      { transaction: jest.fn() } as never,
       situationsRepository as never,
       situationsService as never,
       {} as never,
