@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { EntityManager, In, Repository } from 'typeorm';
 import { ImpactLevel } from '../common/enums/situation-impact.enums';
 import { Coordination } from '../coordinations/entities/coordination.entity';
 import { Situation } from '../situations/entities/situation.entity';
@@ -191,19 +191,27 @@ export class SituationImpactService {
 
   async saveAssessment(
     input: SaveImpactAssessmentInput,
+    manager?: EntityManager,
   ): Promise<SituationImpactAssessmentResponseDto> {
-    await this.ensureSituationExists(input.situationId);
+    await this.ensureSituationExists(input.situationId, manager);
 
-    const existing = await this.impactRepository.findBySituationId(
-      input.situationId,
-    );
+    const impactRepository = manager
+      ? manager.getRepository(SituationImpactAssessment)
+      : this.impactRepository;
+    const affectedCoordinationsRepository = manager
+      ? manager.getRepository(SituationAffectedCoordination)
+      : this.affectedCoordinationsRepository;
+
+    const existing = await impactRepository.findOne({
+      where: { situationId: input.situationId },
+    });
     if (existing) {
       throw new ConflictException(
         `Ya existe una evaluación de impacto para la situación: ${input.situationId}`,
       );
     }
 
-    const assessment = this.impactRepository.create({
+    const assessment = impactRepository.create({
       situationId: input.situationId,
       operationalSeverity: input.operationalSeverity,
       confidence: String(input.confidence),
@@ -211,7 +219,7 @@ export class SituationImpactService {
       summary: input.summary.trim(),
       reasoning: input.reasoning.trim(),
       affectedCoordinations: input.affectedCoordinations.map((item) =>
-        this.affectedCoordinationsRepository.create({
+        affectedCoordinationsRepository.create({
           coordinationId: item.coordinationId,
           impactLevel: item.impactLevel,
           description: item.description.trim(),
@@ -219,29 +227,43 @@ export class SituationImpactService {
       ),
     });
 
-    const saved = await this.impactRepository.save(assessment);
-    const withRelations = await this.impactRepository.findBySituationId(
-      saved.situationId,
-    );
+    const saved = await impactRepository.save(assessment);
+    const withRelations = manager
+      ? await impactRepository.findOne({
+          where: { situationId: saved.situationId },
+          relations: {
+            affectedCoordinations: { coordination: true },
+          },
+        })
+      : await this.impactRepository.findBySituationId(saved.situationId);
 
     return this.toAssessmentResponse(withRelations ?? saved);
   }
 
   async replaceAssessment(
     input: SaveImpactAssessmentInput,
+    manager?: EntityManager,
   ): Promise<SituationImpactAssessmentResponseDto> {
-    await this.ensureSituationExists(input.situationId);
+    await this.ensureSituationExists(input.situationId, manager);
 
-    const existing = await this.impactRepository.findBySituationId(
-      input.situationId,
-    );
+    const impactRepository = manager
+      ? manager.getRepository(SituationImpactAssessment)
+      : this.impactRepository;
+    const affectedCoordinationsRepository = manager
+      ? manager.getRepository(SituationAffectedCoordination)
+      : this.affectedCoordinationsRepository;
+
+    const existing = await impactRepository.findOne({
+      where: { situationId: input.situationId },
+      relations: { affectedCoordinations: true },
+    });
     if (!existing) {
       throw new NotFoundException(
         `Evaluación de impacto no encontrada para la situación: ${input.situationId}`,
       );
     }
 
-    await this.affectedCoordinationsRepository.delete({
+    await affectedCoordinationsRepository.delete({
       impactAssessmentId: existing.id,
     });
 
@@ -251,7 +273,7 @@ export class SituationImpactService {
     existing.summary = input.summary.trim();
     existing.reasoning = input.reasoning.trim();
     existing.affectedCoordinations = input.affectedCoordinations.map((item) =>
-      this.affectedCoordinationsRepository.create({
+      affectedCoordinationsRepository.create({
         impactAssessmentId: existing.id,
         coordinationId: item.coordinationId,
         impactLevel: item.impactLevel,
@@ -259,10 +281,15 @@ export class SituationImpactService {
       }),
     );
 
-    await this.impactRepository.save(existing);
-    const withRelations = await this.impactRepository.findBySituationId(
-      input.situationId,
-    );
+    await impactRepository.save(existing);
+    const withRelations = manager
+      ? await impactRepository.findOne({
+          where: { situationId: input.situationId },
+          relations: {
+            affectedCoordinations: { coordination: true },
+          },
+        })
+      : await this.impactRepository.findBySituationId(input.situationId);
 
     return this.toAssessmentResponse(withRelations ?? existing);
   }
@@ -384,8 +411,14 @@ export class SituationImpactService {
       }));
   }
 
-  private async ensureSituationExists(situationId: string): Promise<void> {
-    const exists = await this.situationsRepository.exist({
+  private async ensureSituationExists(
+    situationId: string,
+    manager?: EntityManager,
+  ): Promise<void> {
+    const situationsRepository = manager
+      ? manager.getRepository(Situation)
+      : this.situationsRepository;
+    const exists = await situationsRepository.exist({
       where: { id: situationId },
     });
     if (!exists) {

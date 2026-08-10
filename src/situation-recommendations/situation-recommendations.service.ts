@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import {
   RecommendationSource,
   RecommendationStatus,
@@ -102,6 +102,7 @@ export class SituationRecommendationsService {
     situationId: string,
     items: AIRecommendationInput[],
     actorUserId?: string | null,
+    manager?: EntityManager,
   ): Promise<SituationRecommendationResponseDto[]> {
     if (!items.length) {
       throw new BadRequestException(
@@ -109,12 +110,16 @@ export class SituationRecommendationsService {
       );
     }
 
-    await this.ensureSituationExists(situationId);
+    await this.ensureSituationExists(situationId, manager);
+
+    const recommendationsRepository = manager
+      ? manager.getRepository(SituationRecommendation)
+      : this.recommendationsRepository;
 
     const created: SituationRecommendationResponseDto[] = [];
 
     for (const item of items) {
-      const recommendation = this.recommendationsRepository.create({
+      const recommendation = recommendationsRepository.create({
         situationId,
         title: item.title.trim(),
         description: item.description.trim(),
@@ -127,22 +132,29 @@ export class SituationRecommendationsService {
         executionNotes: null,
       });
 
-      const saved = await this.recommendationsRepository.save(recommendation);
-      const withRelations =
-        await this.recommendationsRepository.findByIdWithRelations(saved.id);
+      const saved = await recommendationsRepository.save(recommendation);
+      const withRelations = manager
+        ? await recommendationsRepository.findOne({
+            where: { id: saved.id },
+            relations: { assignedUser: true },
+          })
+        : await this.recommendationsRepository.findByIdWithRelations(saved.id);
 
-      await this.timelineService.createEntry({
-        situationId,
-        userId: actorUserId ?? null,
-        eventType: TimelineEventType.RECOMMENDATION_GENERATED,
-        title: 'Recomendación generada por IA',
-        description: `Se generó la recomendación "${saved.title}".`,
-        metadata: {
-          recommendationId: saved.id,
-          priority: saved.priority,
-          generatedBy: saved.generatedBy,
+      await this.timelineService.createEntry(
+        {
+          situationId,
+          userId: actorUserId ?? null,
+          eventType: TimelineEventType.RECOMMENDATION_GENERATED,
+          title: 'Recomendación generada por IA',
+          description: `Se generó la recomendación "${saved.title}".`,
+          metadata: {
+            recommendationId: saved.id,
+            priority: saved.priority,
+            generatedBy: saved.generatedBy,
+          },
         },
-      });
+        manager,
+      );
 
       created.push(this.toResponse(withRelations ?? saved));
     }
@@ -292,8 +304,14 @@ export class SituationRecommendationsService {
     return this.toResponse(withRelations ?? recommendation);
   }
 
-  private async ensureSituationExists(situationId: string): Promise<void> {
-    const exists = await this.situationsRepository.exist({
+  private async ensureSituationExists(
+    situationId: string,
+    manager?: EntityManager,
+  ): Promise<void> {
+    const situationsRepository = manager
+      ? manager.getRepository(Situation)
+      : this.situationsRepository;
+    const exists = await situationsRepository.exist({
       where: { id: situationId },
     });
     if (!exists) {

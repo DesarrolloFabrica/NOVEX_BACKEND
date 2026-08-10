@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import { EntityManager } from 'typeorm';
 import type { AIAnalysisResult } from './contracts/ai-analysis-result.contract';
 import type { AIRecommendationInput } from '../situation-recommendations/dto/situation-recommendation.dto';
 import type { SaveImpactAssessmentInput } from '../situation-impact/dto/situation-impact.dto';
+import { SituationImpactAssessment } from '../situation-impact/entities/situation-impact-assessment.entity';
 import { SituationImpactRepository } from '../situation-impact/repositories/situation-impact.repository';
 import { SituationImpactService } from '../situation-impact/situation-impact.service';
 import { SituationRecommendationsService } from '../situation-recommendations/situation-recommendations.service';
@@ -65,6 +67,7 @@ export class AIAnalysisService {
     situationId: string,
     analysis: AIAnalysisResult,
     actorUserId?: string | null,
+    manager?: EntityManager,
   ): Promise<PersistAIAnalysisResult> {
     const mapped = await this.mapper.mapAnalysis(
       situationId,
@@ -72,10 +75,14 @@ export class AIAnalysisService {
       actorUserId,
     );
 
-    const existing = await this.impactRepository.findBySituationId(situationId);
+    const existing = manager
+      ? await manager
+          .getRepository(SituationImpactAssessment)
+          .findOne({ where: { situationId } })
+      : await this.impactRepository.findBySituationId(situationId);
     const impact = existing
-      ? await this.impactService.replaceAssessment(mapped.impactInput)
-      : await this.impactService.saveAssessment(mapped.impactInput);
+      ? await this.impactService.replaceAssessment(mapped.impactInput, manager)
+      : await this.impactService.saveAssessment(mapped.impactInput, manager);
 
     const recommendations =
       mapped.recommendationInputs.length > 0
@@ -83,12 +90,13 @@ export class AIAnalysisService {
             situationId,
             mapped.recommendationInputs,
             actorUserId,
+            manager,
           )
         : [];
 
     const timelineEntries = await Promise.all(
       mapped.timelineEntries.map((entry) =>
-        this.timelineService.createEntry(entry),
+        this.timelineService.createEntry(entry, manager),
       ),
     );
 

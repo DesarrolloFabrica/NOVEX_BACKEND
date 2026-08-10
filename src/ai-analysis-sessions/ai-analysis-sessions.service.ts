@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { EntityManager } from 'typeorm';
 import type { CompletePrompt } from '../ai-prompt-engine/contracts/prompt.contract';
 import {
   AnalysisHistoryResponseDto,
@@ -17,12 +18,19 @@ export class AIAnalysisSessionsService {
 
   async createSession(
     input: CreateAnalysisSessionInput,
+    manager?: EntityManager,
   ): Promise<SituationAnalysisSession> {
-    const version = await this.sessionsRepository.getNextVersion(
-      input.situationId,
-    );
+    const sessionsRepository = manager
+      ? manager.getRepository(SituationAnalysisSession)
+      : this.sessionsRepository;
 
-    const session = this.sessionsRepository.create({
+    const latest = await sessionsRepository.findOne({
+      where: { situationId: input.situationId },
+      order: { version: 'DESC' },
+    });
+    const version = (latest?.version ?? 0) + 1;
+
+    const session = sessionsRepository.create({
       situationId: input.situationId,
       version,
       provider: input.provider,
@@ -34,7 +42,7 @@ export class AIAnalysisSessionsService {
       tokenEstimate: input.tokenEstimate,
     });
 
-    return this.sessionsRepository.save(session);
+    return sessionsRepository.save(session);
   }
 
   async getHistory(situationId: string): Promise<AnalysisHistoryResponseDto> {

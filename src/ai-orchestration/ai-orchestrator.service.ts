@@ -7,6 +7,8 @@ import {
 
 import { ConfigService } from '@nestjs/config';
 
+import { DataSource, EntityManager } from 'typeorm';
+
 import type { AIAnalysisResult } from '../ai-analysis/contracts/ai-analysis-result.contract';
 
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
@@ -42,6 +44,7 @@ import {
 import { GeminiProvider } from './providers/gemini.provider';
 
 import { SituationAIAnalysisRecordRepository } from './repositories/situation-ai-analysis-record.repository';
+import { SituationAIAnalysisRecord } from './entities/situation-ai-analysis-record.entity';
 
 @Injectable()
 export class AIOrchestrator {
@@ -49,6 +52,7 @@ export class AIOrchestrator {
 
   constructor(
     private readonly configService: ConfigService,
+    private readonly dataSource: DataSource,
 
     private readonly situationsRepository: SituationsRepository,
 
@@ -140,73 +144,71 @@ export class AIOrchestrator {
       const analysis =
         this.analysisService.validateAnalysis(normalizedAnalysis);
 
-      await this.analysisService.persistAnalysis(
-        situationId,
-        analysis,
-        actorUserId,
-      );
-
-      const session = await this.analysisSessionsService.createSession({
-        situationId,
-
-        provider: analysis.provider,
-
-        model: this.getModelName(),
-
-        promptVersion: engineResult.prompt.templateVersion,
-
-        analysisResult: analysis,
-
-        prompt: engineResult.prompt,
-
-        executionTimeMs: Date.now() - startedAt,
-
-        tokenEstimate: engineResult.metrics.estimatedTokens,
-      });
-
-      await this.updateCurrentAnalysisRecord(situationId, analysis, session);
-
-      await this.timelineService.createEntry({
-        situationId,
-
-        userId: actorUserId,
-
-        eventType: TimelineEventType.AI_ANALYSIS_VERSION_CREATED,
-
-        title: 'Versión de análisis IA creada',
-
-        description: `Se registró la versión ${session.version} del análisis IA.`,
-
-        metadata: {
-          sessionId: session.id,
-
-          analysisVersion: session.version,
-
-          provider: session.provider,
-        },
-      });
-
-      if (previousLatest) {
-        await this.timelineService.createEntry({
+      const session = await this.dataSource.transaction(async (manager) => {
+        await this.analysisService.persistAnalysis(
           situationId,
+          analysis,
+          actorUserId,
+          manager,
+        );
 
-          userId: actorUserId,
-
-          eventType: TimelineEventType.AI_REANALYZED,
-
-          title: 'Situación reanalizada',
-
-          description: `Nuevo análisis IA (v${session.version}) reemplazó la versión vigente v${previousLatest.version}.`,
-
-          metadata: {
-            fromVersion: previousLatest.version,
-
-            toVersion: session.version,
-
-            sessionId: session.id,
+        const createdSession = await this.analysisSessionsService.createSession(
+          {
+            situationId,
+            provider: analysis.provider,
+            model: this.getModelName(),
+            promptVersion: engineResult.prompt.templateVersion,
+            analysisResult: analysis,
+            prompt: engineResult.prompt,
+            executionTimeMs: Date.now() - startedAt,
+            tokenEstimate: engineResult.metrics.estimatedTokens,
           },
-        });
-      }
+          manager,
+        );
+
+        await this.updateCurrentAnalysisRecord(
+          situationId,
+          analysis,
+          createdSession,
+          manager,
+        );
+
+        await this.timelineService.createEntry(
+          {
+            situationId,
+            userId: actorUserId,
+            eventType: TimelineEventType.AI_ANALYSIS_VERSION_CREATED,
+            title: 'Versión de análisis IA creada',
+            description: `Se registró la versión ${createdSession.version} del análisis IA.`,
+            metadata: {
+              sessionId: createdSession.id,
+              analysisVersion: createdSession.version,
+              provider: createdSession.provider,
+            },
+          },
+          manager,
+        );
+
+        if (previousLatest) {
+          await this.timelineService.createEntry(
+            {
+              situationId,
+              userId: actorUserId,
+              eventType: TimelineEventType.AI_REANALYZED,
+              title: 'Situación reanalizada',
+              description: `Nuevo análisis IA (v${createdSession.version}) reemplazó la versión vigente v${previousLatest.version}.`,
+              metadata: {
+                fromVersion: previousLatest.version,
+                toVersion: createdSession.version,
+                sessionId: createdSession.id,
+              },
+            },
+            manager,
+          );
+        }
+
+        return createdSession;
+      });
 
       const [impactAssessment, recommendations, timeline] = await Promise.all([
         this.impactService.findBySituation(situationId),
@@ -314,37 +316,34 @@ export class AIOrchestrator {
 
   private async updateCurrentAnalysisRecord(
     situationId: string,
-
     analysis: AIAnalysisResult,
-
     session: SituationAnalysisSession,
+    manager?: EntityManager,
   ): Promise<void> {
-    const existing =
-      await this.analysisRecordRepository.findBySituationId(situationId);
+    const recordRepository = manager
+      ? manager.getRepository(SituationAIAnalysisRecord)
+      : this.analysisRecordRepository;
+
+    const existing = manager
+      ? await recordRepository.findOne({ where: { situationId } })
+      : await this.analysisRecordRepository.findBySituationId(situationId);
 
     if (existing) {
       existing.currentSessionId = session.id;
-
       existing.provider = analysis.provider;
-
       existing.analysisResult = analysis;
-
-      await this.analysisRecordRepository.save(existing);
-
+      await recordRepository.save(existing);
       return;
     }
 
-    const record = this.analysisRecordRepository.create({
+    const record = recordRepository.create({
       situationId,
-
       currentSessionId: session.id,
-
       provider: analysis.provider,
-
       analysisResult: analysis,
     });
 
-    await this.analysisRecordRepository.save(record);
+    await recordRepository.save(record);
   }
 
   private getModelName(): string {
