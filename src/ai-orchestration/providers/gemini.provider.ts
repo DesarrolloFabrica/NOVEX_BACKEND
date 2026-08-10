@@ -22,6 +22,8 @@ import {
   executeWithAbortTimeout,
   toGatewayTimeoutException,
 } from '../../common/utils/abort-timeout';
+import { StructuredLogger } from '../../common/logging/structured-logger';
+import { RequestContextService } from '../../common/request-context/request-context.service';
 
 @Injectable()
 export class GeminiProvider implements AIProvider {
@@ -33,6 +35,7 @@ export class GeminiProvider implements AIProvider {
     private readonly configService: ConfigService,
     private readonly parser: AIAnalysisParser,
     private readonly promptEngine: AIPromptEngineService,
+    private readonly requestContext: RequestContextService,
   ) {}
 
   health(): Promise<AIProviderHealthStatus> {
@@ -97,9 +100,21 @@ export class GeminiProvider implements AIProvider {
       );
     } catch (error) {
       if (error instanceof AbortTimeoutError) {
+        StructuredLogger.warning('gemini_analysis_timeout', {
+          requestId: this.requestContext.getRequestId(),
+          situationId: context.situationId,
+          model,
+          timeoutMs,
+        });
         throw toGatewayTimeoutException(error, timeoutMs);
       }
 
+      StructuredLogger.error('gemini_analysis_provider_failure', {
+        requestId: this.requestContext.getRequestId(),
+        situationId: context.situationId,
+        model,
+        errorName: error instanceof Error ? error.name : 'UnknownError',
+      });
       this.logger.error(
         'Gemini request failed',
         error instanceof Error ? error.message : String(error),
@@ -111,12 +126,22 @@ export class GeminiProvider implements AIProvider {
 
     const rawText = response.text?.trim();
     if (!rawText) {
+      StructuredLogger.warning('gemini_analysis_empty_response', {
+        requestId: this.requestContext.getRequestId(),
+        situationId: context.situationId,
+        model,
+      });
       throw new ServiceUnavailableException(
         'Gemini devolvió una respuesta vacía.',
       );
     }
 
-    const analysis = this.parseWithRetry(rawText);
+    const analysis = this.parseWithRetry(rawText, context.situationId, model);
+    StructuredLogger.info('gemini_analysis_success', {
+      requestId: this.requestContext.getRequestId(),
+      situationId: context.situationId,
+      model,
+    });
     return {
       ...analysis,
       provider: this.name,
@@ -124,7 +149,11 @@ export class GeminiProvider implements AIProvider {
     };
   }
 
-  private parseWithRetry(raw: string): AIAnalysisResult {
+  private parseWithRetry(
+    raw: string,
+    situationId: string,
+    model: string,
+  ): AIAnalysisResult {
     try {
       return this.parser.parseAnalysis(raw);
     } catch (firstError) {
@@ -134,6 +163,11 @@ export class GeminiProvider implements AIProvider {
       try {
         return this.parser.parseAnalysis(this.stripMarkdownFences(raw));
       } catch {
+        StructuredLogger.error('gemini_analysis_validation_failure', {
+          requestId: this.requestContext.getRequestId(),
+          situationId,
+          model,
+        });
         this.logger.error('Gemini devolvió JSON inválido tras reintento.');
         throw new ServiceUnavailableException(
           'Gemini devolvió un JSON inválido para el contrato AIAnalysisResult.',
