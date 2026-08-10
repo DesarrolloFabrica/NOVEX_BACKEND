@@ -1,4 +1,5 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -117,7 +118,7 @@ describe('P0 authorization closure', () => {
         controllers: [SituationsController],
         providers: [
           JwtStrategy,
-          JwtAuthGuard,
+          { provide: APP_GUARD, useClass: JwtAuthGuard },
           PermissionsGuard,
           {
             provide: SituationsService,
@@ -214,7 +215,7 @@ describe('P0 authorization closure', () => {
         controllers: [SituationsController],
         providers: [
           JwtStrategy,
-          JwtAuthGuard,
+          { provide: APP_GUARD, useClass: JwtAuthGuard },
           PermissionsGuard,
           {
             provide: SituationsService,
