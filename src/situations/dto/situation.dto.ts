@@ -180,3 +180,10 @@ export class SituationsListResponseDto {
   page!: number;
   limit!: number;
 }
+
+export class IncidentCategorySummaryDto {
+  id!: string;
+  code!: string;
+  name!: string;
+  description!: string | null;
+}

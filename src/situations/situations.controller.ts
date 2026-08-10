@@ -24,6 +24,12 @@ import { SituationsService } from './situations.service';
 export class SituationsController {
   constructor(private readonly situationsService: SituationsService) {}
 
+  @Get('categories')
+  @RequirePermissions('SITUATIONS_VIEW')
+  listCategories() {
+    return this.situationsService.listIncidentCategories();
+  }
+
   @Get()
   @RequirePermissions('SITUATIONS_VIEW')
   list(

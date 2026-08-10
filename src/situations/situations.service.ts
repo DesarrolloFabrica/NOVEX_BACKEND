@@ -16,6 +16,7 @@ import { SituationTimelineService } from '../situation-timeline/situation-timeli
 import { User } from '../users/entities/user.entity';
 import {
   CreateSituationDto,
+  IncidentCategorySummaryDto,
   ListSituationsQueryDto,
   RelatedCoordinationResponseDto,
   SituationResponseDto,
@@ -47,6 +48,19 @@ export class SituationsService {
     private readonly timelineService: SituationTimelineService,
     private readonly scopeService: OperationalScopeService,
   ) {}
+
+  async listIncidentCategories(): Promise<IncidentCategorySummaryDto[]> {
+    const categories = await this.categoriesRepository.find({
+      order: { name: 'ASC' },
+    });
+
+    return categories.map((category) => ({
+      id: category.id,
+      code: category.code,
+      name: category.name,
+      description: category.description,
+    }));
+  }
 
   async create(
     dto: CreateSituationDto,

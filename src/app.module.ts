@@ -24,8 +24,6 @@ import { DashboardModule } from './dashboard/dashboard.module';
 
 import { DatabaseSeedsModule } from './database/seeds/database-seeds.module';
 
-import { DemoUsersModule } from './demo-users/demo-users.module';
-
 import { IntelligenceModule } from './intelligence/intelligence.module';
 
 import { OperationalAreasModule } from './operational-areas/operational-areas.module';
@@ -99,8 +97,6 @@ import { UsersModule } from './users/users.module';
     RbacModule,
 
     UsersModule,
-
-    DemoUsersModule,
 
     DatabaseSeedsModule,
   ],

@@ -7,7 +7,6 @@ import { AIInterpretation } from './entities/ai-interpretation.entity';
 import { IncidentCategory } from './entities/incident-category.entity';
 import { OperationalIndicator } from './entities/operational-indicator.entity';
 import { GeminiModule } from './gemini/gemini.module';
-import { IntelligenceController } from './intelligence.controller';
 import { IntelligenceFacade } from './intelligence.facade';
 import { IntelligenceService } from './intelligence.service';
 import { AIInterpretationsRepository } from './repositories/ai-interpretations.repository';
@@ -24,7 +23,6 @@ import { AIInterpretationsRepository } from './repositories/ai-interpretations.r
     GeminiModule,
     forwardRef(() => RecommendedActionsModule),
   ],
-  controllers: [IntelligenceController],
   providers: [
     IntelligenceService,
     AIInterpretationsRepository,

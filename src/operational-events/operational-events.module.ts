@@ -3,7 +3,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { OperationalAreasModule } from '../operational-areas/operational-areas.module';
 import { OperationalEvent } from './entities/operational-event.entity';
 import { OperationalTimelineEntry } from './entities/operational-timeline-entry.entity';
-import { OperationalEventsController } from './operational-events.controller';
 import { OperationalEventsService } from './operational-events.service';
 import { OperationalEventsRepository } from './repositories/operational-events.repository';
 
@@ -12,7 +11,7 @@ import { OperationalEventsRepository } from './repositories/operational-events.r
     TypeOrmModule.forFeature([OperationalEvent, OperationalTimelineEntry]),
     OperationalAreasModule,
   ],
-  controllers: [OperationalEventsController],
+  controllers: [],
   providers: [OperationalEventsService, OperationalEventsRepository],
   exports: [OperationalEventsService, OperationalEventsRepository],
 })
