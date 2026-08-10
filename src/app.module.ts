@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AIAnalysisSessionsModule } from './ai-analysis-sessions/ai-analysis-sessions.module';
@@ -11,6 +12,8 @@ import { AIPromptEngineModule } from './ai-prompt-engine/ai-prompt-engine.module
 import { AIAnalysisModule } from './ai-analysis/ai-analysis.module';
 
 import { AuthModule } from './auth/auth.module';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { THROTTLE_LIMITS } from './configuration/throttle.constants';
 
 import { CommonModule } from './common/common.module';
 
@@ -53,6 +56,12 @@ import { UsersModule } from './users/users.module';
 @Module({
   imports: [
     ConfigurationModule,
+
+    ThrottlerModule.forRoot([
+      THROTTLE_LIMITS.default,
+      THROTTLE_LIMITS.auth,
+      THROTTLE_LIMITS.gemini,
+    ]),
 
     CommonModule,
 
@@ -99,6 +108,10 @@ import { UsersModule } from './users/users.module';
     UsersModule,
 
     DatabaseSeedsModule,
+  ],
+  providers: [
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {}

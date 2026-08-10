@@ -7,17 +7,22 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import {
+  THROTTLE_GEMINI_LIMIT,
+  THROTTLE_LIMITS,
+  THROTTLE_TTL_MS,
+} from '../configuration/throttle.constants';
 import { SituationAccessService } from '../situations/situation-access.service';
 import { CreateSituationDto } from '../situations/dto/situation.dto';
 import { AIOrchestrator } from './ai-orchestrator.service';
 
 @Controller('situations')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(PermissionsGuard)
 export class AIOrchestrationController {
   constructor(
     private readonly orchestrator: AIOrchestrator,
@@ -25,6 +30,12 @@ export class AIOrchestrationController {
   ) {}
 
   @Post('register-with-analysis')
+  @Throttle({
+    [THROTTLE_LIMITS.gemini.name]: {
+      limit: THROTTLE_GEMINI_LIMIT,
+      ttl: THROTTLE_TTL_MS,
+    },
+  })
   @RequirePermissions('SITUATIONS_CREATE', 'AI_ANALYZE')
   registerWithAnalysis(
     @Body() dto: CreateSituationDto,
@@ -34,6 +45,12 @@ export class AIOrchestrationController {
   }
 
   @Post(':id/analyze')
+  @Throttle({
+    [THROTTLE_LIMITS.gemini.name]: {
+      limit: THROTTLE_GEMINI_LIMIT,
+      ttl: THROTTLE_TTL_MS,
+    },
+  })
   @RequirePermissions('AI_ANALYZE')
   async analyze(
     @Param('id', ParseUUIDPipe) situationId: string,
