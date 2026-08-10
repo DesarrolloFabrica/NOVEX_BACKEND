@@ -17,6 +17,11 @@ import type { SituationContext } from '../../ai-prompt-engine/contracts/situatio
 import type { CompletePrompt } from '../../ai-prompt-engine/contracts/prompt.contract';
 import { AIPromptEngineService } from '../../ai-prompt-engine/ai-prompt-engine.service';
 import { AI_ANALYSIS_RESPONSE_JSON_SCHEMA } from '../../ai-analysis/schemas/ai-analysis-response.schema';
+import {
+  AbortTimeoutError,
+  executeWithAbortTimeout,
+  toGatewayTimeoutException,
+} from '../../common/utils/abort-timeout';
 
 @Injectable()
 export class GeminiProvider implements AIProvider {
@@ -66,22 +71,43 @@ export class GeminiProvider implements AIProvider {
     }
 
     const model = this.getModel();
+    const timeoutMs = this.getTimeoutMs();
     const client = new GoogleGenAI({ apiKey });
 
     this.logger.debug(
-      `Invocando Gemini model=${model} situationId=${context.situationId}`,
+      `Invocando Gemini model=${model} situationId=${context.situationId} timeoutMs=${timeoutMs}`,
     );
 
-    const response = await client.models.generateContent({
-      model,
-      contents: prompt.userPrompt,
-      config: {
-        systemInstruction: prompt.systemPrompt,
-        temperature: 0.2,
-        responseMimeType: 'application/json',
-        responseJsonSchema: AI_ANALYSIS_RESPONSE_JSON_SCHEMA,
-      },
-    });
+    let response;
+    try {
+      response = await executeWithAbortTimeout(
+        (signal) =>
+          client.models.generateContent({
+            model,
+            contents: prompt.userPrompt,
+            config: {
+              systemInstruction: prompt.systemPrompt,
+              temperature: 0.2,
+              responseMimeType: 'application/json',
+              responseJsonSchema: AI_ANALYSIS_RESPONSE_JSON_SCHEMA,
+              abortSignal: signal,
+            },
+          }),
+        timeoutMs,
+      );
+    } catch (error) {
+      if (error instanceof AbortTimeoutError) {
+        throw toGatewayTimeoutException(error, timeoutMs);
+      }
+
+      this.logger.error(
+        'Gemini request failed',
+        error instanceof Error ? error.message : String(error),
+      );
+      throw new ServiceUnavailableException(
+        'No fue posible completar el análisis IA.',
+      );
+    }
 
     const rawText = response.text?.trim();
     if (!rawText) {
@@ -138,6 +164,14 @@ export class GeminiProvider implements AIProvider {
       this.configService.get<string>('gemini.model')?.trim() ??
       'gemini-3-flash-preview'
     );
+  }
+
+  private getTimeoutMs(): number {
+    const configured = this.configService.get<number>('gemini.timeoutMs');
+    if (typeof configured === 'number' && configured > 0) {
+      return configured;
+    }
+    return 60_000;
   }
 }
 

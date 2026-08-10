@@ -79,6 +79,13 @@ export class EnvironmentVariables {
   @IsOptional()
   GEMINI_MODEL: string = 'gemini-3-flash-preview';
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1000)
+  @Max(300_000)
+  @IsOptional()
+  GEMINI_TIMEOUT_MS: number = 60_000;
+
   @IsString()
   @IsNotEmpty()
   JWT_SECRET!: string;

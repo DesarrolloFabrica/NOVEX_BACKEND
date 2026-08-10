@@ -19,6 +19,7 @@ const configuration = () => ({
   gemini: {
     apiKey: process.env.GEMINI_API_KEY ?? '',
     model: process.env.GEMINI_MODEL ?? 'gemini-3-flash-preview',
+    timeoutMs: parseInt(process.env.GEMINI_TIMEOUT_MS ?? '60000', 10),
   },
   jwt: {
     secret: process.env.JWT_SECRET ?? '',
