@@ -14,6 +14,8 @@ NOVEX es una plataforma madura en funcionalidad de negocio (situaciones, IA, cen
 **Score inicial:** 64/100  
 **Veredicto inicial:** NOT READY FOR PRODUCTION
 
+> **Actualización Fase 4:** Audit trail institucional, logging estructurado, sanitización y correlación por `requestId`. Ver [FINAL_TECHNICAL_CLOSURE.md](./FINAL_TECHNICAL_CLOSURE.md).
+
 > **Actualización Fase 3:** Integridad IA atómica, autorización server-side, paginación acotada, E2E en CI y probes alineados. Ver [CLOSURE_PHASE_3_INTEGRITY_AUTHORIZATION.md](./CLOSURE_PHASE_3_INTEGRITY_AUTHORIZATION.md).
 
 ---
@@ -63,9 +65,9 @@ NOVEX es una plataforma madura en funcionalidad de negocio (situaciones, IA, cen
 | TEST-001 | E2E autorización no en CI | **RESOLVED** |
 | OPS-002 | Inconsistencia health/readiness probes | **RESOLVED** |
 
-### P1 (pendientes — post-Fase 3)
+### P1 (pendientes — post-Fase 4)
 
-- SEC-008: `rejectUnauthorized: false` — **REQUIRES_INFRA_CHANGE** (socket Cloud SQL: NOT_APPLICABLE)
+- SEC-008: `rejectUnauthorized` — **`NOT_APPLICABLE_CURRENT_ARCHITECTURE`** (socket Unix `/cloudsql/...`). **`REVISIT_IF_MIGRATING_TO_TCP_SSL`**
 
 ### P1 (cerrados en Fase 2)
 
@@ -78,7 +80,7 @@ NOVEX es una plataforma madura en funcionalidad de negocio (situaciones, IA, cen
 
 ### P2–P4
 
-Ver análisis detallado en sesión de auditoría (deuda técnica, bundle, logging estructurado, audit trail, etc.).
+Ver análisis detallado en sesión de auditoría. **Fase 4 cerró:** audit trail institucional y logging estructurado mínimo. Resto documentado como mejora futura en [FINAL_TECHNICAL_CLOSURE.md](./FINAL_TECHNICAL_CLOSURE.md).
 
 ---
 
@@ -103,17 +105,17 @@ Ver análisis detallado en sesión de auditoría (deuda técnica, bundle, loggin
 
 ## 10. Base de datos
 
-- PostgreSQL + 6 migraciones
+- PostgreSQL + 7 migraciones (incl. `audit_logs`)
 - Índices extensos en `situations`, timeline, recommendations
-- Sin transacciones en persistencia IA (P2)
-- Backups documentados en `BACKUP-DR.md` (verificación restore: NOT VERIFIED desde repo)
+- Persistencia IA atómica (Fase 3)
+- Backups documentados en `BACKUP-DR.md` — **`BACKUP RESTORE TEST — REQUIRES GCP OPERATIONAL VERIFICATION`**
 
 ---
 
 ## 11–14. Frontend, Backend, IA, Performance
 
 - **Frontend:** JWT en localStorage; 1 ruta lazy (`/red-impacto`); componentes grandes
-- **Backend:** ValidationPipe global; sin ExceptionFilter custom
+- **Backend:** ValidationPipe global; `GlobalExceptionFilter` con `requestId` en 5xx (sin stack al cliente)
 - **IA:** JSON Schema Gemini + validación + rollback en registro; flujo protegido
 - **Performance:** Listados con múltiples joins; bundle >500 KB
 
@@ -143,7 +145,7 @@ Ver análisis detallado en sesión de auditoría (deuda técnica, bundle, loggin
 | **A** | P0 seguridad + CI | **COMPLETADA** |
 | **B** | Rate limit, Helmet, guard global, timeout IA | **COMPLETADA** |
 | **C** | Integridad IA, auth server-side, paginación, E2E CI, probes | **COMPLETADA** |
-| **D** | Audit trail, bundle, optimización SQL | Pendiente |
+| **D** | Audit trail, logging estructurado, cierre documental | **COMPLETADA** |
 
 ---
 
@@ -158,7 +160,7 @@ Ver análisis detallado en sesión de auditoría (deuda técnica, bundle, loggin
 
 ---
 
-## Checklist de producción (post-Fase 3)
+## Checklist de producción (post-Fase 4)
 
 | Área | Item | Estado |
 |------|------|--------|
@@ -171,7 +173,11 @@ Ver análisis detallado en sesión de auditoría (deuda técnica, bundle, loggin
 | AI | Atomic persistence | **PASS** |
 | AI | Gemini timeout | PASS |
 | INFRASTRUCTURE | Probe alignment | **PASS** |
-| OPERATIONS | Audit trail | FAIL |
+| OPERATIONS | Audit trail | **PASS** |
+| OPERATIONS | Structured logging + requestId | **PASS** |
+| OPERATIONS | Backup restore test | **REQUIRES GCP VERIFICATION** |
+
+**Veredicto Fase 4:** `READY FOR CONTROLLED PRODUCTION` — ver [FINAL_TECHNICAL_CLOSURE.md](./FINAL_TECHNICAL_CLOSURE.md)
 
 ---
 
@@ -181,13 +187,13 @@ Ver análisis detallado en sesión de auditoría (deuda técnica, bundle, loggin
 2. ~~Bloquear CI en lint/tests~~ ✅ Fase 1
 3. ~~Implementar rate limiting (auth + IA)~~ ✅ Fase 2
 4. ~~Guard global JWT + `@Public()` explícito~~ ✅ Fase 2
-5. ~~Timeout Gemini~~ ✅ Fase 2 (circuit breaker complejo: Fase 3+)
-6. Audit log institucional
-7. `@Max()` paginación + revisión N+1
-8. E2E autorización en CI
-9. Transacciones atómicas persistencia IA
-10. Prueba documentada de restore BD
+5. ~~Timeout Gemini~~ ✅ Fase 2
+6. ~~Audit log institucional~~ ✅ Fase 4
+7. ~~`@Max()` paginación~~ ✅ Fase 3 (N+1 listado: sin hallazgo crítico)
+8. ~~E2E autorización en CI~~ ✅ Fase 3
+9. ~~Transacciones atómicas persistencia IA~~ ✅ Fase 3
+10. Prueba documentada de restore BD — **REQUIRES GCP OPERATIONAL VERIFICATION**
 
 ---
 
-*Documento de auditoría inicial. Fase 1: [CLOSURE_PHASE_1_P0.md](./CLOSURE_PHASE_1_P0.md). Fase 2: [CLOSURE_PHASE_2_SECURITY_HARDENING.md](./CLOSURE_PHASE_2_SECURITY_HARDENING.md). Fase 3: [CLOSURE_PHASE_3_INTEGRITY_AUTHORIZATION.md](./CLOSURE_PHASE_3_INTEGRITY_AUTHORIZATION.md)*
+*Documento de auditoría inicial. Fase 1: [CLOSURE_PHASE_1_P0.md](./CLOSURE_PHASE_1_P0.md). Fase 2: [CLOSURE_PHASE_2_SECURITY_HARDENING.md](./CLOSURE_PHASE_2_SECURITY_HARDENING.md). Fase 3: [CLOSURE_PHASE_3_INTEGRITY_AUTHORIZATION.md](./CLOSURE_PHASE_3_INTEGRITY_AUTHORIZATION.md). Cierre final: [FINAL_TECHNICAL_CLOSURE.md](./FINAL_TECHNICAL_CLOSURE.md)*

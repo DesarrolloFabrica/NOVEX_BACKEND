@@ -1,5 +1,8 @@
 # Backups y Disaster Recovery — NOVEX
 
+> **`BACKUP RESTORE TEST — REQUIRES GCP OPERATIONAL VERIFICATION`**  
+> Los backups automáticos están configurados, pero **no se ejecutó un restore real** desde este repositorio. No afirmar que el restore funciona sin prueba operacional en entorno temporal/no productivo.
+
 ## Cloud SQL `novex-db`
 
 | Setting | Valor |
@@ -43,3 +46,12 @@ Para PITR usar la consola Cloud SQL → Backups → “Restore to point in time�
 
 - Subir a `db-custom` / HA regional cuando el tráfico lo justifique.
 - Prueba de restore trimestral documentada.
+
+## Checklist restore seguro (entorno temporal / no productivo)
+
+1. Crear instancia Cloud SQL temporal desde backup o PITR (no overwrite in-place).
+2. Conectar backend de staging a la instancia temporal.
+3. Smoke: `/health`, `/health/ready`, login, listado de situaciones.
+4. Validar conteos básicos contra referencia conocida.
+5. Documentar resultado y destruir instancia temporal.
+6. Planificar cutover a producción solo con ventana aprobada.
