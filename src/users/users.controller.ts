@@ -44,7 +44,7 @@ export class UsersController {
   @Post()
   create(@Body() dto: CreateUserDto, @CurrentUser() actor: AuthPayload) {
     this.assertPermission(actor, 'USERS_CREATE');
-    return this.usersService.create(dto);
+    return this.usersService.create(dto, actor);
   }
 
   @Get(':id/permissions')
@@ -72,7 +72,7 @@ export class UsersController {
     @CurrentUser() actor: AuthPayload,
   ) {
     this.assertPermission(actor, 'USERS_UPDATE');
-    return this.usersService.update(id, dto);
+    return this.usersService.update(id, dto, actor);
   }
 
   private assertPermission(actor: AuthPayload, permission: string): void {

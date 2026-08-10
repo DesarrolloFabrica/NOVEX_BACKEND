@@ -60,7 +60,7 @@ export class AIOrchestrationController {
       user,
       situationId,
     );
-    return this.orchestrator.execute(situationId, user.sub);
+    return this.orchestrator.execute(situationId, user);
   }
 
   @Get(':id/analysis')

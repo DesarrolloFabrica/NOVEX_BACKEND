@@ -9,6 +9,9 @@ import { ConfigService } from '@nestjs/config';
 
 import { DataSource, EntityManager } from 'typeorm';
 
+import { AuditAction, AuditResourceType } from '../audit/audit-action.enum';
+import { AuditLogService } from '../audit/audit-log.service';
+
 import type { AIAnalysisResult } from '../ai-analysis/contracts/ai-analysis-result.contract';
 
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
@@ -73,6 +76,7 @@ export class AIOrchestrator {
     private readonly analysisRecordRepository: SituationAIAnalysisRecordRepository,
 
     private readonly analysisSessionsService: AIAnalysisSessionsService,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   async registerAndExecute(
@@ -82,7 +86,7 @@ export class AIOrchestrator {
     const situation = await this.situationsService.create(dto, actor);
 
     try {
-      const analysis = await this.execute(situation.id, actor.sub);
+      const analysis = await this.execute(situation.id, actor);
       return { situation, analysis };
     } catch (error) {
       await this.discardFailedRegistration(situation.id);
@@ -99,8 +103,7 @@ export class AIOrchestrator {
 
   async execute(
     situationId: string,
-
-    actorUserId: string,
+    actor: AuthPayload,
   ): Promise<ExecuteAIAnalysisResponseDto> {
     await this.ensureSituationExists(situationId);
 
@@ -110,7 +113,7 @@ export class AIOrchestrator {
     await this.timelineService.createEntry({
       situationId,
 
-      userId: actorUserId,
+      userId: actor.sub,
 
       eventType: TimelineEventType.AI_ANALYSIS_STARTED,
 
@@ -148,7 +151,7 @@ export class AIOrchestrator {
         await this.analysisService.persistAnalysis(
           situationId,
           analysis,
-          actorUserId,
+          actor.sub,
           manager,
         );
 
@@ -176,7 +179,7 @@ export class AIOrchestrator {
         await this.timelineService.createEntry(
           {
             situationId,
-            userId: actorUserId,
+            userId: actor.sub,
             eventType: TimelineEventType.AI_ANALYSIS_VERSION_CREATED,
             title: 'Versión de análisis IA creada',
             description: `Se registró la versión ${createdSession.version} del análisis IA.`,
@@ -193,7 +196,7 @@ export class AIOrchestrator {
           await this.timelineService.createEntry(
             {
               situationId,
-              userId: actorUserId,
+              userId: actor.sub,
               eventType: TimelineEventType.AI_REANALYZED,
               title: 'Situación reanalizada',
               description: `Nuevo análisis IA (v${createdSession.version}) reemplazó la versión vigente v${previousLatest.version}.`,
@@ -217,6 +220,21 @@ export class AIOrchestrator {
 
         this.timelineService.findBySituation(situationId),
       ]);
+
+      await this.auditLogService.record({
+        actor,
+        action: previousLatest
+          ? AuditAction.AI_REANALYZED
+          : AuditAction.AI_ANALYSIS_COMPLETED,
+        resourceType: AuditResourceType.AI_ANALYSIS,
+        resourceId: situationId,
+        metadata: {
+          sessionId: session.id,
+          analysisVersion: session.version,
+          provider: session.provider,
+          previousVersion: previousLatest?.version ?? null,
+        },
+      });
 
       return {
         situationId,
@@ -253,7 +271,7 @@ export class AIOrchestrator {
       await this.timelineService.createEntry({
         situationId,
 
-        userId: actorUserId,
+        userId: actor.sub,
 
         eventType: TimelineEventType.AI_ANALYSIS_FAILED,
 
@@ -261,6 +279,17 @@ export class AIOrchestrator {
 
         description: causeMessage,
 
+        metadata: {
+          provider: this.geminiProvider.name,
+          errorName: error instanceof Error ? error.name : 'UnknownError',
+        },
+      });
+
+      await this.auditLogService.record({
+        actor,
+        action: AuditAction.AI_ANALYSIS_FAILED,
+        resourceType: AuditResourceType.AI_ANALYSIS,
+        resourceId: situationId,
         metadata: {
           provider: this.geminiProvider.name,
           errorName: error instanceof Error ? error.name : 'UnknownError',

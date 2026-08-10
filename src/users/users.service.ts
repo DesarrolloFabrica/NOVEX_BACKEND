@@ -6,6 +6,10 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { AuditAction, AuditResourceType } from '../audit/audit-action.enum';
+import { AuditLogService } from '../audit/audit-log.service';
+import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
+import { UserStatus } from '../common/enums/identity.enums';
 import { Coordination } from '../coordinations/entities/coordination.entity';
 import { Role } from '../roles/entities/role.entity';
 import {
@@ -26,6 +30,7 @@ export class UsersService {
     private readonly rolesRepository: Repository<Role>,
     @InjectRepository(Coordination)
     private readonly coordinationsRepository: Repository<Coordination>,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   async list(query: ListUsersQueryDto): Promise<UserResponseDto[]> {
@@ -44,7 +49,10 @@ export class UsersService {
     return this.toResponse(user);
   }
 
-  async create(dto: CreateUserDto): Promise<UserResponseDto> {
+  async create(
+    dto: CreateUserDto,
+    actor: AuthPayload,
+  ): Promise<UserResponseDto> {
     const email = dto.email.trim().toLowerCase();
     const existing = await this.usersRepository.findByEmail(email);
     if (existing) {
@@ -77,14 +85,32 @@ export class UsersService {
       );
     }
 
+    await this.auditLogService.record({
+      actor,
+      action: AuditAction.USER_CREATED,
+      resourceType: AuditResourceType.USER,
+      resourceId: user.id,
+      metadata: {
+        roleCode: user.role.code,
+        status: user.status,
+      },
+    });
+
     return this.toResponse(user);
   }
 
-  async update(id: string, dto: UpdateUserDto): Promise<UserResponseDto> {
+  async update(
+    id: string,
+    dto: UpdateUserDto,
+    actor: AuthPayload,
+  ): Promise<UserResponseDto> {
     const user = await this.usersRepository.findByIdWithRelations(id);
     if (!user) {
       throw new NotFoundException(`Usuario no encontrado: ${id}`);
     }
+
+    const previousRoleCode = user.role.code;
+    const previousStatus = user.status;
 
     if (dto.fullName !== undefined) {
       user.fullName = dto.fullName.trim();
@@ -114,6 +140,38 @@ export class UsersService {
       throw new NotFoundException(
         `Usuario no encontrado tras actualizar: ${id}`,
       );
+    }
+
+    if (
+      dto.roleCode !== undefined &&
+      refreshed.role.code !== previousRoleCode
+    ) {
+      await this.auditLogService.record({
+        actor,
+        action: AuditAction.USER_ROLE_CHANGED,
+        resourceType: AuditResourceType.USER,
+        resourceId: refreshed.id,
+        metadata: {
+          previousRoleCode,
+          nextRoleCode: refreshed.role.code,
+        },
+      });
+    }
+
+    if (dto.status !== undefined && refreshed.status !== previousStatus) {
+      await this.auditLogService.record({
+        actor,
+        action:
+          refreshed.status === UserStatus.ACTIVE
+            ? AuditAction.USER_ACTIVATED
+            : AuditAction.USER_DEACTIVATED,
+        resourceType: AuditResourceType.USER,
+        resourceId: refreshed.id,
+        metadata: {
+          previousStatus,
+          nextStatus: refreshed.status,
+        },
+      });
     }
 
     return this.toResponse(refreshed);

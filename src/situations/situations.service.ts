@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
+import { AuditAction, AuditResourceType } from '../audit/audit-action.enum';
+import { AuditLogService } from '../audit/audit-log.service';
 import { OperationalScopeService } from '../auth/services/operational-scope.service';
 import { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { TimelineEventType } from '../common/enums/situation-timeline.enums';
@@ -47,6 +49,7 @@ export class SituationsService {
     private readonly relatedCoordinationsRepository: Repository<SituationRelatedCoordination>,
     private readonly timelineService: SituationTimelineService,
     private readonly scopeService: OperationalScopeService,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   async listIncidentCategories(): Promise<IncidentCategorySummaryDto[]> {
@@ -121,6 +124,18 @@ export class SituationsService {
     if (!withRelations) {
       throw new NotFoundException('No fue posible cargar la situación creada.');
     }
+
+    await this.auditLogService.record({
+      actor,
+      action: AuditAction.SITUATION_CREATED,
+      resourceType: AuditResourceType.SITUATION,
+      resourceId: withRelations.id,
+      metadata: {
+        status: withRelations.status,
+        severity: withRelations.severity,
+        categoryId: withRelations.categoryId,
+      },
+    });
 
     return this.toResponse(withRelations);
   }
@@ -223,6 +238,7 @@ export class SituationsService {
     }
 
     const previousStatus = situation.status;
+    const changedFields = this.collectChangedFields(dto);
     let statusTransitionApplied = false;
     let statusComment: string | null = null;
 
@@ -252,9 +268,40 @@ export class SituationsService {
         assignedUserName: situation.assignedUser?.fullName ?? null,
         evidenceIds: dto.evidenceIds ?? [],
       });
+
+      await this.auditLogService.record({
+        actor,
+        action: AuditAction.SITUATION_STATUS_CHANGED,
+        resourceType: AuditResourceType.SITUATION,
+        resourceId: situation.id,
+        metadata: {
+          previousStatus,
+          nextStatus: situation.status,
+        },
+      });
+    } else if (changedFields.length > 0) {
+      await this.auditLogService.record({
+        actor,
+        action: AuditAction.SITUATION_UPDATED,
+        resourceType: AuditResourceType.SITUATION,
+        resourceId: situation.id,
+        metadata: { changedFields },
+      });
     }
 
     return this.getById(id, actor);
+  }
+
+  private collectChangedFields(dto: UpdateSituationDto): string[] {
+    const fields: string[] = [];
+    if (dto.title !== undefined) fields.push('title');
+    if (dto.description !== undefined) fields.push('description');
+    if (dto.severity !== undefined) fields.push('severity');
+    if (dto.categoryId !== undefined) fields.push('categoryId');
+    if (dto.coordinationId !== undefined) fields.push('coordinationId');
+    if (dto.occurredAt !== undefined) fields.push('occurredAt');
+    if (dto.statusComment !== undefined) fields.push('statusComment');
+    return fields;
   }
 
   private assertValidStatusTransition(

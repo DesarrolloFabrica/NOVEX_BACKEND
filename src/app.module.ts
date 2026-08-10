@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -16,7 +16,9 @@ import { AuthorizationEnrichmentGuard } from './auth/guards/authorization-enrich
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { THROTTLE_LIMITS } from './configuration/throttle.constants';
 
+import { AuditModule } from './audit/audit.module';
 import { CommonModule } from './common/common.module';
+import { RequestContextMiddleware } from './common/request-context/request-context.middleware';
 
 import { ConfigurationModule } from './configuration/configuration.module';
 
@@ -65,6 +67,8 @@ import { UsersModule } from './users/users.module';
     ]),
 
     CommonModule,
+
+    AuditModule,
 
     TypeOrmModule.forRootAsync(typeOrmAsyncConfig),
 
@@ -116,4 +120,8 @@ import { UsersModule } from './users/users.module';
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(RequestContextMiddleware).forRoutes('*');
+  }
+}
