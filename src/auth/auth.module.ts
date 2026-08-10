@@ -7,6 +7,7 @@ import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { AuthorizationEnrichmentGuard } from './guards/authorization-enrichment.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
 import { OperationalScopeService } from './services/operational-scope.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -42,6 +43,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     AuthService,
     JwtStrategy,
     JwtAuthGuard,
+    AuthorizationEnrichmentGuard,
     PermissionsGuard,
     OperationalScopeService,
   ],
@@ -50,6 +52,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     JwtModule,
     PassportModule,
     JwtAuthGuard,
+    AuthorizationEnrichmentGuard,
     PermissionsGuard,
     OperationalScopeService,
   ],

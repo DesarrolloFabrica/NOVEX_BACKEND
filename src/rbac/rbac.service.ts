@@ -1,6 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { UserStatus } from '../common/enums/identity.enums';
+import { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import {
   RolePermissionsResponseDto,
   UserPermissionsResponseDto,
@@ -59,6 +65,37 @@ export class RbacService {
       roleId: user.roleId,
       roleCode: user.role.code,
       permissions: rolePermissions.permissions,
+    };
+  }
+
+  /**
+   * Autorización vigente para guards y scope. Una consulta de usuario + una de permisos.
+   */
+  async resolveActiveAuthorization(userId: string): Promise<AuthPayload> {
+    const user = await this.usersRepository.findOne({
+      where: { id: userId },
+      relations: { role: true },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Usuario no autorizado.');
+    }
+
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('El usuario no está activo.');
+    }
+
+    const rolePermissions =
+      await this.rolePermissionsRepository.findPermissionsByRoleId(user.roleId);
+
+    return {
+      sub: user.id,
+      email: user.email,
+      roleId: user.roleId,
+      roleCode: user.role.code,
+      coordinationId: user.coordinationId,
+      permissions: rolePermissions.map((permission) => permission.code),
+      status: user.status,
     };
   }
 

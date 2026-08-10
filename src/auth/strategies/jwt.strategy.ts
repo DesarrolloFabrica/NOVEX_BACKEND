@@ -6,8 +6,9 @@ import { UserStatus } from '../../common/enums/identity.enums';
 import { AuthPayload } from '../contracts/auth-payload.contract';
 
 /**
- * Valida la firma/expiración del JWT y expone el payload embebido
- * (id, rol, coordinación, permisos) sin consultas adicionales a BD.
+ * Valida la firma/expiración del JWT y expone identidad básica.
+ * Los permisos embebidos son snapshot de login; la autorización vigente
+ * se resuelve en AuthorizationEnrichmentGuard (SEC-006).
  */
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {

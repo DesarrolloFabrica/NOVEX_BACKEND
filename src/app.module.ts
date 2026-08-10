@@ -12,6 +12,7 @@ import { AIPromptEngineModule } from './ai-prompt-engine/ai-prompt-engine.module
 import { AIAnalysisModule } from './ai-analysis/ai-analysis.module';
 
 import { AuthModule } from './auth/auth.module';
+import { AuthorizationEnrichmentGuard } from './auth/guards/authorization-enrichment.guard';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { THROTTLE_LIMITS } from './configuration/throttle.constants';
 
@@ -111,6 +112,7 @@ import { UsersModule } from './users/users.module';
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: AuthorizationEnrichmentGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
