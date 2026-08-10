@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import express, { type Express } from 'express';
+import helmet from 'helmet';
 import { DataSource } from 'typeorm';
 import {
   isBootVerbose,
@@ -49,6 +50,14 @@ function logTypeOrmState(app: INestApplication): boolean {
 async function bootstrap() {
   const port = parseInt(process.env.PORT ?? '3001', 10);
   const expressApp = express();
+  expressApp.disable('x-powered-by');
+  expressApp.use(
+    helmet({
+      // API JSON: CSP estricta no aporta y puede interferir con herramientas de diagnóstico.
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
   registerProbeHealthRoutes(expressApp, healthState);
 
   logBootDebug('[BOOT 3] Opening early listener');
