@@ -14,7 +14,7 @@ NOVEX es una plataforma madura en funcionalidad de negocio (situaciones, IA, cen
 **Score inicial:** 64/100  
 **Veredicto inicial:** NOT READY FOR PRODUCTION
 
-> **Actualización Fase 2:** Rate limiting, Helmet, guard global JWT y timeout Gemini implementados. Ver [CLOSURE_PHASE_2_SECURITY_HARDENING.md](./CLOSURE_PHASE_2_SECURITY_HARDENING.md).
+> **Actualización Fase 3:** Integridad IA atómica, autorización server-side, paginación acotada, E2E en CI y probes alineados. Ver [CLOSURE_PHASE_3_INTEGRITY_AUTHORIZATION.md](./CLOSURE_PHASE_3_INTEGRITY_AUTHORIZATION.md).
 
 ---
 
@@ -53,13 +53,19 @@ NOVEX es una plataforma madura en funcionalidad de negocio (situaciones, IA, cen
 | SEC-003 | Demo users público | RESOLVED |
 | CI-001 | CI no bloqueaba lint/tests | RESOLVED |
 
-### P1 (pendientes — post-Fase 2)
+### P1 (cerrados en Fase 3)
 
-- SEC-006: Permisos embebidos en JWT (stale hasta re-login) — **análisis documentado, sin cambio**
-- SEC-008: `rejectUnauthorized: false` en SSL DB — **análisis documentado, sin cambio**
-- DB-001: Paginación sin `@Max()` en `limit`
-- TEST-001: E2E autorización no en CI
-- OPS-002: Startup probe inconsistente GH vs Cloud Build
+| ID | Título | Estado |
+|----|--------|--------|
+| SEC-006 | Permisos stale en JWT | **RESOLVED** (server-side authorization) |
+| AI-002 | Persistencia IA sin atomicidad | **RESOLVED** |
+| DB-001 | Paginación sin `@Max()` | **RESOLVED** |
+| TEST-001 | E2E autorización no en CI | **RESOLVED** |
+| OPS-002 | Inconsistencia health/readiness probes | **RESOLVED** |
+
+### P1 (pendientes — post-Fase 3)
+
+- SEC-008: `rejectUnauthorized: false` — **REQUIRES_INFRA_CHANGE** (socket Cloud SQL: NOT_APPLICABLE)
 
 ### P1 (cerrados en Fase 2)
 
@@ -136,8 +142,8 @@ Ver análisis detallado en sesión de auditoría (deuda técnica, bundle, loggin
 |------|-----------|--------|
 | **A** | P0 seguridad + CI | **COMPLETADA** |
 | **B** | Rate limit, Helmet, guard global, timeout IA | **COMPLETADA** |
-| **C** | Optimización queries, paginación, bundle | Pendiente |
-| **D** | Audit trail, E2E CI, mejoras UX | Pendiente |
+| **C** | Integridad IA, auth server-side, paginación, E2E CI, probes | **COMPLETADA** |
+| **D** | Audit trail, bundle, optimización SQL | Pendiente |
 
 ---
 
@@ -152,20 +158,19 @@ Ver análisis detallado en sesión de auditoría (deuda técnica, bundle, loggin
 
 ---
 
-## Checklist de producción (post-Fase 2)
+## Checklist de producción (post-Fase 3)
 
 | Área | Item | Estado |
 |------|------|--------|
-| SECURITY | Authentication | **PASS** (private by default) |
-| SECURITY | Authorization | PASS (flujo principal + P0) |
-| SECURITY | Secrets | PASS |
-| SECURITY | Rate limiting | **PASS** |
-| SECURITY | Security headers (Helmet) | **PASS** |
+| SECURITY | Authentication | **PASS** |
+| SECURITY | Authorization (server-side) | **PASS** |
+| SECURITY | Rate limiting | PASS |
+| SECURITY | Security headers | PASS |
 | APPLICATION | Builds/Tests | PASS |
-| AI | Schema validation | PASS |
-| AI | Anonymous Gemini | PASS |
-| AI | Gemini timeout | **PASS** |
-| INFRASTRUCTURE | CI/CD quality gates | PASS |
+| APPLICATION | Critical E2E in CI | **PASS** |
+| AI | Atomic persistence | **PASS** |
+| AI | Gemini timeout | PASS |
+| INFRASTRUCTURE | Probe alignment | **PASS** |
 | OPERATIONS | Audit trail | FAIL |
 
 ---
@@ -185,4 +190,4 @@ Ver análisis detallado en sesión de auditoría (deuda técnica, bundle, loggin
 
 ---
 
-*Documento de auditoría inicial. Cierre P0: [CLOSURE_PHASE_1_P0.md](./CLOSURE_PHASE_1_P0.md). Cierre Fase 2: [CLOSURE_PHASE_2_SECURITY_HARDENING.md](./CLOSURE_PHASE_2_SECURITY_HARDENING.md)*
+*Documento de auditoría inicial. Fase 1: [CLOSURE_PHASE_1_P0.md](./CLOSURE_PHASE_1_P0.md). Fase 2: [CLOSURE_PHASE_2_SECURITY_HARDENING.md](./CLOSURE_PHASE_2_SECURITY_HARDENING.md). Fase 3: [CLOSURE_PHASE_3_INTEGRITY_AUTHORIZATION.md](./CLOSURE_PHASE_3_INTEGRITY_AUTHORIZATION.md)*
