@@ -12,13 +12,12 @@ import {
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { SituationAccessService } from '../situations/situation-access.service';
 import { SituationImpactService } from './situation-impact.service';
 
 @Controller('situations')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(PermissionsGuard)
 export class SituationImpactController {
   constructor(
     private readonly impactService: SituationImpactService,

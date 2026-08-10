@@ -5,17 +5,14 @@ import {
   Param,
   ParseUUIDPipe,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RbacService } from '../rbac/rbac.service';
 import { ListRolesQueryDto } from './dto/role.dto';
 import { RolesService } from './roles.service';
 
 @Controller('roles')
-@UseGuards(JwtAuthGuard)
 export class RolesController {
   constructor(
     private readonly rolesService: RolesService,

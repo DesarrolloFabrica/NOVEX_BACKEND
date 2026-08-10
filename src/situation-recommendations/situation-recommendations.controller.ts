@@ -11,7 +11,6 @@ import {
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { SituationAccessService } from '../situations/situation-access.service';
 import {
@@ -21,7 +20,7 @@ import {
 import { SituationRecommendationsService } from './situation-recommendations.service';
 
 @Controller('situations')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(PermissionsGuard)
 export class SituationRecommendationsBySituationController {
   constructor(
     private readonly recommendationsService: SituationRecommendationsService,
@@ -66,7 +65,7 @@ export class SituationRecommendationsBySituationController {
 }
 
 @Controller('recommendations')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(PermissionsGuard)
 export class SituationRecommendationsController {
   constructor(
     private readonly recommendationsService: SituationRecommendationsService,
