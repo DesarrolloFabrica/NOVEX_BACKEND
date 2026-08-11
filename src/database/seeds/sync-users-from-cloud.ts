@@ -294,7 +294,11 @@ export async function syncUsersFromCloud(): Promise<SyncUsersFromCloudResult> {
         usersCreated += 1;
       }
 
-      return { created: usersCreated, updated: usersUpdated, skipped: usersSkipped };
+      return {
+        created: usersCreated,
+        updated: usersUpdated,
+        skipped: usersSkipped,
+      };
     });
 
     return {

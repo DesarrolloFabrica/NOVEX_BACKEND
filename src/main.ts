@@ -8,10 +8,10 @@ import express, { type Express } from 'express';
 import helmet from 'helmet';
 import { DataSource } from 'typeorm';
 import {
-  isBootVerbose,
   logBootDebug,
   logBootError,
   registerGlobalProcessHandlers,
+  resolveNestLogger,
 } from './common/bootstrap-observability';
 import {
   ProbeHealthState,
@@ -76,7 +76,7 @@ async function bootstrap() {
     AppModule,
     new ExpressAdapter(expressApp),
     {
-      logger: isBootVerbose() ? undefined : ['error', 'warn'],
+      logger: resolveNestLogger(),
     },
   );
   logBootDebug('[BOOT 4B] NestFactory.create() returned');

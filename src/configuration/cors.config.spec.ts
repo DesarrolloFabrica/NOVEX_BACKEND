@@ -30,6 +30,6 @@ describe('resolveCorsOrigins', () => {
         NODE_ENV: 'production',
         CORS_ORIGINS: 'https://novex.example/api/v1',
       }),
-    ).toThrow('solo admite orígenes sin ruta')
+    ).toThrow('solo admite orígenes sin ruta');
   });
 });

@@ -4,13 +4,20 @@ import {
   Injectable,
   NestInterceptor,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Observable, catchError, tap, throwError } from 'rxjs';
 import type { AuthPayload } from '../../auth/contracts/auth-payload.contract';
 import { StructuredLogger } from '../logging/structured-logger';
 
 @Injectable()
 export class HttpLoggingInterceptor implements NestInterceptor {
+  constructor(private readonly configService: ConfigService) {}
+
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    if (!this.configService.get<boolean>('httpRequestLogging')) {
+      return next.handle();
+    }
+
     const http = context.switchToHttp();
     const request = http.getRequest<{
       method?: string;

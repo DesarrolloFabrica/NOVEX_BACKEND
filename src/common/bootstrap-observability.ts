@@ -1,3 +1,5 @@
+import type { LogLevel } from '@nestjs/common';
+
 /**
  * Logs estructurados de arranque para diagnóstico en Cloud Run / Cloud Logging.
  * Solo observabilidad — no altera lógica de negocio.
@@ -5,6 +7,17 @@
 
 export function isBootVerbose(): boolean {
   return process.env.BOOT_VERBOSE?.trim().toLowerCase() === 'true';
+}
+
+/** Logger de Nest: completo (con colores) en local; mínimo en producción. */
+export function resolveNestLogger(): LogLevel[] | undefined {
+  const nodeEnv = process.env.NODE_ENV?.trim().toLowerCase() ?? 'development';
+
+  if (nodeEnv === 'development' || isBootVerbose()) {
+    return undefined;
+  }
+
+  return ['error', 'warn'];
 }
 
 export function logBootDebug(message: string, ...details: unknown[]): void {

@@ -5,6 +5,7 @@ import {
   Module,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import express from 'express';
@@ -57,7 +58,12 @@ describe('Structured request logging', () => {
     app = moduleRef.createNestApplication(new ExpressAdapter(expressApp));
     const requestContext = app.get(RequestContextMiddleware);
     expressApp.use((req, res, next) => requestContext.use(req, res, next));
-    app.useGlobalInterceptors(new HttpLoggingInterceptor());
+    app.useGlobalInterceptors(
+      new HttpLoggingInterceptor({
+        get: (key: string) =>
+          key === 'httpRequestLogging' ? true : undefined,
+      } as ConfigService),
+    );
     app.useGlobalFilters(new GlobalExceptionFilter());
     await app.init();
   });

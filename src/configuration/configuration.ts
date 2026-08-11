@@ -30,6 +30,14 @@ const configuration = () => ({
   },
   /** Solo desarrollo local: login por correo sin OAuth. En deploy debe ser false. */
   enableEmailLogin: (process.env.ENABLE_EMAIL_LOGIN ?? 'false') === 'true',
+  /**
+   * Logs JSON por request HTTP (http_request_completed / http_request_failed).
+   * Por defecto: desactivado en desarrollo, activado en producción (Cloud Logging).
+   */
+  httpRequestLogging:
+    process.env.HTTP_REQUEST_LOGGING !== undefined
+      ? process.env.HTTP_REQUEST_LOGGING === 'true'
+      : (process.env.NODE_ENV ?? 'development') === 'production',
 });
 
 export type AppConfiguration = ReturnType<typeof configuration>;

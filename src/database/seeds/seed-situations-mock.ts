@@ -1,41 +1,44 @@
-import { randomUUID } from 'crypto'
-import { DataSource, In } from 'typeorm'
+import { randomUUID } from 'crypto';
+import { DataSource, In } from 'typeorm';
 import {
   AIAnalysisSchemaVersion,
   ExecutivePriorityLevel,
   HypothesisLikelihood,
   MissingInformationPriority,
-} from '../../ai-analysis/enums/ai-analysis.enums'
-import type { AIAnalysisResult } from '../../ai-analysis/contracts/ai-analysis-result.contract'
-import { SituationAIAnalysisRecord } from '../../ai-orchestration/entities/situation-ai-analysis-record.entity'
-import { SituationAnalysisSession } from '../../ai-analysis-sessions/entities/situation-analysis-session.entity'
-import { SituationSeverity, SituationStatus } from '../../common/enums/situation.enums'
-import { EvidenceType } from '../../common/enums/situation-evidence.enums'
+} from '../../ai-analysis/enums/ai-analysis.enums';
+import type { AIAnalysisResult } from '../../ai-analysis/contracts/ai-analysis-result.contract';
+import { SituationAIAnalysisRecord } from '../../ai-orchestration/entities/situation-ai-analysis-record.entity';
+import { SituationAnalysisSession } from '../../ai-analysis-sessions/entities/situation-analysis-session.entity';
+import {
+  SituationSeverity,
+  SituationStatus,
+} from '../../common/enums/situation.enums';
+import { EvidenceType } from '../../common/enums/situation-evidence.enums';
 import {
   ImpactLevel,
   OperationalSeverity,
-} from '../../common/enums/situation-impact.enums'
+} from '../../common/enums/situation-impact.enums';
 import {
   RecommendationPriority,
   RecommendationSource,
   RecommendationStatus,
-} from '../../common/enums/situation-recommendation.enums'
-import { TimelineEventType } from '../../common/enums/situation-timeline.enums'
-import { Coordination } from '../../coordinations/entities/coordination.entity'
-import { IncidentCategory } from '../../intelligence/entities/incident-category.entity'
-import { SituationEvidence } from '../../situation-evidence/entities/situation-evidence.entity'
-import { SituationAffectedCoordination } from '../../situation-impact/entities/situation-affected-coordination.entity'
-import { SituationImpactAssessment } from '../../situation-impact/entities/situation-impact-assessment.entity'
-import { SituationRecommendation } from '../../situation-recommendations/entities/situation-recommendation.entity'
-import { SituationTimelineEntry } from '../../situation-timeline/entities/situation-timeline-entry.entity'
-import { Situation } from '../../situations/entities/situation.entity'
-import { SituationRelatedCoordination } from '../../situations/entities/situation-related-coordination.entity'
-import { User } from '../../users/entities/user.entity'
+} from '../../common/enums/situation-recommendation.enums';
+import { TimelineEventType } from '../../common/enums/situation-timeline.enums';
+import { Coordination } from '../../coordinations/entities/coordination.entity';
+import { IncidentCategory } from '../../intelligence/entities/incident-category.entity';
+import { SituationEvidence } from '../../situation-evidence/entities/situation-evidence.entity';
+import { SituationAffectedCoordination } from '../../situation-impact/entities/situation-affected-coordination.entity';
+import { SituationImpactAssessment } from '../../situation-impact/entities/situation-impact-assessment.entity';
+import { SituationRecommendation } from '../../situation-recommendations/entities/situation-recommendation.entity';
+import { SituationTimelineEntry } from '../../situation-timeline/entities/situation-timeline-entry.entity';
+import { Situation } from '../../situations/entities/situation.entity';
+import { SituationRelatedCoordination } from '../../situations/entities/situation-related-coordination.entity';
+import { User } from '../../users/entities/user.entity';
 
 /** Prefijo estable para poder limpiar y re-inyectar el dataset mock. */
-export const MOCK_SEED_MARKER = '[MOCK-SEED]'
+export const MOCK_SEED_MARKER = '[MOCK-SEED]';
 
-const DEFAULT_COUNT = 80
+const DEFAULT_COUNT = 80;
 
 const TITLE_TEMPLATES = [
   'Interrupción parcial del portal de servicios',
@@ -58,7 +61,7 @@ const TITLE_TEMPLATES = [
   'Retraso en actualización de estados de trámite',
   'Falla en integración con sistema de pagos',
   'Degradación del servicio de mensajería interna',
-] as const
+] as const;
 
 const DESCRIPTION_TEMPLATES = [
   'Se reporta afectación operativa con impacto en atención a usuarios y seguimiento académico.',
@@ -66,67 +69,72 @@ const DESCRIPTION_TEMPLATES = [
   'El evento genera ruido operacional y requiere trazabilidad para contener el impacto.',
   'Usuarios reportan demoras y respuestas inconsistentes en el flujo habitual.',
   'La incidencia aparece después de un cambio reciente en la configuración del servicio.',
-] as const
+] as const;
 
 const RECOMMENDATION_TEMPLATES = [
   {
     title: 'Validar el flujo afectado con el área origen',
-    description: 'Confirmar alcance, usuarios impactados y ventana de contención.',
+    description:
+      'Confirmar alcance, usuarios impactados y ventana de contención.',
   },
   {
     title: 'Publicar comunicado interno de seguimiento',
-    description: 'Informar estado, responsable y próxima actualización esperada.',
+    description:
+      'Informar estado, responsable y próxima actualización esperada.',
   },
   {
     title: 'Revisar logs y evidencias de captura',
-    description: 'Cruzar horarios de falla con cambios recientes y dependencias.',
+    description:
+      'Cruzar horarios de falla con cambios recientes y dependencias.',
   },
   {
     title: 'Escalar a soporte técnico si persiste',
     description: 'Activar contención y documentar decisión en el expediente.',
   },
-] as const
+] as const;
 
 function daysAgo(days: number, hour = 10, minute = 0): Date {
-  const date = new Date()
-  date.setHours(hour, minute, 0, 0)
-  date.setDate(date.getDate() - days)
-  return date
+  const date = new Date();
+  date.setHours(hour, minute, 0, 0);
+  date.setDate(date.getDate() - days);
+  return date;
 }
 
 function pick<T>(items: readonly T[], index: number): T {
-  return items[index % items.length]!
+  return items[index % items.length];
 }
 
 function statusForIndex(index: number): SituationStatus {
-  const bucket = index % 10
-  if (bucket < 4) return SituationStatus.OPEN
-  if (bucket < 7) return SituationStatus.IN_PROGRESS
-  if (bucket < 9) return SituationStatus.CLOSED
-  return SituationStatus.RESOLVED
+  const bucket = index % 10;
+  if (bucket < 4) return SituationStatus.OPEN;
+  if (bucket < 7) return SituationStatus.IN_PROGRESS;
+  if (bucket < 9) return SituationStatus.CLOSED;
+  return SituationStatus.RESOLVED;
 }
 
 function severityForIndex(index: number): SituationSeverity {
-  const bucket = index % 11
-  if (bucket < 2) return SituationSeverity.CRITICAL
-  if (bucket < 5) return SituationSeverity.HIGH
-  if (bucket < 9) return SituationSeverity.MEDIUM
-  return SituationSeverity.LOW
+  const bucket = index % 11;
+  if (bucket < 2) return SituationSeverity.CRITICAL;
+  if (bucket < 5) return SituationSeverity.HIGH;
+  if (bucket < 9) return SituationSeverity.MEDIUM;
+  return SituationSeverity.LOW;
 }
 
-function toOperationalSeverity(severity: SituationSeverity): OperationalSeverity {
+function toOperationalSeverity(
+  severity: SituationSeverity,
+): OperationalSeverity {
   switch (severity) {
     case SituationSeverity.CRITICAL:
-      return OperationalSeverity.CRITICAL
+      return OperationalSeverity.CRITICAL;
     case SituationSeverity.HIGH:
-      return OperationalSeverity.HIGH
+      return OperationalSeverity.HIGH;
     case SituationSeverity.MEDIUM:
-      return OperationalSeverity.MEDIUM
+      return OperationalSeverity.MEDIUM;
     case SituationSeverity.LOW:
-      return OperationalSeverity.LOW
+      return OperationalSeverity.LOW;
     default: {
-      const exhaustive: never = severity
-      return exhaustive
+      const exhaustive: never = severity;
+      return exhaustive;
     }
   }
 }
@@ -136,30 +144,30 @@ function toRecommendationPriority(
 ): RecommendationPriority {
   switch (severity) {
     case SituationSeverity.CRITICAL:
-      return RecommendationPriority.CRITICAL
+      return RecommendationPriority.CRITICAL;
     case SituationSeverity.HIGH:
-      return RecommendationPriority.HIGH
+      return RecommendationPriority.HIGH;
     case SituationSeverity.MEDIUM:
-      return RecommendationPriority.MEDIUM
+      return RecommendationPriority.MEDIUM;
     case SituationSeverity.LOW:
-      return RecommendationPriority.LOW
+      return RecommendationPriority.LOW;
     default: {
-      const exhaustive: never = severity
-      return exhaustive
+      const exhaustive: never = severity;
+      return exhaustive;
     }
   }
 }
 
 function buildAnalysisResult(input: {
-  title: string
-  categoryCode: string
-  categoryName: string
-  severity: SituationSeverity
-  coordinationCode: string
-  affected: Array<{ code: string; level: ImpactLevel }>
-  analyzedAt: Date
+  title: string;
+  categoryCode: string;
+  categoryName: string;
+  severity: SituationSeverity;
+  coordinationCode: string;
+  affected: Array<{ code: string; level: ImpactLevel }>;
+  analyzedAt: Date;
 }): AIAnalysisResult {
-  const operationalSeverity = toOperationalSeverity(input.severity)
+  const operationalSeverity = toOperationalSeverity(input.severity);
   const confidence =
     input.severity === SituationSeverity.CRITICAL
       ? 0.91
@@ -167,7 +175,7 @@ function buildAnalysisResult(input: {
         ? 0.84
         : input.severity === SituationSeverity.MEDIUM
           ? 0.76
-          : 0.68
+          : 0.68;
 
   return {
     schemaVersion: AIAnalysisSchemaVersion.V1,
@@ -208,7 +216,8 @@ function buildAnalysisResult(input: {
           : input.severity === SituationSeverity.HIGH
             ? 180
             : 90,
-      summary: 'Impacto estimado para validar concentración operativa por área.',
+      summary:
+        'Impacto estimado para validar concentración operativa por área.',
       reasoning:
         'Se proyecta afectación a procesos dependientes mientras el expediente permanece activo.',
       affectedCoordinations: input.affected.map((item) => ({
@@ -231,7 +240,8 @@ function buildAnalysisResult(input: {
     immediateRisks: [
       {
         title: 'Pérdida de trazabilidad si no se documenta',
-        description: 'Sin actualización oportuna se dificulta la auditoría ejecutiva.',
+        description:
+          'Sin actualización oportuna se dificulta la auditoría ejecutiva.',
         severity: operationalSeverity,
       },
     ],
@@ -246,12 +256,14 @@ function buildAnalysisResult(input: {
     missingInformation: [
       {
         topic: 'Alcance de usuarios',
-        question: '¿Cuántos usuarios reportaron el incidente en la última hora?',
+        question:
+          '¿Cuántos usuarios reportaron el incidente en la última hora?',
         priority: MissingInformationPriority.MEDIUM,
       },
     ],
     executiveConclusion: {
-      conclusion: 'El expediente debe permanecer bajo seguimiento con foco en contención.',
+      conclusion:
+        'El expediente debe permanecer bajo seguimiento con foco en contención.',
       recommendedNextStep: `Revisar el caso originado en ${input.coordinationCode} y cerrar brechas de información.`,
     },
     confidence: {
@@ -278,17 +290,17 @@ function buildAnalysisResult(input: {
               : ExecutivePriorityLevel.BAJA,
       justification: 'Prioridad derivada de severidad y carga simulada.',
     },
-  }
+  };
 }
 
 export interface SituationsMockSeedResult {
-  cleared: number
-  created: number
-  withAnalysis: number
-  withImpact: number
-  recommendations: number
-  evidences: number
-  timelineEntries: number
+  cleared: number;
+  created: number;
+  withAnalysis: number;
+  withImpact: number;
+  recommendations: number;
+  evidences: number;
+  timelineEntries: number;
 }
 
 export async function clearMockSituations(
@@ -297,32 +309,32 @@ export async function clearMockSituations(
   const situations = await dataSource.getRepository(Situation).find({
     where: {},
     select: ['id', 'description'],
-  })
+  });
   const mockIds = situations
     .filter((item) => item.description.startsWith(MOCK_SEED_MARKER))
-    .map((item) => item.id)
+    .map((item) => item.id);
 
-  if (mockIds.length === 0) return 0
+  if (mockIds.length === 0) return 0;
 
   // Limpiar tablas satélite que no siempre tienen cascade desde situations.
   await dataSource.getRepository(SituationAIAnalysisRecord).delete({
     situationId: In(mockIds),
-  })
+  });
   await dataSource.getRepository(SituationAnalysisSession).delete({
     situationId: In(mockIds),
-  })
-  await dataSource.getRepository(Situation).delete({ id: In(mockIds) })
-  return mockIds.length
+  });
+  await dataSource.getRepository(Situation).delete({ id: In(mockIds) });
+  return mockIds.length;
 }
 
 export async function runSituationsMockSeed(
   dataSource: DataSource,
   options?: { count?: number; clearExisting?: boolean },
 ): Promise<SituationsMockSeedResult> {
-  const count = Math.max(1, options?.count ?? DEFAULT_COUNT)
-  const clearExisting = options?.clearExisting ?? true
+  const count = Math.max(1, options?.count ?? DEFAULT_COUNT);
+  const clearExisting = options?.clearExisting ?? true;
 
-  const cleared = clearExisting ? await clearMockSituations(dataSource) : 0
+  const cleared = clearExisting ? await clearMockSituations(dataSource) : 0;
 
   const [users, categories, coordinations] = await Promise.all([
     dataSource.getRepository(User).find({
@@ -337,89 +349,93 @@ export async function runSituationsMockSeed(
       where: { isActive: true },
       order: { displayOrder: 'ASC' },
     }),
-  ])
+  ]);
 
   if (users.length === 0) {
     throw new Error(
       'No hay usuarios en la BD local. Ejecuta primero: npm run seed:operaciones',
-    )
+    );
   }
   if (categories.length === 0) {
     throw new Error(
       'No hay categorías activas. Arranca el backend una vez para sembrar catálogos.',
-    )
+    );
   }
   if (coordinations.length === 0) {
     throw new Error(
       'No hay coordinaciones activas. Ejecuta primero: npm run seed:operaciones',
-    )
+    );
   }
 
-  const usersByCoordination = new Map<string, User[]>()
+  const usersByCoordination = new Map<string, User[]>();
   for (const user of users) {
-    if (!user.coordinationId) continue
-    const bucket = usersByCoordination.get(user.coordinationId) ?? []
-    bucket.push(user)
-    usersByCoordination.set(user.coordinationId, bucket)
+    if (!user.coordinationId) continue;
+    const bucket = usersByCoordination.get(user.coordinationId) ?? [];
+    bucket.push(user);
+    usersByCoordination.set(user.coordinationId, bucket);
   }
 
   const coordinatorUsers = users.filter(
     (user) => user.role?.code === 'COORDINADOR' && user.coordinationId,
-  )
+  );
   if (coordinatorUsers.length === 0) {
     throw new Error(
       'No hay usuarios COORDINADOR con área asignada. Ejecuta: npm run seed:operaciones',
-    )
+    );
   }
 
   // Preferir áreas que sí tienen personal; evita casos huérfanos de autoría.
   const seedableCoordinations = coordinations.filter(
-    (coordination) => (usersByCoordination.get(coordination.id) ?? []).length > 0,
-  )
+    (coordination) =>
+      (usersByCoordination.get(coordination.id) ?? []).length > 0,
+  );
   const origins =
-    seedableCoordinations.length > 0 ? seedableCoordinations : coordinations
+    seedableCoordinations.length > 0 ? seedableCoordinations : coordinations;
 
-  let created = 0
-  let withAnalysis = 0
-  let withImpact = 0
-  let recommendations = 0
-  let evidences = 0
-  let timelineEntries = 0
+  let created = 0;
+  let withAnalysis = 0;
+  let withImpact = 0;
+  let recommendations = 0;
+  let evidences = 0;
+  let timelineEntries = 0;
 
   for (let index = 0; index < count; index += 1) {
-    const origin = pick(origins, index)
-    const areaUsers = usersByCoordination.get(origin.id) ?? []
+    const origin = pick(origins, index);
+    const areaUsers = usersByCoordination.get(origin.id) ?? [];
     const creator =
       areaUsers.length > 0
         ? pick(areaUsers, index)
-        : pick(coordinatorUsers, index)
+        : pick(coordinatorUsers, index);
     const assigneePool =
       areaUsers.length > 1
         ? areaUsers
         : areaUsers.length === 1
           ? areaUsers
-          : [creator]
-    const assignee =
-      index % 4 === 0 ? null : pick(assigneePool, index + 1)
-    const category = pick(categories, index)
-    const relatedA = pick(coordinations, index + 1)
-    const relatedB = pick(coordinations, index + 2)
-    const status = statusForIndex(index)
-    const severity = severityForIndex(index)
-    const occurredAt = daysAgo((index % 45) + 1, 8 + (index % 10), (index * 7) % 60)
-    const createdAt = new Date(occurredAt.getTime() + 35 * 60_000)
-    const title = `${pick(TITLE_TEMPLATES, index)} #${index + 1}`
-    const description = `${MOCK_SEED_MARKER} ${pick(DESCRIPTION_TEMPLATES, index)} Caso de prueba local #${index + 1} para validar densidad del Centro Operacional.`
+          : [creator];
+    const assignee = index % 4 === 0 ? null : pick(assigneePool, index + 1);
+    const category = pick(categories, index);
+    const relatedA = pick(coordinations, index + 1);
+    const relatedB = pick(coordinations, index + 2);
+    const status = statusForIndex(index);
+    const severity = severityForIndex(index);
+    const occurredAt = daysAgo(
+      (index % 45) + 1,
+      8 + (index % 10),
+      (index * 7) % 60,
+    );
+    const createdAt = new Date(occurredAt.getTime() + 35 * 60_000);
+    const title = `${pick(TITLE_TEMPLATES, index)} #${index + 1}`;
+    const description = `${MOCK_SEED_MARKER} ${pick(DESCRIPTION_TEMPLATES, index)} Caso de prueba local #${index + 1} para validar densidad del Centro Operacional.`;
 
     const isFinal =
-      status === SituationStatus.CLOSED || status === SituationStatus.RESOLVED
+      status === SituationStatus.CLOSED || status === SituationStatus.RESOLVED;
     const resolvedAt = isFinal
       ? new Date(createdAt.getTime() + (12 + (index % 48)) * 60 * 60_000)
-      : null
+      : null;
     const closedAt =
       status === SituationStatus.CLOSED && resolvedAt
         ? new Date(resolvedAt.getTime() + 2 * 60 * 60_000)
-        : null
+        : null;
 
     const situation = await dataSource.getRepository(Situation).save(
       dataSource.getRepository(Situation).create({
@@ -443,13 +459,15 @@ export async function runSituationsMockSeed(
         createdAt,
         updatedAt: resolvedAt ?? createdAt,
       }),
-    )
-    created += 1
+    );
+    created += 1;
 
     const relatedTargets = [relatedA, relatedB].filter(
       (item) => item.id !== origin.id,
-    )
-    const uniqueRelated = [...new Map(relatedTargets.map((item) => [item.id, item])).values()]
+    );
+    const uniqueRelated = [
+      ...new Map(relatedTargets.map((item) => [item.id, item])).values(),
+    ];
     if (uniqueRelated.length > 0) {
       await dataSource.getRepository(SituationRelatedCoordination).save(
         uniqueRelated.map((item, order) =>
@@ -459,12 +477,16 @@ export async function runSituationsMockSeed(
             displayOrder: order,
           }),
         ),
-      )
+      );
     }
 
     // Notas de captura (evidencias tipo NOTE), 1-3 por caso.
-    const evidenceCount = 1 + (index % 3)
-    for (let evidenceIndex = 0; evidenceIndex < evidenceCount; evidenceIndex += 1) {
+    const evidenceCount = 1 + (index % 3);
+    for (
+      let evidenceIndex = 0;
+      evidenceIndex < evidenceCount;
+      evidenceIndex += 1
+    ) {
       await dataSource.getRepository(SituationEvidence).save(
         dataSource.getRepository(SituationEvidence).create({
           situationId: situation.id,
@@ -488,8 +510,8 @@ export async function runSituationsMockSeed(
           fileSize: null,
           createdAt,
         }),
-      )
-      evidences += 1
+      );
+      evidences += 1;
     }
 
     await dataSource.getRepository(SituationTimelineEntry).save(
@@ -506,8 +528,8 @@ export async function runSituationsMockSeed(
         },
         createdAt,
       }),
-    )
-    timelineEntries += 1
+    );
+    timelineEntries += 1;
 
     if (status === SituationStatus.IN_PROGRESS || isFinal) {
       await dataSource.getRepository(SituationTimelineEntry).save(
@@ -520,24 +542,29 @@ export async function runSituationsMockSeed(
           metadata: { mock: true, status },
           createdAt: new Date(createdAt.getTime() + 90 * 60_000),
         }),
-      )
-      timelineEntries += 1
+      );
+      timelineEntries += 1;
     }
 
-    const includeAnalysis = index % 5 !== 0
+    const includeAnalysis = index % 5 !== 0;
     if (includeAnalysis) {
-      const analyzedAt = new Date(createdAt.getTime() + 20 * 60_000)
-      const affectedPool = uniqueRelated.length > 0 ? uniqueRelated : [pick(coordinations, index + 4)]
-      const affected = affectedPool.slice(0, 1 + (index % 2)).map((item, affectedIndex) => ({
-        code: item.code,
-        id: item.id,
-        level:
-          affectedIndex === 0
-            ? severity === SituationSeverity.CRITICAL
-              ? ImpactLevel.CRITICAL
-              : ImpactLevel.HIGH
-            : ImpactLevel.MEDIUM,
-      }))
+      const analyzedAt = new Date(createdAt.getTime() + 20 * 60_000);
+      const affectedPool =
+        uniqueRelated.length > 0
+          ? uniqueRelated
+          : [pick(coordinations, index + 4)];
+      const affected = affectedPool
+        .slice(0, 1 + (index % 2))
+        .map((item, affectedIndex) => ({
+          code: item.code,
+          id: item.id,
+          level:
+            affectedIndex === 0
+              ? severity === SituationSeverity.CRITICAL
+                ? ImpactLevel.CRITICAL
+                : ImpactLevel.HIGH
+              : ImpactLevel.MEDIUM,
+        }));
 
       const analysisResult = buildAnalysisResult({
         title: situation.title,
@@ -545,24 +572,29 @@ export async function runSituationsMockSeed(
         categoryName: category.name,
         severity,
         coordinationCode: origin.code,
-        affected: affected.map((item) => ({ code: item.code, level: item.level })),
+        affected: affected.map((item) => ({
+          code: item.code,
+          level: item.level,
+        })),
         analyzedAt,
-      })
+      });
 
-      const session = await dataSource.getRepository(SituationAnalysisSession).save(
-        dataSource.getRepository(SituationAnalysisSession).create({
-          situationId: situation.id,
-          version: 1,
-          provider: 'mock-seed',
-          model: 'local-mock-v1',
-          promptVersion: 'mock',
-          analysisResult,
-          promptSnapshot: 'prompt mock local',
-          executionTimeMs: 900 + (index % 400),
-          tokenEstimate: 800 + (index % 200),
-          createdAt: analyzedAt,
-        }),
-      )
+      const session = await dataSource
+        .getRepository(SituationAnalysisSession)
+        .save(
+          dataSource.getRepository(SituationAnalysisSession).create({
+            situationId: situation.id,
+            version: 1,
+            provider: 'mock-seed',
+            model: 'local-mock-v1',
+            promptVersion: 'mock',
+            analysisResult,
+            promptSnapshot: 'prompt mock local',
+            executionTimeMs: 900 + (index % 400),
+            tokenEstimate: 800 + (index % 200),
+            createdAt: analyzedAt,
+          }),
+        );
 
       await dataSource.getRepository(SituationAIAnalysisRecord).save(
         dataSource.getRepository(SituationAIAnalysisRecord).create({
@@ -573,23 +605,25 @@ export async function runSituationsMockSeed(
           createdAt: analyzedAt,
           updatedAt: analyzedAt,
         }),
-      )
-      withAnalysis += 1
+      );
+      withAnalysis += 1;
 
-      const assessment = await dataSource.getRepository(SituationImpactAssessment).save(
-        dataSource.getRepository(SituationImpactAssessment).create({
-          situationId: situation.id,
-          operationalSeverity: toOperationalSeverity(severity),
-          confidence: String(analysisResult.confidence.overall.toFixed(4)),
-          estimatedDurationMinutes:
-            analysisResult.impactAssessment.estimatedDurationMinutes,
-          summary: analysisResult.impactAssessment.summary,
-          reasoning: analysisResult.impactAssessment.reasoning,
-          createdAt: analyzedAt,
-          updatedAt: analyzedAt,
-        }),
-      )
-      withImpact += 1
+      const assessment = await dataSource
+        .getRepository(SituationImpactAssessment)
+        .save(
+          dataSource.getRepository(SituationImpactAssessment).create({
+            situationId: situation.id,
+            operationalSeverity: toOperationalSeverity(severity),
+            confidence: String(analysisResult.confidence.overall.toFixed(4)),
+            estimatedDurationMinutes:
+              analysisResult.impactAssessment.estimatedDurationMinutes,
+            summary: analysisResult.impactAssessment.summary,
+            reasoning: analysisResult.impactAssessment.reasoning,
+            createdAt: analyzedAt,
+            updatedAt: analyzedAt,
+          }),
+        );
+      withImpact += 1;
 
       await dataSource.getRepository(SituationAffectedCoordination).save(
         affected.map((item) =>
@@ -600,17 +634,17 @@ export async function runSituationsMockSeed(
             description: `Afectación mock hacia ${item.code}.`,
           }),
         ),
-      )
+      );
 
       const recommendationStatuses = [
         RecommendationStatus.PENDING,
         RecommendationStatus.IN_PROGRESS,
         RecommendationStatus.COMPLETED,
-      ] as const
+      ] as const;
 
       for (let recIndex = 0; recIndex < 3; recIndex += 1) {
-        const template = pick(RECOMMENDATION_TEMPLATES, index + recIndex)
-        const recStatus = pick(recommendationStatuses, index + recIndex)
+        const template = pick(RECOMMENDATION_TEMPLATES, index + recIndex);
+        const recStatus = pick(recommendationStatuses, index + recIndex);
         await dataSource.getRepository(SituationRecommendation).save(
           dataSource.getRepository(SituationRecommendation).create({
             situationId: situation.id,
@@ -632,8 +666,8 @@ export async function runSituationsMockSeed(
             createdAt: analyzedAt,
             updatedAt: analyzedAt,
           }),
-        )
-        recommendations += 1
+        );
+        recommendations += 1;
       }
 
       await dataSource.getRepository(SituationTimelineEntry).save(
@@ -646,8 +680,8 @@ export async function runSituationsMockSeed(
           metadata: { mock: true, provider: 'mock-seed' },
           createdAt: analyzedAt,
         }),
-      )
-      timelineEntries += 1
+      );
+      timelineEntries += 1;
     }
   }
 
@@ -659,5 +693,5 @@ export async function runSituationsMockSeed(
     recommendations,
     evidences,
     timelineEntries,
-  }
+  };
 }
