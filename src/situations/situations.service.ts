@@ -12,6 +12,13 @@ import { OperationalScopeService } from '../auth/services/operational-scope.serv
 import { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { TimelineEventType } from '../common/enums/situation-timeline.enums';
 import { SituationStatus } from '../common/enums/situation.enums';
+import {
+  computeDueAt,
+  computeSlaHealth,
+  resolveDueAtOnSeverityChange,
+  SLA_POLICY_CODE,
+  wasClosedOnTime,
+} from './situation-sla.policy';
 import { Coordination } from '../coordinations/entities/coordination.entity';
 import { IncidentCategory } from '../intelligence/entities/incident-category.entity';
 import { SituationTimelineService } from '../situation-timeline/situation-timeline.service';
@@ -93,6 +100,7 @@ export class SituationsService {
       );
     }
 
+    const createdAt = new Date();
     const situation = this.situationsRepository.create({
       title: dto.title.trim(),
       description: dto.description.trim(),
@@ -107,6 +115,10 @@ export class SituationsService {
       lastStatusComment: null,
       resolvedAt: null,
       closedAt: null,
+      dueAt: computeDueAt(dto.severity, createdAt),
+      slaPolicyCode: SLA_POLICY_CODE,
+      slaBreachedAt: null,
+      lastSlaReminderAt: null,
       occurredAt: occurredAt,
       relatedCoordinations: relatedCoordinations.map((item, index) =>
         this.relatedCoordinationsRepository.create({
@@ -134,6 +146,8 @@ export class SituationsService {
         status: withRelations.status,
         severity: withRelations.severity,
         categoryId: withRelations.categoryId,
+        dueAt: withRelations.dueAt,
+        slaPolicyCode: withRelations.slaPolicyCode,
       },
     });
 
@@ -222,7 +236,18 @@ export class SituationsService {
       situation.description = dto.description.trim();
     }
     if (dto.severity !== undefined) {
+      const previousSeverity = situation.severity;
       situation.severity = dto.severity;
+      if (dto.severity !== previousSeverity) {
+        situation.dueAt = resolveDueAtOnSeverityChange({
+          previousSeverity,
+          nextSeverity: dto.severity,
+          status: situation.status,
+          createdAt: situation.createdAt,
+          currentDueAt: situation.dueAt,
+        });
+        situation.slaPolicyCode = SLA_POLICY_CODE;
+      }
     }
     if (dto.occurredAt !== undefined) {
       const occurredAt = new Date(dto.occurredAt);
@@ -267,6 +292,12 @@ export class SituationsService {
         statusComment,
         assignedUserName: situation.assignedUser?.fullName ?? null,
         evidenceIds: dto.evidenceIds ?? [],
+        dueAt: situation.dueAt,
+        slaBreachedAt: situation.slaBreachedAt,
+        closedOnTime:
+          situation.status === SituationStatus.CLOSED
+            ? wasClosedOnTime(situation.dueAt, situation.closedAt)
+            : null,
       });
 
       await this.auditLogService.record({
@@ -277,6 +308,13 @@ export class SituationsService {
         metadata: {
           previousStatus,
           nextStatus: situation.status,
+          statusComment,
+          dueAt: situation.dueAt,
+          slaBreachedAt: situation.slaBreachedAt,
+          closedOnTime:
+            situation.status === SituationStatus.CLOSED
+              ? wasClosedOnTime(situation.dueAt, situation.closedAt)
+              : null,
         },
       });
     } else if (changedFields.length > 0) {
@@ -371,6 +409,9 @@ export class SituationsService {
     statusComment: string | null;
     assignedUserName: string | null;
     evidenceIds: string[];
+    dueAt: Date | null;
+    slaBreachedAt: Date | null;
+    closedOnTime: boolean | null;
   }): Promise<void> {
     const fromLabel = SITUATION_STATUS_LABEL_ES[input.previousStatus];
     const toLabel = SITUATION_STATUS_LABEL_ES[input.nextStatus];
@@ -416,6 +457,9 @@ export class SituationsService {
         /** Estructura preparada para evidencias futuras. */
         evidenceIds: input.evidenceIds,
         evidencesAttached: false,
+        dueAt: input.dueAt,
+        closedOnTime: input.closedOnTime,
+        slaBreachedAt: input.slaBreachedAt,
       },
     });
   }
@@ -507,6 +551,19 @@ export class SituationsService {
       lastStatusComment: situation.lastStatusComment ?? null,
       resolvedAt: situation.resolvedAt ?? null,
       closedAt: situation.closedAt ?? null,
+      dueAt: situation.dueAt ?? null,
+      slaPolicyCode: situation.slaPolicyCode ?? null,
+      slaBreachedAt: situation.slaBreachedAt ?? null,
+      slaHealth: computeSlaHealth(
+        situation.dueAt,
+        situation.status,
+        new Date(),
+        situation.severity,
+      ),
+      closedOnTime:
+        situation.status === SituationStatus.CLOSED
+          ? wasClosedOnTime(situation.dueAt, situation.closedAt)
+          : null,
       occurredAt: situation.occurredAt,
       createdAt: situation.createdAt,
       updatedAt: situation.updatedAt,

@@ -83,6 +83,25 @@ export class Situation extends BaseEntity {
   @Column({ type: 'timestamptz', name: 'closed_at', nullable: true })
   closedAt!: Date | null;
 
+  /** Fecha límite operativa (SLA suave). No implica cierre automático. */
+  @Index()
+  @Column({ type: 'timestamptz', name: 'due_at', nullable: true })
+  dueAt!: Date | null;
+
+  @Column({ type: 'varchar', length: 40, name: 'sla_policy_code', nullable: true })
+  slaPolicyCode!: string | null;
+
+  /** Primera detección de vencimiento; inmutable una vez seteado. */
+  @Column({ type: 'timestamptz', name: 'sla_breached_at', nullable: true })
+  slaBreachedAt!: Date | null;
+
+  @Column({
+    type: 'timestamptz',
+    name: 'last_sla_reminder_at',
+    nullable: true,
+  })
+  lastSlaReminderAt!: Date | null;
+
   @Index()
   @Column({ type: 'timestamptz', name: 'occurred_at' })
   occurredAt!: Date;

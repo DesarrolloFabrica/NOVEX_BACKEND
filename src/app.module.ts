@@ -1,5 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -59,6 +60,8 @@ import { UsersModule } from './users/users.module';
 @Module({
   imports: [
     ConfigurationModule,
+
+    ScheduleModule.forRoot(),
 
     ThrottlerModule.forRoot([
       THROTTLE_LIMITS.default,

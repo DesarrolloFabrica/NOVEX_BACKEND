@@ -10,6 +10,7 @@ import { SituationRelatedCoordination } from './entities/situation-related-coord
 import { SituationsRepository } from './repositories/situations.repository';
 import { SituationsController } from './situations.controller';
 import { SituationAccessService } from './situation-access.service';
+import { SituationSlaScheduler } from './situation-sla.scheduler';
 import { SituationsService } from './situations.service';
 
 @Module({
@@ -25,7 +26,12 @@ import { SituationsService } from './situations.service';
     forwardRef(() => SituationTimelineModule),
   ],
   controllers: [SituationsController],
-  providers: [SituationsService, SituationsRepository, SituationAccessService],
+  providers: [
+    SituationsService,
+    SituationsRepository,
+    SituationAccessService,
+    SituationSlaScheduler,
+  ],
   exports: [SituationsService, SituationsRepository, SituationAccessService],
 })
 export class SituationsModule {}

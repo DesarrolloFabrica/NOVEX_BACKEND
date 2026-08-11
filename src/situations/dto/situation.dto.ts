@@ -154,6 +154,13 @@ export class SituationResponseDto {
   lastStatusComment!: string | null;
   resolvedAt!: Date | null;
   closedAt!: Date | null;
+  dueAt!: Date | null;
+  slaPolicyCode!: string | null;
+  slaBreachedAt!: Date | null;
+  /** Salud SLA derivada: on_track | at_risk | overdue | closed */
+  slaHealth!: 'on_track' | 'at_risk' | 'overdue' | 'closed';
+  /** Solo en CLOSED: si closedAt <= dueAt */
+  closedOnTime!: boolean | null;
   occurredAt!: Date;
   createdAt!: Date;
   updatedAt!: Date;
