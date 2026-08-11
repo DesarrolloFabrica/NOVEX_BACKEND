@@ -60,8 +60,7 @@ describe('Structured request logging', () => {
     expressApp.use((req, res, next) => requestContext.use(req, res, next));
     app.useGlobalInterceptors(
       new HttpLoggingInterceptor({
-        get: (key: string) =>
-          key === 'httpRequestLogging' ? true : undefined,
+        get: (key: string) => (key === 'httpRequestLogging' ? true : undefined),
       } as ConfigService),
     );
     app.useGlobalFilters(new GlobalExceptionFilter());

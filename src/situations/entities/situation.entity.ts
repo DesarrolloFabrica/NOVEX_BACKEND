@@ -88,7 +88,12 @@ export class Situation extends BaseEntity {
   @Column({ type: 'timestamptz', name: 'due_at', nullable: true })
   dueAt!: Date | null;
 
-  @Column({ type: 'varchar', length: 40, name: 'sla_policy_code', nullable: true })
+  @Column({
+    type: 'varchar',
+    length: 40,
+    name: 'sla_policy_code',
+    nullable: true,
+  })
   slaPolicyCode!: string | null;
 
   /** Primera detección de vencimiento; inmutable una vez seteado. */

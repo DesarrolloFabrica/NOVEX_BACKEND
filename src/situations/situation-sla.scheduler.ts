@@ -6,10 +6,7 @@ import { TimelineEventType } from '../common/enums/situation-timeline.enums';
 import { SituationStatus } from '../common/enums/situation.enums';
 import { SituationTimelineService } from '../situation-timeline/situation-timeline.service';
 import { Situation } from './entities/situation.entity';
-import {
-  computeSlaHealth,
-  getWarningLeadMs,
-} from './situation-sla.policy';
+import { computeSlaHealth, getWarningLeadMs } from './situation-sla.policy';
 
 const ACTIVE_STATUSES = [
   SituationStatus.OPEN,
@@ -42,9 +39,7 @@ export class SituationSlaScheduler {
       const breached = await this.markBreaches(now);
       const warned = await this.emitWarnings(now);
       if (breached > 0 || warned > 0) {
-        this.logger.log(
-          `SLA sweep: ${breached} breached, ${warned} warnings`,
-        );
+        this.logger.log(`SLA sweep: ${breached} breached, ${warned} warnings`);
       }
     } catch (error) {
       this.logger.error(

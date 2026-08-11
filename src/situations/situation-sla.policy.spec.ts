@@ -45,9 +45,9 @@ describe('situation-sla.policy', () => {
         SituationSeverity.CRITICAL,
       ),
     ).toBe('overdue');
-    expect(
-      computeSlaHealth(dueAt, SituationStatus.CLOSED, new Date()),
-    ).toBe('closed');
+    expect(computeSlaHealth(dueAt, SituationStatus.CLOSED, new Date())).toBe(
+      'closed',
+    );
   });
 
   it('no relaja un dueAt ya vencido al bajar severidad', () => {

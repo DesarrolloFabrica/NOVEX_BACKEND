@@ -6,11 +6,7 @@ import {
 /** Código de política versionado para trazabilidad en cada situación. */
 export const SLA_POLICY_CODE = 'severity-v1';
 
-export type SituationSlaHealth =
-  | 'on_track'
-  | 'at_risk'
-  | 'overdue'
-  | 'closed';
+export type SituationSlaHealth = 'on_track' | 'at_risk' | 'overdue' | 'closed';
 
 interface SlaWindow {
   /** Plazo objetivo de cierre desde el registro. */
