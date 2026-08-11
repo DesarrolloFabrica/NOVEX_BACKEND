@@ -2,7 +2,6 @@ import { Body, Controller, Get, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import {
   THROTTLE_AUTH_LIMIT,
-  THROTTLE_LIMITS,
   THROTTLE_TTL_MS,
 } from '../configuration/throttle.constants';
 import { AuthService } from './auth.service';
@@ -17,7 +16,7 @@ export class AuthController {
 
   @Public()
   @Throttle({
-    [THROTTLE_LIMITS.auth.name]: {
+    default: {
       limit: THROTTLE_AUTH_LIMIT,
       ttl: THROTTLE_TTL_MS,
     },
@@ -29,7 +28,7 @@ export class AuthController {
 
   @Public()
   @Throttle({
-    [THROTTLE_LIMITS.auth.name]: {
+    default: {
       limit: THROTTLE_AUTH_LIMIT,
       ttl: THROTTLE_TTL_MS,
     },

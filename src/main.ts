@@ -50,6 +50,9 @@ function logTypeOrmState(app: INestApplication): boolean {
 async function bootstrap() {
   const port = parseInt(process.env.PORT ?? '3001', 10);
   const expressApp = express();
+  // Cloud Run / proxies: req.ip debe reflejar el cliente (X-Forwarded-For),
+  // no el hop interno; si no, el rate-limit agrupa a todos los usuarios.
+  expressApp.set('trust proxy', 1);
   expressApp.disable('x-powered-by');
   expressApp.use(
     helmet({

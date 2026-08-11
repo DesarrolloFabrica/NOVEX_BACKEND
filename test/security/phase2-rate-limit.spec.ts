@@ -14,6 +14,8 @@ import {
 
 const TEST_LIMIT = 2;
 const TEST_TTL_MS = 60_000;
+const AUTH_LIKE_LIMIT = 2;
+const GEMINI_LIKE_LIMIT = 2;
 
 @Controller('rate-limit-fixture')
 class RateLimitFixtureController {
@@ -24,7 +26,7 @@ class RateLimitFixtureController {
 
   @Public()
   @Throttle({
-    [THROTTLE_LIMITS.auth.name]: { limit: TEST_LIMIT, ttl: TEST_TTL_MS },
+    default: { limit: AUTH_LIKE_LIMIT, ttl: TEST_TTL_MS },
   })
   @Post('auth-like')
   authLikeRoute() {
@@ -32,7 +34,7 @@ class RateLimitFixtureController {
   }
 
   @Throttle({
-    [THROTTLE_LIMITS.gemini.name]: { limit: TEST_LIMIT, ttl: TEST_TTL_MS },
+    default: { limit: GEMINI_LIKE_LIMIT, ttl: TEST_TTL_MS },
   })
   @Post('gemini-like')
   geminiLikeRoute() {
@@ -49,16 +51,6 @@ describe('Phase 2 rate limiting', () => {
         ThrottlerModule.forRoot([
           {
             name: THROTTLE_LIMITS.default.name,
-            ttl: TEST_TTL_MS,
-            limit: TEST_LIMIT,
-          },
-          {
-            name: THROTTLE_LIMITS.auth.name,
-            ttl: TEST_TTL_MS,
-            limit: TEST_LIMIT,
-          },
-          {
-            name: THROTTLE_LIMITS.gemini.name,
             ttl: TEST_TTL_MS,
             limit: TEST_LIMIT,
           },
@@ -93,7 +85,7 @@ describe('Phase 2 rate limiting', () => {
     await server.get('/rate-limit-fixture/default').expect(429);
   });
 
-  it('aplica límite específico de auth sin afectar otros buckets de forma incorrecta', async () => {
+  it('aplica límite estricto de auth solo en esa ruta', async () => {
     const server = request(app.getHttpServer());
 
     await server.post('/rate-limit-fixture/auth-like').expect(201);
@@ -103,12 +95,14 @@ describe('Phase 2 rate limiting', () => {
     await server.get('/rate-limit-fixture/default').expect(200);
   });
 
-  it('aplica límite específico de Gemini', async () => {
+  it('aplica límite estricto de Gemini solo en esa ruta', async () => {
     const server = request(app.getHttpServer());
 
     await server.post('/rate-limit-fixture/gemini-like').expect(201);
     await server.post('/rate-limit-fixture/gemini-like').expect(201);
     await server.post('/rate-limit-fixture/gemini-like').expect(429);
+
+    await server.get('/rate-limit-fixture/default').expect(200);
   });
 });
 

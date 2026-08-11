@@ -63,11 +63,7 @@ import { UsersModule } from './users/users.module';
 
     ScheduleModule.forRoot(),
 
-    ThrottlerModule.forRoot([
-      THROTTLE_LIMITS.default,
-      THROTTLE_LIMITS.auth,
-      THROTTLE_LIMITS.gemini,
-    ]),
+    ThrottlerModule.forRoot([THROTTLE_LIMITS.default]),
 
     CommonModule,
 

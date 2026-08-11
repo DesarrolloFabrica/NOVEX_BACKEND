@@ -14,7 +14,6 @@ import { RequirePermissions } from '../auth/decorators/require-permissions.decor
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import {
   THROTTLE_GEMINI_LIMIT,
-  THROTTLE_LIMITS,
   THROTTLE_TTL_MS,
 } from '../configuration/throttle.constants';
 import { SituationAccessService } from '../situations/situation-access.service';
@@ -31,7 +30,7 @@ export class AIOrchestrationController {
 
   @Post('register-with-analysis')
   @Throttle({
-    [THROTTLE_LIMITS.gemini.name]: {
+    default: {
       limit: THROTTLE_GEMINI_LIMIT,
       ttl: THROTTLE_TTL_MS,
     },
@@ -46,7 +45,7 @@ export class AIOrchestrationController {
 
   @Post(':id/analyze')
   @Throttle({
-    [THROTTLE_LIMITS.gemini.name]: {
+    default: {
       limit: THROTTLE_GEMINI_LIMIT,
       ttl: THROTTLE_TTL_MS,
     },
