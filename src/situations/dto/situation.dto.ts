@@ -43,10 +43,11 @@ export class CreateSituationDto {
   /**
    * Coordinaciones que el usuario declara como potencialmente relacionadas.
    * Opcional; si se envían, tienen prioridad sobre cualquier simulación IA.
+   * Tope amplio para permitir marcar todo el catálogo institucional si aplica.
    */
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(12)
+  @ArrayMaxSize(64)
   @IsUUID('4', { each: true })
   relatedCoordinationIds?: string[];
 }
