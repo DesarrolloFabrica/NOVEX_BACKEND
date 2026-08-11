@@ -198,10 +198,12 @@ describe('Institutional audit trail', () => {
         action: AuditAction.SITUATION_STATUS_CHANGED,
         resourceType: AuditResourceType.SITUATION,
         resourceId: 'sit-1',
-        metadata: {
+        metadata: expect.objectContaining({
           previousStatus: SituationStatus.OPEN,
           nextStatus: SituationStatus.IN_PROGRESS,
-        },
+          statusComment: null,
+          closedOnTime: null,
+        }),
       }),
     );
   });
