@@ -242,7 +242,7 @@ export const OPERACIONES_USERS: readonly OperacionesUserSeed[] = [
     email: 'alberto_valencia@cun.edu.co',
     fullName: 'ALBERTO MARIO VALENCIA ZABLEH',
     roleCode: 'COORDINADOR',
-    coordinationCode: 'coord-bellas-artes',
+    coordinationCode: 'coord-desarrollo-profesional',
   },
   {
     email: 'alex_navia@cun.edu.co',
@@ -313,8 +313,8 @@ export const OPERACIONES_USERS: readonly OperacionesUserSeed[] = [
   {
     email: 'raul_valencia@cun.edu.co',
     fullName: 'RAUL VALENCIA CIFUENTES',
-    roleCode: 'COORDINADOR',
-    coordinationCode: 'coord-general',
+    roleCode: 'DIRECTOR',
+    coordinationCode: null,
   },
   {
     email: 'leidy_bernal@cun.edu.co',

@@ -33,7 +33,17 @@ import { SituationRecommendation } from '../../situation-recommendations/entitie
 import { SituationTimelineEntry } from '../../situation-timeline/entities/situation-timeline-entry.entity';
 import { Situation } from '../../situations/entities/situation.entity';
 import { SituationRelatedCoordination } from '../../situations/entities/situation-related-coordination.entity';
+import {
+  computeDueAt,
+  SLA_POLICY_CODE,
+} from '../../situations/situation-sla.policy';
 import { User } from '../../users/entities/user.entity';
+import {
+  recipeForMockIndex,
+  resolveIslandMockProfile,
+  type IslandMockProfile,
+  type MockSituationRecipe,
+} from './seed-situations-mock.recipes';
 
 /** Prefijo estable para poder limpiar y re-inyectar el dataset mock. */
 export const MOCK_SEED_MARKER = '[MOCK-SEED]';
@@ -104,20 +114,113 @@ function pick<T>(items: readonly T[], index: number): T {
   return items[index % items.length];
 }
 
-function statusForIndex(index: number): SituationStatus {
-  const bucket = index % 10;
-  if (bucket < 4) return SituationStatus.OPEN;
-  if (bucket < 7) return SituationStatus.IN_PROGRESS;
-  if (bucket < 9) return SituationStatus.CLOSED;
-  return SituationStatus.RESOLVED;
+function hoursAgo(hours: number): Date {
+  return new Date(Date.now() - hours * 60 * 60 * 1000);
 }
 
-function severityForIndex(index: number): SituationSeverity {
-  const bucket = index % 11;
-  if (bucket < 2) return SituationSeverity.CRITICAL;
-  if (bucket < 5) return SituationSeverity.HIGH;
-  if (bucket < 9) return SituationSeverity.MEDIUM;
-  return SituationSeverity.LOW;
+function coordinationsWithProfile(
+  items: readonly Coordination[],
+  profile: IslandMockProfile,
+): Coordination[] {
+  return items.filter(
+    (item) => resolveIslandMockProfile(item.code) === profile,
+  );
+}
+
+function pickOrigin(
+  coordinations: readonly Coordination[],
+  profile: IslandMockProfile,
+  index: number,
+): Coordination {
+  const pool = coordinationsWithProfile(coordinations, profile);
+  if (pool.length > 0) return pick(pool, index);
+  const fallback = coordinationsWithProfile(coordinations, 'normal');
+  return pick(fallback.length > 0 ? fallback : coordinations, index);
+}
+
+function buildMockTimeline(
+  recipe: MockSituationRecipe,
+  index: number,
+): {
+  occurredAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  resolvedAt: Date | null;
+  closedAt: Date | null;
+  dueAt: Date;
+  slaBreachedAt: Date | null;
+} {
+  const isFinal =
+    recipe.status === SituationStatus.CLOSED ||
+    recipe.status === SituationStatus.RESOLVED;
+
+  if (isFinal) {
+    const occurredAt = daysAgo(
+      (index % 30) + 10,
+      8 + (index % 8),
+      (index * 7) % 60,
+    );
+    const createdAt = new Date(occurredAt.getTime() + 35 * 60_000);
+    const resolvedAt = new Date(
+      createdAt.getTime() + (12 + (index % 48)) * 60 * 60_000,
+    );
+    const closedAt =
+      recipe.status === SituationStatus.CLOSED
+        ? new Date(resolvedAt.getTime() + 2 * 60 * 60_000)
+        : null;
+    return {
+      occurredAt,
+      createdAt,
+      updatedAt: resolvedAt,
+      resolvedAt,
+      closedAt,
+      dueAt: computeDueAt(recipe.severity, createdAt),
+      slaBreachedAt: null,
+    };
+  }
+
+  if (recipe.sla === 'overdue') {
+    const occurredAt = daysAgo(
+      6 + (index % 8),
+      8 + (index % 10),
+      (index * 7) % 60,
+    );
+    const createdAt = new Date(occurredAt.getTime() + 35 * 60_000);
+    const dueAt = computeDueAt(recipe.severity, createdAt);
+    return {
+      occurredAt,
+      createdAt,
+      updatedAt: createdAt,
+      resolvedAt: null,
+      closedAt: null,
+      dueAt,
+      slaBreachedAt: dueAt,
+    };
+  }
+
+  const hoursBack =
+    recipe.sla === 'at_risk'
+      ? recipe.severity === SituationSeverity.CRITICAL
+        ? 20
+        : recipe.severity === SituationSeverity.HIGH
+          ? 60
+          : 120
+      : recipe.severity === SituationSeverity.CRITICAL
+        ? 4
+        : recipe.severity === SituationSeverity.HIGH
+          ? 12
+          : 24;
+  const createdAt = hoursAgo(hoursBack + (index % 3));
+  const occurredAt = new Date(createdAt.getTime() - 40 * 60_000);
+  return {
+    occurredAt,
+    createdAt,
+    updatedAt: createdAt,
+    resolvedAt: null,
+    closedAt: null,
+    dueAt: computeDueAt(recipe.severity, createdAt),
+    slaBreachedAt: null,
+  };
 }
 
 function toOperationalSeverity(
@@ -384,14 +487,6 @@ export async function runSituationsMockSeed(
     );
   }
 
-  // Preferir áreas que sí tienen personal; evita casos huérfanos de autoría.
-  const seedableCoordinations = coordinations.filter(
-    (coordination) =>
-      (usersByCoordination.get(coordination.id) ?? []).length > 0,
-  );
-  const origins =
-    seedableCoordinations.length > 0 ? seedableCoordinations : coordinations;
-
   let created = 0;
   let withAnalysis = 0;
   let withImpact = 0;
@@ -400,7 +495,32 @@ export async function runSituationsMockSeed(
   let timelineEntries = 0;
 
   for (let index = 0; index < count; index += 1) {
-    const origin = pick(origins, index);
+    const requestedRecipe = recipeForMockIndex(index);
+    const origin = pickOrigin(
+      coordinations,
+      requestedRecipe.originProfile,
+      index,
+    );
+    const recipe: MockSituationRecipe =
+      resolveIslandMockProfile(origin.code) === requestedRecipe.originProfile
+        ? requestedRecipe
+        : {
+            ...requestedRecipe,
+            status: SituationStatus.CLOSED,
+            sla: 'on_track',
+            relateWithinProfile: false,
+          };
+    const { severity, status } = recipe;
+    const timeline = buildMockTimeline(recipe, index);
+    const {
+      occurredAt,
+      createdAt,
+      updatedAt,
+      resolvedAt,
+      closedAt,
+      dueAt,
+      slaBreachedAt,
+    } = timeline;
     const areaUsers = usersByCoordination.get(origin.id) ?? [];
     const creator =
       areaUsers.length > 0
@@ -414,28 +534,11 @@ export async function runSituationsMockSeed(
           : [creator];
     const assignee = index % 4 === 0 ? null : pick(assigneePool, index + 1);
     const category = pick(categories, index);
-    const relatedA = pick(coordinations, index + 1);
-    const relatedB = pick(coordinations, index + 2);
-    const status = statusForIndex(index);
-    const severity = severityForIndex(index);
-    const occurredAt = daysAgo(
-      (index % 45) + 1,
-      8 + (index % 10),
-      (index * 7) % 60,
-    );
-    const createdAt = new Date(occurredAt.getTime() + 35 * 60_000);
     const title = `${pick(TITLE_TEMPLATES, index)} #${index + 1}`;
     const description = `${MOCK_SEED_MARKER} ${pick(DESCRIPTION_TEMPLATES, index)} Caso de prueba local #${index + 1} para validar densidad del Centro Operacional.`;
 
     const isFinal =
       status === SituationStatus.CLOSED || status === SituationStatus.RESOLVED;
-    const resolvedAt = isFinal
-      ? new Date(createdAt.getTime() + (12 + (index % 48)) * 60 * 60_000)
-      : null;
-    const closedAt =
-      status === SituationStatus.CLOSED && resolvedAt
-        ? new Date(resolvedAt.getTime() + 2 * 60 * 60_000)
-        : null;
 
     const situation = await dataSource.getRepository(Situation).save(
       dataSource.getRepository(Situation).create({
@@ -455,19 +558,22 @@ export async function runSituationsMockSeed(
             : null,
         resolvedAt,
         closedAt,
+        dueAt,
+        slaPolicyCode: SLA_POLICY_CODE,
+        slaBreachedAt,
         occurredAt,
         createdAt,
-        updatedAt: resolvedAt ?? createdAt,
+        updatedAt,
       }),
     );
     created += 1;
 
-    const relatedTargets = [relatedA, relatedB].filter(
-      (item) => item.id !== origin.id,
-    );
-    const uniqueRelated = [
-      ...new Map(relatedTargets.map((item) => [item.id, item])).values(),
-    ];
+    const uniqueRelated =
+      recipe.relateWithinProfile && !isFinal
+        ? coordinationsWithProfile(coordinations, recipe.originProfile)
+            .filter((item) => item.id !== origin.id)
+            .slice(0, 1)
+        : [];
     if (uniqueRelated.length > 0) {
       await dataSource.getRepository(SituationRelatedCoordination).save(
         uniqueRelated.map((item, order) =>

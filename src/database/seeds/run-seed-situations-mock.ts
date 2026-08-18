@@ -34,7 +34,7 @@ async function main(): Promise<void> {
     console.log(`Eventos de timeline: ${result.timelineEntries}`);
     console.log('');
     console.log(
-      'Tip: recarga el Centro Operacional / Panorama en el frontend.',
+      'La Red de impacto debería mostrar islas mixtas (crítica, alta, atención y normal).',
     );
     console.log(
       'Para cambiar cantidad: MOCK_SITUATIONS_COUNT=120 npm run seed:situations:mock',
