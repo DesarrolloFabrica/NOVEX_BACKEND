@@ -1,5 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { CoordinationsRepository } from '../../coordinations/repositories/coordinations.repository';
+import { IncidentCategory } from '../../intelligence/entities/incident-category.entity';
 import { SituationEvidenceRepository } from '../../situation-evidence/repositories/situation-evidence.repository';
 import { SituationImpactRepository } from '../../situation-impact/repositories/situation-impact.repository';
 import { SituationRecommendationsRepository } from '../../situation-recommendations/repositories/situation-recommendations.repository';
@@ -26,6 +29,8 @@ export class SituationContextBuilder {
     private readonly recommendationsRepository: SituationRecommendationsRepository,
     private readonly impactRepository: SituationImpactRepository,
     private readonly coordinationsRepository: CoordinationsRepository,
+    @InjectRepository(IncidentCategory)
+    private readonly categoriesRepository: Repository<IncidentCategory>,
   ) {}
 
   async buildOperationalContext(
@@ -38,12 +43,17 @@ export class SituationContextBuilder {
       existingRecommendations,
       previousAssessment,
       availableCoordinations,
+      catalogCategories,
     ] = await Promise.all([
       this.buildTimeline(situationId),
       this.buildEvidence(situationId),
       this.buildRecommendations(situationId),
       this.buildImpact(situationId),
       this.coordinationsRepository.findCatalog(false),
+      this.categoriesRepository.find({
+        where: { isSelectable: true },
+        order: { name: 'ASC' },
+      }),
     ]);
 
     const situation = this.mapSituation(entity);
@@ -82,6 +92,12 @@ export class SituationContextBuilder {
         name: entity.category.name,
         description: entity.category.description,
       },
+      availableCategories: catalogCategories.map((category) => ({
+        id: category.id,
+        code: category.code,
+        name: category.name,
+        description: category.description,
+      })),
       evidences,
       timeline,
       relatedCoordinations,

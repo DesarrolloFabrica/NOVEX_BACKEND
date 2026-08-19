@@ -3,8 +3,8 @@ import { BaseEntity } from '../../common/entities/base.entity';
 import { AIInterpretation } from '../../intelligence/entities/ai-interpretation.entity';
 
 /**
- * IncidentCategory — taxonomía cerrada de problemas operacionales.
- * Necesaria para persistir interpretaciones alineadas al frontend.
+ * IncidentCategory — taxonomía de problemas operacionales.
+ * isSelectable=false conserva códigos históricos fuera del formulario.
  */
 @Entity({ name: 'incident_categories' })
 export class IncidentCategory extends BaseEntity {
@@ -17,6 +17,12 @@ export class IncidentCategory extends BaseEntity {
 
   @Column({ type: 'text', nullable: true })
   description!: string | null;
+
+  @Column({ name: 'is_selectable', type: 'boolean', default: true })
+  isSelectable!: boolean;
+
+  @Column({ type: 'varchar', length: 32, default: 'apps' })
+  icon!: string;
 
   @OneToMany(
     () => AIInterpretation,

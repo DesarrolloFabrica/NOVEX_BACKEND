@@ -38,6 +38,7 @@ import {
   SLA_POLICY_CODE,
 } from '../../situations/situation-sla.policy';
 import { User } from '../../users/entities/user.entity';
+import { CATALOG_INCIDENT_CATEGORIES } from './catalogs.seed';
 import {
   recipeForMockIndex,
   resolveIslandMockProfile,
@@ -439,6 +440,32 @@ export async function runSituationsMockSeed(
 
   const cleared = clearExisting ? await clearMockSituations(dataSource) : 0;
 
+  const categoriesRepository = dataSource.getRepository(IncidentCategory);
+  for (const item of CATALOG_INCIDENT_CATEGORIES) {
+    const existing = await categoriesRepository.findOne({
+      where: { code: item.code },
+    });
+    if (existing) {
+      await categoriesRepository.save({
+        ...existing,
+        name: item.name,
+        description: item.description,
+        isSelectable: item.isSelectable ?? true,
+        icon: item.icon,
+      });
+      continue;
+    }
+    await categoriesRepository.save(
+      categoriesRepository.create({
+        code: item.code,
+        name: item.name,
+        description: item.description,
+        isSelectable: item.isSelectable ?? true,
+        icon: item.icon,
+      }),
+    );
+  }
+
   const [users, categories, coordinations] = await Promise.all([
     dataSource.getRepository(User).find({
       take: 200,
@@ -453,6 +480,12 @@ export async function runSituationsMockSeed(
       order: { displayOrder: 'ASC' },
     }),
   ]);
+
+  const selectableCategories = categories.filter(
+    (item) => item.isSelectable !== false,
+  );
+  const categoryPool =
+    selectableCategories.length > 0 ? selectableCategories : categories;
 
   if (users.length === 0) {
     throw new Error(
@@ -533,7 +566,7 @@ export async function runSituationsMockSeed(
           ? areaUsers
           : [creator];
     const assignee = index % 4 === 0 ? null : pick(assigneePool, index + 1);
-    const category = pick(categories, index);
+    const category = pick(categoryPool, index);
     const title = `${pick(TITLE_TEMPLATES, index)} #${index + 1}`;
     const description = `${MOCK_SEED_MARKER} ${pick(DESCRIPTION_TEMPLATES, index)} Caso de prueba local #${index + 1} para validar densidad del Centro Operacional.`;
 

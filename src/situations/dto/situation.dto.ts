@@ -150,6 +150,7 @@ export class SituationResponseDto {
   categoryId!: string;
   categoryCode!: string;
   categoryName!: string;
+  categoryIcon!: string;
   severity!: SituationSeverity;
   status!: SituationStatus;
   lastStatusComment!: string | null;
@@ -180,4 +181,6 @@ export class IncidentCategorySummaryDto {
   code!: string;
   name!: string;
   description!: string | null;
+  isSelectable!: boolean;
+  icon!: string;
 }

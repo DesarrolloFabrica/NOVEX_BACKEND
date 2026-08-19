@@ -85,7 +85,7 @@ const INSTRUCTION_SECTIONS_V2 = [
   {
     key: 'analysis_goal',
     title: 'Objetivo del análisis',
-    body: 'Produce un informe de inteligencia operacional para directivos: razonamiento estratégico, priorización, propagación del impacto y soporte a la toma de decisiones. Evalúa la situación, clasifica el incidente, estima impacto, modela propagación operacional, propone matriz de decisiones y define la decisión ejecutiva inmediata.',
+    body: 'Produce un informe de inteligencia operacional para directivos: razonamiento estratégico, priorización, propagación del impacto y soporte a la toma de decisiones. Evalúa la situación, estima impacto, modela propagación operacional, propone matriz de decisiones y define la decisión ejecutiva inmediata. Conserva la categoría ya registrada en el expediente (category.code); no la sustituyas.',
   },
   {
     key: 'analysis_depth',

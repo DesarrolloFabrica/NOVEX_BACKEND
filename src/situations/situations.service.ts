@@ -61,7 +61,7 @@ export class SituationsService {
 
   async listIncidentCategories(): Promise<IncidentCategorySummaryDto[]> {
     const categories = await this.categoriesRepository.find({
-      order: { name: 'ASC' },
+      order: { isSelectable: 'DESC', name: 'ASC' },
     });
 
     return categories.map((category) => ({
@@ -69,6 +69,8 @@ export class SituationsService {
       code: category.code,
       name: category.name,
       description: category.description,
+      isSelectable: category.isSelectable,
+      icon: category.icon,
     }));
   }
 
@@ -546,6 +548,7 @@ export class SituationsService {
       categoryId: situation.categoryId,
       categoryCode: situation.category.code,
       categoryName: situation.category.name,
+      categoryIcon: situation.category.icon,
       severity: situation.severity,
       status: situation.status,
       lastStatusComment: situation.lastStatusComment ?? null,

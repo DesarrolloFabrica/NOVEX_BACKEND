@@ -121,7 +121,10 @@ export interface SituationContext {
   originCoordination: SituationContextCoordination | null;
   /** Catálogo cerrado de coordinaciones activas visibles en Red de Impacto. */
   availableCoordinations: SituationContextCoordination[];
+  /** Categoría persistida en el expediente (elección del usuario). */
   category: SituationContextCategory;
+  /** Categorías seleccionables para incidentClassification.categoryCode. */
+  availableCategories: SituationContextCategory[];
   evidences: SituationContextEvidence[];
   timeline: SituationContextTimelineEntry[];
   relatedCoordinations: SituationContextCoordination[];

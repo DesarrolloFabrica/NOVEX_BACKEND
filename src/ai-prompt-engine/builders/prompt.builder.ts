@@ -45,12 +45,22 @@ export class PromptBuilder {
     const allowedCoordinationCodes = context.availableCoordinations.map(
       (coordination) => coordination.code,
     );
+    const allowedCategoryCodes = (
+      (context.availableCategories ?? []).length > 0
+        ? context.availableCategories
+        : [context.category]
+    ).map((category) => category.code);
     const instructions = this.renderSections('INSTRUCCIONES', [
       ...template.instructions,
       {
         key: 'allowed_coordinations',
         title: 'Coordinaciones permitidas',
         body: `En impactAssessment.affectedCoordinations y impactAssessment.propagation usa exclusivamente códigos del catálogo Red de Impacto: ${allowedCoordinationCodes.join(', ')}. No inventes, traduzcas ni derives códigos nuevos.`,
+      },
+      {
+        key: 'allowed_categories',
+        title: 'Categoría del expediente',
+        body: `La categoría persistida del expediente es ${context.category.code} (${context.category.name}). No la cambies ni contradigas: incidentClassification.categoryCode debe ser ${context.category.code} y categoryName debe coincidir con el catálogo. Códigos válidos del catálogo operativo: ${allowedCategoryCodes.join(', ')}.`,
       },
     ]);
     const contextBlock = this.renderSections('CONTEXTO', contextSections);

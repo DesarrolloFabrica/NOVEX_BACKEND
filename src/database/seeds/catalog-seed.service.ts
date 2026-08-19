@@ -116,6 +116,8 @@ export class CatalogSeedService implements OnApplicationBootstrap {
           ...existing,
           name: item.name,
           description: item.description,
+          isSelectable: item.isSelectable ?? true,
+          icon: item.icon,
         });
         continue;
       }
@@ -125,6 +127,8 @@ export class CatalogSeedService implements OnApplicationBootstrap {
           code: item.code,
           name: item.name,
           description: item.description,
+          isSelectable: item.isSelectable ?? true,
+          icon: item.icon,
         }),
       );
     }

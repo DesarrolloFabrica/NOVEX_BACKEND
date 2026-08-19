@@ -32,6 +32,11 @@ import { SituationsService } from './situations.service';
     SituationAccessService,
     SituationSlaScheduler,
   ],
-  exports: [SituationsService, SituationsRepository, SituationAccessService],
+  exports: [
+    SituationsService,
+    SituationsRepository,
+    SituationAccessService,
+    TypeOrmModule,
+  ],
 })
 export class SituationsModule {}
