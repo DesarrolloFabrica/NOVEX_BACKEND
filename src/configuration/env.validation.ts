@@ -10,6 +10,10 @@ import {
   validateSync,
 } from 'class-validator';
 import { logBootDebug } from '../common/bootstrap-observability';
+import {
+  applyResolvedDatabaseEnv,
+  resolveDatabaseEnv,
+} from './resolve-database-env';
 
 function toBoolean(value: unknown): boolean {
   if (typeof value === 'string') return value.trim().toLowerCase() === 'true';
@@ -39,6 +43,12 @@ export class EnvironmentVariables {
   @IsString()
   @IsOptional()
   CORS_ORIGINS?: string;
+
+  /** false = PostgreSQL local; true = Cloud SQL. Ver DB_*_LOCAL / DB_*_CLOUD. */
+  @Transform(({ value }) => toBoolean(value))
+  @IsBoolean()
+  @IsOptional()
+  DB_CLOUD: boolean = false;
 
   @IsString()
   @IsNotEmpty()
@@ -106,8 +116,21 @@ export class EnvironmentVariables {
 }
 
 export function validateEnvironment(config: Record<string, unknown>) {
+  const resolved = resolveDatabaseEnv(config);
+  applyResolvedDatabaseEnv(resolved);
+
+  const merged: Record<string, unknown> = {
+    ...config,
+    DB_HOST: resolved.host,
+    DB_PORT: String(resolved.port),
+    DB_USERNAME: resolved.username,
+    DB_PASSWORD: resolved.password,
+    DB_DATABASE: resolved.database,
+    DB_SSL: resolved.ssl ? 'true' : 'false',
+  };
+
   // enableImplicitConversion convierte el string "false" en boolean true (Boolean("false")).
-  const validated = plainToInstance(EnvironmentVariables, config, {
+  const validated = plainToInstance(EnvironmentVariables, merged, {
     enableImplicitConversion: false,
   });
 

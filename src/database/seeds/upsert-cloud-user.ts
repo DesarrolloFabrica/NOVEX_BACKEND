@@ -1,26 +1,9 @@
 import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
+import { buildDataSourceOptions } from '../data-source';
 
 function buildCloudDataSource(): DataSource {
-  const password = process.env.CLOUD_DB_PASSWORD;
-  if (!password) {
-    throw new Error('CLOUD_DB_PASSWORD no está definida.');
-  }
-
-  const sslEnabled =
-    (process.env.CLOUD_DB_SSL ?? 'false').trim().toLowerCase() === 'true';
-
-  return new DataSource({
-    type: 'postgres',
-    host: process.env.CLOUD_DB_HOST ?? '127.0.0.1',
-    port: parseInt(process.env.CLOUD_DB_PORT ?? '15432', 10),
-    username: process.env.CLOUD_DB_USERNAME ?? 'novex',
-    password,
-    database: process.env.CLOUD_DB_DATABASE ?? 'novex',
-    synchronize: false,
-    logging: false,
-    ssl: sslEnabled ? { rejectUnauthorized: false } : false,
-  });
+  return new DataSource(buildDataSourceOptions('cloud'));
 }
 
 export interface UpsertCloudUserInput {

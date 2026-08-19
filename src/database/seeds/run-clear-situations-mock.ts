@@ -1,7 +1,9 @@
 import dataSource from '../data-source';
 import { clearMockSituations } from './seed-situations-mock';
+import { assertLocalDatabaseProfile } from '../../configuration/resolve-database-env';
 
 async function main(): Promise<void> {
+  assertLocalDatabaseProfile('seed:situations:clear');
   await dataSource.initialize();
 
   try {

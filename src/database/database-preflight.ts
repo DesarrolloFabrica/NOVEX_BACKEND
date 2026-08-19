@@ -1,32 +1,14 @@
 import { DataSource } from 'typeorm';
+import {
+  postgresSslOption,
+  resolveDatabaseEnv,
+} from '../configuration/resolve-database-env';
 
 const DEFAULT_CONNECTION_TIMEOUT_MS = 15_000;
 
 type DatabasePreflightOptions = {
   timeoutMs?: number;
 };
-
-function requiredEnvironment(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) {
-    const error = new Error(`${name} is required for the database connection`);
-    Object.assign(error, { code: 'DB_CONFIG_MISSING' });
-    throw error;
-  }
-
-  return value;
-}
-
-function databaseSsl(host: string): false | { rejectUnauthorized: false } {
-  const configured = process.env.DB_SSL?.trim().toLowerCase();
-  const enabled =
-    configured === 'true' ||
-    (configured !== 'false' &&
-      process.env.NODE_ENV === 'production' &&
-      !host.startsWith('/cloudsql/'));
-
-  return enabled ? { rejectUnauthorized: false } : false;
-}
 
 function timeoutError(timeoutMs: number): Error {
   const error = new Error(
@@ -61,23 +43,16 @@ export async function verifyDatabaseConnection(
   options: DatabasePreflightOptions = {},
 ): Promise<void> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_CONNECTION_TIMEOUT_MS;
-  const host = requiredEnvironment('DB_HOST');
-  const port = Number.parseInt(requiredEnvironment('DB_PORT'), 10);
-
-  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-    const error = new Error('DB_PORT must be an integer between 1 and 65535');
-    Object.assign(error, { code: 'DB_CONFIG_INVALID' });
-    throw error;
-  }
+  const resolved = resolveDatabaseEnv(process.env);
 
   const dataSource = new DataSource({
     type: 'postgres',
-    host,
-    port,
-    username: requiredEnvironment('DB_USERNAME'),
-    password: requiredEnvironment('DB_PASSWORD'),
-    database: requiredEnvironment('DB_DATABASE'),
-    ssl: databaseSsl(host),
+    host: resolved.host,
+    port: resolved.port,
+    username: resolved.username,
+    password: resolved.password,
+    database: resolved.database,
+    ssl: postgresSslOption(resolved),
     connectTimeoutMS: timeoutMs,
     extra: { connectionTimeoutMillis: timeoutMs },
   });

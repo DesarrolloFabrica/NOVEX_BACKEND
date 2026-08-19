@@ -7,10 +7,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# Alternativa a start-cloud-dev.ps1 para redes con inspeccion TLS (FortiGate):
-# el Cloud SQL Auth Proxy rechaza el certificado suplantado en el puerto 3307,
-# asi que aqui se usa la IP publica de la instancia con SSL sin verificacion de
-# cadena. Requiere que la IP publica del equipo este en authorized networks.
+# Preferido: en .env pon DB_CLOUD=true y npm run start:dev (credenciales DB_*_CLOUD).
+# Este script queda como fallback si hay que leer la password desde Secret Manager.
+# El proxy (start-cloud-dev.ps1) suele fallar con inspeccion TLS (FortiGate) en 3307.
 
 $gcloudCommand = Get-Command gcloud.cmd -ErrorAction SilentlyContinue
 $gcloud = if ($gcloudCommand) {

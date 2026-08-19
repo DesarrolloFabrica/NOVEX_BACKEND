@@ -1,7 +1,9 @@
 import dataSource from '../data-source';
 import { runOperacionesSeed } from './seed-operaciones';
+import { assertLocalDatabaseProfile } from '../../configuration/resolve-database-env';
 
 async function main(): Promise<void> {
+  assertLocalDatabaseProfile('seed:operaciones');
   await dataSource.initialize();
 
   try {

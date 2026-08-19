@@ -1,5 +1,6 @@
 import dataSource from '../data-source';
 import { runSituationsMockSeed } from './seed-situations-mock';
+import { assertLocalDatabaseProfile } from '../../configuration/resolve-database-env';
 
 function readCount(): number {
   const fromEnv = Number(process.env.MOCK_SITUATIONS_COUNT ?? '80');
@@ -16,6 +17,7 @@ function readClearFlag(): boolean {
 }
 
 async function main(): Promise<void> {
+  assertLocalDatabaseProfile('seed:situations:mock');
   await dataSource.initialize();
 
   try {

@@ -30,27 +30,7 @@ export interface SyncUsersFromCloudResult {
 }
 
 function buildCloudDataSourceOptions(): DataSourceOptions {
-  const password = process.env.CLOUD_DB_PASSWORD;
-  if (!password) {
-    throw new Error(
-      'CLOUD_DB_PASSWORD no está definida. Ejecute npm run sync:users:cloud.',
-    );
-  }
-
-  const sslEnabled =
-    (process.env.CLOUD_DB_SSL ?? 'false').trim().toLowerCase() === 'true';
-
-  return {
-    type: 'postgres',
-    host: process.env.CLOUD_DB_HOST ?? '127.0.0.1',
-    port: parseInt(process.env.CLOUD_DB_PORT ?? '15432', 10),
-    username: process.env.CLOUD_DB_USERNAME ?? 'novex',
-    password,
-    database: process.env.CLOUD_DB_DATABASE ?? 'novex',
-    synchronize: false,
-    logging: false,
-    ssl: sslEnabled ? { rejectUnauthorized: false } : false,
-  };
+  return buildDataSourceOptions('cloud');
 }
 
 async function fetchCloudUsers(

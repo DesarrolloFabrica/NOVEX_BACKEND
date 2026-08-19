@@ -15,12 +15,13 @@ export const typeOrmAsyncConfig: TypeOrmModuleAsyncOptions = {
   useFactory: (configService: ConfigService) => {
     const isProduction = configService.get<string>('nodeEnv') === 'production';
     const host = configService.get<string>('database.host') ?? '';
-    const dbSslFlag = process.env.DB_SSL?.trim().toLowerCase();
-    const sslEnabled =
-      dbSslFlag === 'true' ||
-      (dbSslFlag !== 'false' && isProduction && !host.startsWith('/cloudsql/'));
+    const sslEnabled = configService.get<boolean>('database.ssl') === true;
 
     logBootDebug('TypeORM connection parameters:');
+    logBootDebug(
+      'DB_PROFILE:',
+      configService.get<string>('database.profile') ?? 'local',
+    );
     logBootDebug('DB_HOST:', host);
     logBootDebug('DB_PORT:', configService.get<number>('database.port'));
     logBootDebug('DB_DATABASE:', configService.get<string>('database.name'));
@@ -28,7 +29,7 @@ export const typeOrmAsyncConfig: TypeOrmModuleAsyncOptions = {
       'DB_USERNAME:',
       configService.get<string>('database.username'),
     );
-    logBootDebug('DB_SSL:', dbSslFlag ?? '(unset)');
+    logBootDebug('DB_SSL:', sslEnabled);
     logBootDebug('NODE_ENV:', configService.get<string>('nodeEnv'));
     logBootDebug('Connecting to PostgreSQL...');
 
