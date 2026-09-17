@@ -5,6 +5,7 @@ import {
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -14,6 +15,7 @@ import { RequirePermissions } from '../auth/decorators/require-permissions.decor
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import {
   ListSituationsQueryDto,
+  ResolveSituationDto,
   UpdateSituationDto,
 } from './dto/situation.dto';
 import { SituationsService } from './situations.service';
@@ -55,5 +57,26 @@ export class SituationsController {
     @CurrentUser() user: AuthPayload,
   ) {
     return this.situationsService.update(id, dto, user);
+  }
+
+  /**
+   * SOLUCIONAR: cierra el problema y registra el aprendizaje en una sola
+   * operación atómica.
+   *
+   * `SITUATIONS_CLOSE` deja de ser un permiso declarado y sin uso: aquí se
+   * comprueba de verdad. Pero es solo el PRIMER filtro —limita la operación a
+   * los roles que participan del cierre— y NO concede excepción a la regla
+   * funcional: el servicio exige además que quien resuelve COORDINE el área
+   * responsable del problema, comprobado contra la coordinación persistida.
+   * Un permiso genérico nunca sustituye a esa comprobación.
+   */
+  @Post(':id/resolution')
+  @RequirePermissions('SITUATIONS_CLOSE')
+  resolve(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ResolveSituationDto,
+    @CurrentUser() user: AuthPayload,
+  ) {
+    return this.situationsService.resolve(id, dto, user);
   }
 }

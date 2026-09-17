@@ -118,17 +118,38 @@ export const ALL_PERMISSION_CODES = CATALOG_PERMISSIONS.map(
 );
 
 /**
- * La operación sobre situaciones pertenece a quien la vive: coordinaciones y
- * analistas. La administración de plataforma no interviene en el ciclo
- * operativo, así que ADMIN queda fuera de estos permisos.
+ * INTERVENIR en el ciclo de una situación —modificarla, cerrarla o relanzar su
+ * análisis— sigue perteneciendo a quien la vive. La administración de
+ * plataforma no interviene, así que ADMIN queda fuera de estos permisos.
+ *
+ * `SITUATIONS_CREATE` YA NO ESTÁ EN ESTA LISTA. REPORTAR un problema dejó de
+ * ser una intervención reservada: los cuatro roles pueden declarar un problema
+ * en cualquier coordinación válida. Es una capacidad de ENTRADA de información,
+ * no de gestión, y por eso no arrastra ninguna de las otras tres.
  */
 const OPERATIONAL_ONLY_PERMISSION_CODES = [
-  'SITUATIONS_CREATE',
   'SITUATIONS_UPDATE',
   'SITUATIONS_CLOSE',
   'AI_ANALYZE',
 ];
 
+/**
+ * REPARTO POR ROL tras habilitar el reporte entre coordinaciones y la
+ * resolución con aprendizaje.
+ *
+ *   REPORTAR    `SITUATIONS_CREATE`: los CUATRO roles. La coordinación
+ *               responsable la elige el usuario y la valida el catálogo.
+ *   SOLUCIONAR  `SITUATIONS_CLOSE`: SOLO COORDINADOR, y aun así el servicio
+ *               exige además que coordine el área responsable del problema.
+ *               El permiso delimita el rol; la política delimita el caso.
+ *
+ * ADMIN y DIRECTOR ganan únicamente `SITUATIONS_CREATE`. NO reciben
+ * `SITUATIONS_UPDATE`, `SITUATIONS_CLOSE` ni `AI_ANALYZE`: pueden declarar un
+ * problema, no gestionarlo ni cerrarlo.
+ *
+ * ANALISTA conserva lo que tenía y NO recibe `SITUATIONS_CLOSE`: reporta y
+ * actualiza sus propios casos, pero no soluciona.
+ */
 export const ROLE_PERMISSION_CODES: Readonly<
   Record<'ADMIN' | 'DIRECTOR' | 'ANALISTA' | 'COORDINADOR', readonly string[]>
 > = {
@@ -139,6 +160,7 @@ export const ROLE_PERMISSION_CODES: Readonly<
     'AUTH_VIEW_PROFILE',
     'COORDINATIONS_VIEW',
     'SITUATIONS_VIEW',
+    'SITUATIONS_CREATE',
     'AI_VIEW_REPORTS',
     'REPORTS_VIEW',
     'REPORTS_EXPORT',
@@ -159,6 +181,9 @@ export const ROLE_PERMISSION_CODES: Readonly<
     'SITUATIONS_VIEW',
     'SITUATIONS_CREATE',
     'SITUATIONS_UPDATE',
+    // Único rol que soluciona. La comprobación efectiva vive en
+    // `SituationsController.resolve` y `OperationalScopeService`.
+    'SITUATIONS_CLOSE',
     'AI_ANALYZE',
     'AI_VIEW_REPORTS',
   ],

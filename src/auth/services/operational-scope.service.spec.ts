@@ -49,10 +49,12 @@ describe('OperationalScopeService', () => {
     ).toThrow(NotFoundException);
   });
 
-  it('impide registrar situaciones fuera de la coordinación asignada', () => {
-    expect(() =>
+  it('permite registrar situaciones en otra coordinación', () => {
+    // Regla nueva: la coordinación seleccionada es la RESPONSABLE del problema
+    // y manda siempre. Antes esto lanzaba ForbiddenException.
+    expect(
       service.resolveCreateCoordinationId(coordinator, 'other-coord'),
-    ).toThrow(ForbiddenException);
+    ).toBe('other-coord');
   });
 
   it('registra al coordinador siempre bajo su coordinación asignada', () => {
@@ -84,37 +86,71 @@ describe('OperationalScopeService', () => {
     expect(service.resolveCreateCoordinationId(analyst)).toBeNull();
   });
 
-  it('impide que el analista atribuya su registro a una coordinación', () => {
-    expect(() =>
-      service.resolveCreateCoordinationId(analyst, 'coord-b2b'),
-    ).toThrow(ForbiddenException);
+  it('conserva la coordinación que selecciona el analista', () => {
+    // Regla nueva: el reporte de un analista puede tener área responsable, que
+    // es lo que le da sitio en la carta de esa coordinación. Su AUTORÍA sigue
+    // registrándose aparte, en createdByUserId.
+    expect(service.resolveCreateCoordinationId(analyst, 'coord-b2b')).toBe(
+      'coord-b2b',
+    );
   });
 
-  it('impide registrar al coordinador que no tiene coordinación', () => {
-    expect(() =>
+  it('un coordinador sin área registra sin coordinación responsable', () => {
+    // Regla nueva: sin selección explícita y sin área asignada, el caso nace
+    // sin dueña en lugar de rechazarse. Con selección, se respeta la elegida.
+    expect(
       service.resolveCreateCoordinationId({
         ...coordinator,
         coordinationId: null,
       }),
-    ).toThrow(ForbiddenException);
+    ).toBeNull();
+    expect(
+      service.resolveCreateCoordinationId(
+        { ...coordinator, coordinationId: null },
+        'coord-b2b',
+      ),
+    ).toBe('coord-b2b');
   });
 
-  it('impide registrar a roles no operativos aunque conserven el permiso', () => {
+  it('el permiso es la autoridad para registrar, no una lista de roles', () => {
+    // Regla nueva: reportar dejó de estar reservado a Analista y Coordinador.
+    // Quien tenga SITUATIONS_CREATE registra; quien no lo tenga, no.
+    const directorConPermiso = {
+      ...director,
+      permissions: [...director.permissions, 'SITUATIONS_CREATE'],
+    };
+    expect(
+      service.resolveCreateCoordinationId(directorConPermiso, 'coord-b2b'),
+    ).toBe('coord-b2b');
+
     expect(() =>
-      service.resolveCreateCoordinationId({
-        ...director,
-        permissions: [...director.permissions, 'SITUATIONS_CREATE'],
-      }),
+      service.resolveCreateCoordinationId(director, 'coord-b2b'),
     ).toThrow(ForbiddenException);
   });
 
-  it('impide registrar cuando el token no declara un rol', () => {
+  it('sin rol reconocible sigue mandando el permiso', () => {
+    // Regla nueva: la autorización de creación no consulta el rol. Un actor sin
+    // rol legible pero con el permiso registra sin coordinación dueña; sin el
+    // permiso no registra en ningún caso. La RESOLUCIÓN, en cambio, sí exige
+    // rol COORDINADOR: son reglas separadas a propósito.
+    expect(
+      service.resolveCreateCoordinationId({ ...coordinator, roleCode: '' }),
+    ).toBeNull();
+
     expect(() =>
       service.resolveCreateCoordinationId({
         ...coordinator,
         roleCode: '',
+        permissions: ['SITUATIONS_VIEW'],
       }),
     ).toThrow(ForbiddenException);
+
+    expect(
+      service.canResolveSituation(
+        { ...coordinator, roleCode: '', permissions: ['SITUATIONS_CLOSE'] },
+        { coordinationId: 'coord-b2b', createdByUserId: 'x' },
+      ),
+    ).toBe(false);
   });
 
   it('permite actualizar a la coordinación dueña de la situación', () => {

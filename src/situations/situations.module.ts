@@ -7,6 +7,7 @@ import { SituationTimelineModule } from '../situation-timeline/situation-timelin
 import { User } from '../users/entities/user.entity';
 import { Situation } from './entities/situation.entity';
 import { SituationRelatedCoordination } from './entities/situation-related-coordination.entity';
+import { SituationResolution } from './entities/situation-resolution.entity';
 import { SituationsRepository } from './repositories/situations.repository';
 import { SituationsController } from './situations.controller';
 import { SituationAccessService } from './situation-access.service';
@@ -18,6 +19,7 @@ import { SituationsService } from './situations.service';
     TypeOrmModule.forFeature([
       Situation,
       SituationRelatedCoordination,
+      SituationResolution,
       Coordination,
       IncidentCategory,
       User,

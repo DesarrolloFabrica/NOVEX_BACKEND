@@ -1,11 +1,12 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { EntityManager, In, QueryFailedError, Repository } from 'typeorm';
 import { AuditAction, AuditResourceType } from '../audit/audit-action.enum';
 import { AuditLogService } from '../audit/audit-log.service';
 import { OperationalScopeService } from '../auth/services/operational-scope.service';
@@ -28,19 +29,39 @@ import {
   IncidentCategorySummaryDto,
   ListSituationsQueryDto,
   RelatedCoordinationResponseDto,
+  ResolveSituationDto,
+  SituationResolutionResponseDto,
   SituationResponseDto,
   SituationsListResponseDto,
   UpdateSituationDto,
 } from './dto/situation.dto';
 import { Situation } from './entities/situation.entity';
 import { SituationRelatedCoordination } from './entities/situation-related-coordination.entity';
-import { SituationsRepository } from './repositories/situations.repository';
+import { SituationResolution } from './entities/situation-resolution.entity';
+import {
+  SituationsRepository,
+  type SituationSearchFilters,
+} from './repositories/situations.repository';
 import { isFutureOccurredAt } from './occurred-at.validation';
 import {
   isForwardSituationTransition,
   requiresStatusComment,
   SITUATION_STATUS_LABEL_ES,
 } from './situation-status.transitions';
+
+/**
+ * Estados desde los que se puede SOLUCIONAR un problema en una sola operación.
+ *
+ * `OPEN` e `IN_PROGRESS` son el flujo vigente. `RESOLVED` es un valor LEGADO al
+ * que ninguna transición conduce ya; se acepta aquí únicamente para que las
+ * filas históricas que quedaron en él puedan cerrarse. No se reactiva como paso
+ * del flujo: nada lo produce.
+ */
+const RESOLVABLE_STATUSES: readonly SituationStatus[] = [
+  SituationStatus.OPEN,
+  SituationStatus.IN_PROGRESS,
+  SituationStatus.RESOLVED,
+];
 
 @Injectable()
 export class SituationsService {
@@ -54,6 +75,8 @@ export class SituationsService {
     private readonly usersRepository: Repository<User>,
     @InjectRepository(SituationRelatedCoordination)
     private readonly relatedCoordinationsRepository: Repository<SituationRelatedCoordination>,
+    @InjectRepository(SituationResolution)
+    private readonly resolutionsRepository: Repository<SituationResolution>,
     private readonly timelineService: SituationTimelineService,
     private readonly scopeService: OperationalScopeService,
     private readonly auditLogService: AuditLogService,
@@ -153,7 +176,7 @@ export class SituationsService {
       },
     });
 
-    return this.toResponse(withRelations);
+    return this.toResponse(withRelations, actor);
   }
 
   async list(
@@ -162,23 +185,75 @@ export class SituationsService {
   ): Promise<SituationsListResponseDto> {
     this.scopeService.assertPermission(actor, 'SITUATIONS_VIEW');
 
-    const scopedQuery: ListSituationsQueryDto = {
-      ...query,
-      coordinationId: this.scopeService.resolveSituationListCoordinationId(
-        actor,
-        query.coordinationId,
-      ),
-    };
+    /*
+     * DOS MODOS DE LISTADO, con alcances distintos:
+     *
+     *   MIS REPORTES (`mine=true`)  Los casos que creó QUIEN pide, en cualquier
+     *                               coordinación. La autoría la pone el
+     *                               servidor con `actor.sub`; el cliente solo
+     *                               enciende el interruptor. El alcance de
+     *                               coordinación NO se aplica aquí, porque ver
+     *                               lo que uno mismo reportó no es leer los
+     *                               problemas de otra área: es leer los suyos.
+     *
+     *   LISTADO NORMAL             Sin cambios: un coordinador sigue viendo
+     *                               solo su coordinación, y el resto de roles
+     *                               lo que ya veían. Esta fase NO abre la
+     *                               lectura general de problemas ajenos.
+     */
+    const { mine, ...rest } = query;
+
+    /*
+     * PEDIR OTRA ÁREA DEVUELVE LO QUE UNO PUEDE LEER DE ELLA, NI MÁS NI MENOS.
+     *
+     * `resolveSituationListCoordinationId` sustituye la coordinación pedida por
+     * la del actor cuando está acotado por área, y esa sustitución silenciosa le
+     * devolvería los problemas de SU área presentados bajo el rótulo de otra:
+     * algo falso. Por eso no se usa aquí.
+     *
+     * Pero responder con una página vacía también engañaba, de otra forma: un
+     * coordinador SÍ puede leer los reportes que él mismo hizo en otra área
+     * —`assertSituationReadable` se lo permite, y el detalle se abre sin
+     * problema—, así que verlos desaparecer de la lista mientras el panel
+     * derecho los muestra era una contradicción en la misma pantalla.
+     *
+     * La lista se restringe entonces a la INTERSECCIÓN: los problemas de la
+     * coordinación pedida QUE ADEMÁS reportó el propio actor. No se abre nada
+     * nuevo —es exactamente lo que ya podía leer uno a uno— y la respuesta se
+     * marca `own-only` para que la interfaz no presente ese conteo como el
+     * total del área.
+     */
+    const lecturaRestringida =
+      !mine &&
+      Boolean(query.coordinationId) &&
+      this.scopeService.isCoordinationScoped(actor) &&
+      query.coordinationId !== actor.coordinationId;
+
+    const scopedQuery: SituationSearchFilters = mine
+      ? { ...rest, createdByUserId: actor.sub }
+      : lecturaRestringida
+        ? { ...rest, createdByUserId: actor.sub }
+        : {
+            ...rest,
+            coordinationId:
+              this.scopeService.resolveSituationListCoordinationId(
+                actor,
+                query.coordinationId,
+              ),
+          };
 
     const page = scopedQuery.page ?? 1;
     const limit = scopedQuery.limit ?? 50;
     const [items, total] = await this.situationsRepository.search(scopedQuery);
 
     return {
-      items: items.map((item) => this.toResponse(item)),
+      items: items.map((item) => this.toResponse(item, actor)),
       total,
       page,
       limit,
+      // El alcance viaja con los datos: una lista vacía no significa lo mismo
+      // cuando se leyó todo que cuando solo se leyó lo propio.
+      scope: lecturaRestringida ? 'own-only' : 'complete',
     };
   }
 
@@ -188,8 +263,11 @@ export class SituationsService {
       throw new NotFoundException(`Situación no encontrada: ${id}`);
     }
 
-    this.scopeService.assertSituationInScope(actor, situation);
-    return this.toResponse(situation);
+    // LECTURA: alcance de coordinación O reporte propio. Ver un caso propio de
+    // otra área no concede ninguna operación sobre él; eso lo siguen decidiendo
+    // `assertCanUpdateSituation` y `assertCanResolveSituation`.
+    this.scopeService.assertSituationReadable(actor, situation);
+    return this.toResponse(situation, actor);
   }
 
   async update(
@@ -203,6 +281,25 @@ export class SituationsService {
     }
 
     this.scopeService.assertCanUpdateSituation(actor, situation);
+
+    /*
+     * CIERRE FUERA DE ESTA RUTA.
+     *
+     * Cerrar un problema es ahora una operación con reglas propias —solo el
+     * coordinador del área responsable, y siempre con aprendizaje— y esas
+     * reglas no se pueden aplicar desde aquí, porque `assertCanUpdateSituation`
+     * autoriza por AUTORÍA o por área, que es un criterio más amplio. Si el
+     * PATCH genérico siguiera admitiendo `CLOSED`, el autor de un reporte
+     * podría cerrarlo sin ser coordinador y sin registrar ningún aprendizaje.
+     *
+     * Se bloquea el DESTINO, no el endpoint: el resto de campos y la transición
+     * a `IN_PROGRESS` siguen funcionando igual que antes.
+     */
+    if (dto.status === SituationStatus.CLOSED) {
+      throw new ForbiddenException(
+        'El cierre se registra en POST /situations/:id/resolution, con el aprendizaje correspondiente.',
+      );
+    }
 
     if (
       situation.status === SituationStatus.CLOSED &&
@@ -328,6 +425,168 @@ export class SituationsService {
         metadata: { changedFields },
       });
     }
+
+    return this.getById(id, actor);
+  }
+
+  /**
+   * SOLUCIONAR UN PROBLEMA: cierre y aprendizaje en UNA sola operación atómica.
+   *
+   * AUTORIZACIÓN. Se decide con `assertCanResolveSituation`, la política única
+   * del sistema, y se evalúa contra la coordinación responsable PERSISTIDA que
+   * se acaba de leer con bloqueo; nunca contra una coordinación enviada por el
+   * cliente, porque el cuerpo de la petición solo trae el aprendizaje. El
+   * permiso `SITUATIONS_CLOSE` que exige el controlador es condición necesaria
+   * pero NO suficiente: tenerlo no exime de coordinar el área responsable.
+   *
+   * UNA SOLA PETICIÓN. Se admite `OPEN` además de `IN_PROGRESS`, así que el
+   * cliente no encadena dos llamadas. Deliberadamente NO se simula el paso por
+   * «En atención» ni se asigna un responsable: `assignedUserId` se queda como
+   * estuviera, porque inventar una asignación falsearía el historial.
+   *
+   * TRANSACCIÓN. El cambio de estado, el aprendizaje y el evento de la línea de
+   * tiempo comparten transacción: o se guardan los tres o ninguno. La auditoría
+   * se escribe DESPUÉS del commit, a propósito: es un registro observacional y
+   * un fallo suyo no debe deshacer una resolución ya confirmada.
+   *
+   * CONCURRENCIA. Dos defensas, en este orden:
+   *   1. `pessimistic_write` sobre la fila de la situación. La segunda petición
+   *      espera al commit de la primera, vuelve a leer, ve `CLOSED` y se
+   *      rechaza con 409 sin tocar nada.
+   *   2. La clave primaria de `situation_resolutions`. Si dos escrituras
+   *      llegaran a coincidir pese al bloqueo, la base rechaza la segunda.
+   * En ningún caso se sobrescribe el aprendizaje ni cambia la autoría de la
+   * resolución ya registrada, y el evento de cierre se emite una sola vez.
+   */
+  async resolve(
+    id: string,
+    dto: ResolveSituationDto,
+    actor: AuthPayload,
+  ): Promise<SituationResponseDto> {
+    // Segunda barrera del aprendizaje vacío: el DTO ya recorta y valida, pero
+    // el servicio no da por hecho que su única entrada sea el controlador.
+    const learning = dto.learning?.trim() ?? '';
+    if (learning.length === 0) {
+      throw new BadRequestException('El aprendizaje no puede estar vacío.');
+    }
+
+    const previousStatus = await this.situationsRepository.manager.transaction(
+      async (manager: EntityManager) => {
+        /*
+         * BLOQUEO SOBRE LA FILA DESNUDA.
+         *
+         * `loadEagerRelations: false` es imprescindible, no una optimización:
+         * `Situation` declara `coordination`, `createdByUser`, `assignedUser` y
+         * `category` como EAGER, así que TypeORM las une con LEFT JOIN aunque no
+         * se pidan, y PostgreSQL rechaza la consulta con
+         *
+         *   FOR UPDATE cannot be applied to the nullable side of an outer join
+         *
+         * Omitir `relations` no basta: las eager se añaden igual. El detalle
+         * completo se recarga al final, ya fuera de la transacción.
+         */
+        const situation = await manager.findOne(Situation, {
+          where: { id },
+          loadEagerRelations: false,
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!situation) {
+          throw new NotFoundException(`Situación no encontrada: ${id}`);
+        }
+
+        this.scopeService.assertCanResolveSituation(actor, situation);
+
+        if (!RESOLVABLE_STATUSES.includes(situation.status)) {
+          throw new ConflictException(
+            'El problema ya fue solucionado y no admite una nueva resolución.',
+          );
+        }
+
+        const statusBefore = situation.status;
+        const now = new Date();
+
+        situation.status = SituationStatus.CLOSED;
+        situation.closedAt = now;
+        // `resolvedAt` se conserva si la fila legada ya lo traía.
+        situation.resolvedAt = situation.resolvedAt ?? now;
+        /*
+         * COMENTARIO DE TRANSICIÓN ≠ APRENDIZAJE. `lastStatusComment` describe
+         * la ÚLTIMA transición y se sobrescribe en cada cambio de estado; el
+         * aprendizaje es el registro definitivo del cierre y vive en su propia
+         * tabla. Esta operación no aporta comentario de transición, así que se
+         * deja explícitamente en null: copiar ahí el aprendizaje lo expondría a
+         * ser borrado por la siguiente escritura, y arrastrar el comentario de
+         * una transición anterior lo haría leer como el motivo del cierre.
+         */
+        situation.lastStatusComment = null;
+
+        await manager.save(Situation, situation);
+
+        try {
+          await manager.insert(SituationResolution, {
+            situationId: situation.id,
+            learning,
+            resolvedByUserId: actor.sub,
+          });
+        } catch (error) {
+          // Violación de clave primaria: otra resolución ganó la carrera.
+          if (error instanceof QueryFailedError) {
+            throw new ConflictException(
+              'El problema ya fue solucionado y no admite una nueva resolución.',
+            );
+          }
+          throw error;
+        }
+
+        await this.timelineService.createEntry(
+          {
+            situationId: situation.id,
+            userId: actor.sub,
+            eventType: TimelineEventType.CLOSED,
+            title: 'Problema solucionado',
+            description: `El estado cambió de ${SITUATION_STATUS_LABEL_ES[statusBefore]} a ${SITUATION_STATUS_LABEL_ES[SituationStatus.CLOSED]}. Aprendizaje registrado.`,
+            metadata: {
+              field: 'status',
+              previousValue: statusBefore,
+              newValue: SituationStatus.CLOSED,
+              previousLabel: SITUATION_STATUS_LABEL_ES[statusBefore],
+              newLabel: SITUATION_STATUS_LABEL_ES[SituationStatus.CLOSED],
+              /*
+               * `commentKind: 'learning'` distingue este evento del cierre
+               * antiguo, cuyo texto era un motivo de transición. El aprendizaje
+               * NO se copia al metadata: su único almacén es
+               * `situation_resolutions`.
+               */
+              commentKind: 'learning',
+              statusComment: null,
+              resolvedByUserId: actor.sub,
+              dueAt: situation.dueAt,
+              closedOnTime: wasClosedOnTime(situation.dueAt, situation.closedAt),
+              slaBreachedAt: situation.slaBreachedAt,
+            },
+          },
+          manager,
+        );
+
+        return statusBefore;
+      },
+    );
+
+    await this.auditLogService.record({
+      actor,
+      action: AuditAction.SITUATION_RESOLVED,
+      resourceType: AuditResourceType.SITUATION,
+      resourceId: id,
+      metadata: {
+        previousStatus,
+        nextStatus: SituationStatus.CLOSED,
+        // Se audita QUE hubo aprendizaje y su tamaño, no su contenido: el texto
+        // tiene un único almacén y la auditoría no debe volverse un segundo
+        // lugar donde buscarlo.
+        learningLength: learning.length,
+      },
+    });
 
     return this.getById(id, actor);
   }
@@ -529,7 +788,33 @@ export class SituationsService {
     };
   }
 
-  private toResponse(situation: Situation): SituationResponseDto {
+  private toResolutionResponse(
+    situation: Situation,
+  ): SituationResolutionResponseDto | null {
+    const resolution = situation.resolution;
+    if (!resolution) return null;
+
+    return {
+      learning: resolution.learning,
+      resolvedByUserId: resolution.resolvedByUserId,
+      resolvedByUserName: resolution.resolvedByUser?.fullName ?? '',
+      // La FECHA no se duplica en la tabla de aprendizaje: sale del campo que
+      // ya tenía esa semántica en el dominio.
+      resolvedAt: situation.resolvedAt ?? null,
+      recordedAt: resolution.createdAt,
+    };
+  }
+
+  /**
+   * `actor` entra aquí solo para resolver `canResolve` con la MISMA política
+   * que autoriza la escritura. Es una pista para la interfaz, nunca la
+   * autorización: el endpoint vuelve a comprobarla contra la coordinación
+   * responsable persistida en cada resolución.
+   */
+  private toResponse(
+    situation: Situation,
+    actor: AuthPayload,
+  ): SituationResponseDto {
     const related = [...(situation.relatedCoordinations ?? [])].sort(
       (a, b) => a.displayOrder - b.displayOrder,
     );
@@ -573,6 +858,10 @@ export class SituationsService {
       relatedCoordinations: related.map((item) =>
         this.toRelatedCoordinationResponse(item),
       ),
+      resolution: this.toResolutionResponse(situation),
+      canResolve:
+        RESOLVABLE_STATUSES.includes(situation.status) &&
+        this.scopeService.canResolveSituation(actor, situation),
     };
   }
 }

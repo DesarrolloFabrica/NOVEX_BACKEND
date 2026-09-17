@@ -5,6 +5,7 @@ import {
   JoinColumn,
   ManyToOne,
   OneToMany,
+  OneToOne,
 } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import {
@@ -15,6 +16,7 @@ import { Coordination } from '../../coordinations/entities/coordination.entity';
 import { IncidentCategory } from '../../intelligence/entities/incident-category.entity';
 import { User } from '../../users/entities/user.entity';
 import { SituationRelatedCoordination } from './situation-related-coordination.entity';
+import { SituationResolution } from './situation-resolution.entity';
 
 @Entity({ name: 'situations' })
 @Index('idx_situations_status_occurred_at', ['status', 'occurredAt'])
@@ -117,4 +119,15 @@ export class Situation extends BaseEntity {
     { cascade: true },
   )
   relatedCoordinations!: SituationRelatedCoordination[];
+
+  /**
+   * Aprendizaje del cierre. NULO mientras el problema sigue activo y también en
+   * los casos cerrados antes de esta fase: la ausencia es un estado legítimo.
+   *
+   * Sin `cascade`: la fila la escribe la transacción de `SituationsService.resolve`,
+   * que necesita controlar el momento exacto del INSERT para que la clave
+   * primaria actúe de barrera ante dos resoluciones simultáneas.
+   */
+  @OneToOne(() => SituationResolution, (resolution) => resolution.situation)
+  resolution!: SituationResolution | null;
 }

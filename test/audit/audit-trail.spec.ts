@@ -105,9 +105,13 @@ describe('Institutional audit trail', () => {
       { findOne: jest.fn().mockResolvedValue({ id: 'cat-1' }) } as never,
       {} as never,
       { create: jest.fn((input: unknown) => input) } as never,
+      // Repositorio de resoluciones: inerte, este caso no cierra nada.
+      {} as never,
       { createEntry: jest.fn() } as never,
       {
         resolveCreateCoordinationId: jest.fn().mockReturnValue('coord-1'),
+        // `toResponse` consulta la política de resolución para `canResolve`.
+        canResolveSituation: jest.fn().mockReturnValue(false),
       } as never,
       auditLogService as never,
     );
@@ -175,11 +179,15 @@ describe('Institutional audit trail', () => {
       {} as never,
       usersRepository as never,
       {} as never,
+      // Repositorio de resoluciones: inerte, este caso no cierra nada.
+      {} as never,
       { createEntry: jest.fn().mockResolvedValue({}) } as never,
       {
         assertCanUpdateSituation: jest.fn(),
         assertSituationInScope: jest.fn(),
         isCoordinationScoped: jest.fn().mockReturnValue(false),
+        canResolveSituation: jest.fn().mockReturnValue(false),
+        assertSituationReadable: jest.fn(),
       } as never,
       auditLogService as never,
     );

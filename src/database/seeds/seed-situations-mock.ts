@@ -262,7 +262,7 @@ function toRecommendationPriority(
   }
 }
 
-function buildAnalysisResult(input: {
+export function buildAnalysisResult(input: {
   title: string;
   categoryCode: string;
   categoryName: string;

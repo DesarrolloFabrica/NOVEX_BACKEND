@@ -61,10 +61,24 @@ export class OperationalOverviewService {
 
     const generatedAt = new Date().toISOString();
 
-    const coordinations = this.scopeService.filterCoordinationsByScope(
-      actor,
-      await this.coordinationsRepository.findCatalog(false),
-    );
+    /*
+     * TABLERO COMPLETO PARA TODOS LOS ROLES OPERATIVOS.
+     *
+     * Este recurso es el estado AGREGADO de la Dirección: es lo que dibuja la
+     * mesa de cartas y lo que mira el personaje. Un coordinador necesita ver
+     * las quince coordinaciones para poder elegir en cuál reporta —una
+     * capacidad que la fase 1 le concedió— y para leer el estado institucional
+     * del que su área forma parte.
+     *
+     * Lo que se abre aquí es EXCLUSIVAMENTE el agregado por área: estado,
+     * conteos y áreas afectadas. NO se abre la lectura de los problemas de
+     * otras coordinaciones: `SituationsService.list` sigue aplicando
+     * `resolveSituationListCoordinationId`, así que un coordinador que pulse la
+     * carta de otra área ve el recuento pero no la lista, y la interfaz debe
+     * declarar ese alcance en lugar de presentar una lista parcial como
+     * completa.
+     */
+    const coordinations = await this.coordinationsRepository.findCatalog(false);
 
     const [severityRows, affectedRows] = await Promise.all([
       this.overviewRepository.aggregateActiveSituationsBySeverity(),

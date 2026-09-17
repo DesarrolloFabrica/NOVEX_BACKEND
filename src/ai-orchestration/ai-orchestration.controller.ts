@@ -35,7 +35,23 @@ export class AIOrchestrationController {
       ttl: THROTTLE_TTL_MS,
     },
   })
-  @RequirePermissions('SITUATIONS_CREATE', 'AI_ANALYZE')
+  /*
+   * REPORTAR exige `SITUATIONS_CREATE` y nada más.
+   *
+   * Antes exigía también `AI_ANALYZE`, y eso convertía el análisis —que aquí es
+   * un PASO INTERNO del registro, no una acción que el usuario invoque— en una
+   * capacidad que había que conceder para poder reportar. Con los cuatro roles
+   * reportando, la alternativa habría sido dar `AI_ANALYZE` a ADMIN y DIRECTOR,
+   * lo que de paso les habría abierto `POST :id/analyze`: relanzar el análisis
+   * de CUALQUIER situación. Eso es mucho más de lo que pide reportar.
+   *
+   * El cambio concede exactamente esto: quien puede registrar un problema
+   * provoca el análisis de ESE problema, en el acto de crearlo. Ejecutar un
+   * análisis sobre una situación ajena o repetirlo sigue requiriendo
+   * `AI_ANALYZE`, que no se ha tocado en los dos endpoints de abajo. El
+   * `@Throttle` de Gemini tampoco cambia.
+   */
+  @RequirePermissions('SITUATIONS_CREATE')
   registerWithAnalysis(
     @Body() dto: CreateSituationDto,
     @CurrentUser() user: AuthPayload,

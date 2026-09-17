@@ -22,16 +22,30 @@ export class SituationAccessService {
       throw new NotFoundException(`Situación no encontrada: ${situationId}`);
     }
 
-    this.scopeService.assertSituationInScope(actor, situation);
+    // LECTURA: alcance de coordinación O autoría propia. Esta es la puerta
+    // que usan el detalle y sus secciones (análisis, evidencias, línea de
+    // tiempo, recomendaciones), de modo que un reporte propio en otra área se
+    // lee completo y no a medias.
+    this.scopeService.assertSituationReadable(actor, situation);
     return situation;
   }
 
-  /** Para escrituras sobre el caso (evidencias, seguimiento), no solo lectura. */
+  /**
+   * Para ESCRITURAS sobre el caso (evidencias, seguimiento), no solo lectura.
+   *
+   * Vuelve a exigir `assertSituationInScope` a propósito: `requireAccessibleSituation`
+   * se amplió para dejar leer los reportes propios de otras coordinaciones, y
+   * sin esta segunda comprobación esa ampliación de LECTURA se habría
+   * convertido en permiso de ESCRITURA, porque `assertCanOperateSituation`
+   * considera dueño al autor. El comportamiento de escritura queda por tanto
+   * exactamente igual que antes de la fase 2.
+   */
   async requireOperableSituation(
     actor: AuthPayload,
     situationId: string,
   ): Promise<Situation> {
     const situation = await this.requireAccessibleSituation(actor, situationId);
+    this.scopeService.assertSituationInScope(actor, situation);
     this.scopeService.assertCanOperateSituation(actor, situation);
     return situation;
   }

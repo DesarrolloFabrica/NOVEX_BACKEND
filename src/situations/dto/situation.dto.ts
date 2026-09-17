@@ -1,6 +1,8 @@
+import { Transform } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsOptional,
@@ -14,6 +16,13 @@ import {
   SituationStatus,
 } from '../../common/enums/situation.enums';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+
+/**
+ * Longitud máxima del aprendizaje. Se alinea con `description` y
+ * `statusComment`, que ya usan 4000 en este mismo DTO: el aprendizaje es un
+ * texto del mismo orden, no un campo corto de formulario.
+ */
+export const SITUATION_LEARNING_MAX_LENGTH = 4000;
 
 export class CreateSituationDto {
   @IsString()
@@ -110,7 +119,52 @@ export class UpdateSituationDto {
   occurredAt?: string;
 }
 
+/**
+ * Entrada de la operación de resolución.
+ *
+ * El aprendizaje es el ÚNICO dato que aporta el usuario: el estado final
+ * (`CLOSED`), la fecha y la identidad de quien resuelve los determina el
+ * servidor. En particular NO se acepta aquí ninguna coordinación: la
+ * autorización se decide con la coordinación responsable PERSISTIDA del
+ * problema, nunca con una enviada por el cliente.
+ *
+ * `@MinLength(1)` sobre el valor ya recortado por `@Transform` rechaza un
+ * aprendizaje compuesto solo de espacios, que es el caso que la validación de
+ * longitud cruda dejaría pasar.
+ */
+export class ResolveSituationDto {
+  @IsString()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @MinLength(1, { message: 'El aprendizaje no puede estar vacío.' })
+  @MaxLength(SITUATION_LEARNING_MAX_LENGTH)
+  learning!: string;
+}
+
+export class SituationResolutionResponseDto {
+  /** Qué se aprendió al solucionar el problema. */
+  learning!: string;
+  resolvedByUserId!: string;
+  resolvedByUserName!: string;
+  /** Instante del cierre. Sale de `situations.resolved_at`. */
+  resolvedAt!: Date | null;
+  /** Alta de la fila de aprendizaje. */
+  recordedAt!: Date;
+}
+
 export class ListSituationsQueryDto extends PaginationQueryDto {
+  /**
+   * «Mis reportes»: limita el listado a los casos que creó QUIEN HACE la
+   * petición, en cualquier coordinación.
+   *
+   * Es un interruptor booleano, no un identificador de autor. La identidad la
+   * pone el servidor con `actor.sub`; aceptar aquí un `createdByUserId` habría
+   * convertido este filtro en una vía para leer los reportes de otra persona.
+   */
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true' || value === '1')
+  @IsBoolean()
+  mine?: boolean;
+
   @IsOptional()
   @IsEnum(SituationStatus)
   status?: SituationStatus;
@@ -167,13 +221,42 @@ export class SituationResponseDto {
   createdAt!: Date;
   updatedAt!: Date;
   relatedCoordinations!: RelatedCoordinationResponseDto[];
+  /**
+   * Resolución con aprendizaje, o `null`. Es `null` tanto en los problemas
+   * activos como en los CERRADOS ANTES de esta fase: la ausencia es legítima y
+   * no se rellena con texto inventado.
+   */
+  resolution!: SituationResolutionResponseDto | null;
+  /**
+   * Si el USUARIO DE ESTA PETICIÓN puede solucionar el problema. Lo calcula la
+   * misma política que autoriza el endpoint (`canResolveSituation`), de modo
+   * que la interfaz no puede divergir del backend. Es una PISTA para la UI: la
+   * autorización definitiva la sigue aplicando el servidor en cada escritura.
+   */
+  canResolve!: boolean;
 }
+
+/**
+ * Alcance con el que se resolvió el listado.
+ *
+ *   complete  El filtro pedido se aplicó tal cual: lo devuelto es TODO lo que
+ *             hay para esa consulta.
+ *   own-only  El actor no puede leer los problemas de esa coordinación, así que
+ *             se le devolvieron ÚNICAMENTE los que él mismo reportó. `total`
+ *             cuenta ese subconjunto, no los problemas del área.
+ *
+ * Lo declara el servidor para que la interfaz no tenga que deducir la política
+ * por su cuenta: una lista vacía significa cosas distintas en cada caso y el
+ * mensaje que se muestra depende de esta diferencia.
+ */
+export type SituationsListScope = 'complete' | 'own-only';
 
 export class SituationsListResponseDto {
   items!: SituationResponseDto[];
   total!: number;
   page!: number;
   limit!: number;
+  scope!: SituationsListScope;
 }
 
 export class IncidentCategorySummaryDto {

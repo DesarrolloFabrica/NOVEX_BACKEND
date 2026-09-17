@@ -3,13 +3,21 @@ import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
 import { Situation } from '../entities/situation.entity';
 import { ListSituationsQueryDto } from '../dto/situation.dto';
 
+/**
+ * Filtros efectivos de búsqueda. Extiende el DTO público con la autoría, que
+ * el SERVICIO resuelve desde el actor autenticado y el cliente no puede enviar.
+ */
+export type SituationSearchFilters = ListSituationsQueryDto & {
+  createdByUserId?: string;
+};
+
 @Injectable()
 export class SituationsRepository extends Repository<Situation> {
   constructor(private readonly dataSource: DataSource) {
     super(Situation, dataSource.createEntityManager());
   }
 
-  async search(query: ListSituationsQueryDto): Promise<[Situation[], number]> {
+  async search(query: SituationSearchFilters): Promise<[Situation[], number]> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 50;
 
@@ -33,6 +41,8 @@ export class SituationsRepository extends Repository<Situation> {
         relatedCoordinations: {
           coordination: true,
         },
+        // El aprendizaje viaja con el detalle: la UI no debe pedirlo aparte.
+        resolution: true,
       },
       order: {
         relatedCoordinations: {
@@ -43,7 +53,7 @@ export class SituationsRepository extends Repository<Situation> {
   }
 
   private createFilteredQuery(
-    query: ListSituationsQueryDto,
+    query: SituationSearchFilters,
   ): SelectQueryBuilder<Situation> {
     const qb = this.createQueryBuilder('situation')
       .leftJoinAndSelect('situation.coordination', 'coordination')
@@ -57,7 +67,11 @@ export class SituationsRepository extends Repository<Situation> {
       .leftJoinAndSelect(
         'relatedCoordinations.coordination',
         'relatedCoordination',
-      );
+      )
+      // LEFT JOIN, no INNER: los problemas activos y los cerrados sin
+      // aprendizaje deben seguir apareciendo en el listado.
+      .leftJoinAndSelect('situation.resolution', 'resolution')
+      .leftJoinAndSelect('resolution.resolvedByUser', 'resolvedByUser');
 
     if (query.status) {
       qb.andWhere('situation.status = :status', { status: query.status });
@@ -72,6 +86,17 @@ export class SituationsRepository extends Repository<Situation> {
     if (query.coordinationId) {
       qb.andWhere('situation.coordinationId = :coordinationId', {
         coordinationId: query.coordinationId,
+      });
+    }
+
+    /*
+     * AUTORÍA. `createdByUserId` NO viene del DTO de consulta: lo inyecta el
+     * servicio a partir de `actor.sub` cuando la petición pide «mis reportes».
+     * Por eso el tipo del parámetro lo añade el servicio y no el cliente.
+     */
+    if (query.createdByUserId) {
+      qb.andWhere('situation.createdByUserId = :createdByUserId', {
+        createdByUserId: query.createdByUserId,
       });
     }
 

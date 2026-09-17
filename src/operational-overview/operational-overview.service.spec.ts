@@ -599,7 +599,16 @@ describe('OperationalOverviewService · alcance', () => {
     expect(overview.coordinations).toHaveLength(15);
   });
 
-  it('un actor coordination-scoped solo recibe su coordinación', async () => {
+  it('un actor coordination-scoped recibe el tablero COMPLETO', async () => {
+    /*
+     * VERDAD NUEVA (fase 2). Antes el coordinador recibía una sola fila. Ahora
+     * recibe las quince, porque necesita la mesa entera para elegir en qué
+     * coordinación reporta y para leer el estado institucional.
+     *
+     * Lo que se abre es el AGREGADO por área, no los problemas: el listado de
+     * situaciones sigue filtrado por su coordinación, y eso lo cubre
+     * `SituationsService`.
+     */
     const { service } = createService({
       severityRows: [
         severityRow(uuidOf('coord-ingenierias'), SituationSeverity.HIGH, 1),
@@ -608,10 +617,17 @@ describe('OperationalOverviewService · alcance', () => {
     });
     const overview = await service.getOverview(COORDINADOR);
 
-    expect(overview.coordinations).toHaveLength(1);
-    expect(overview.coordinations[0].code).toBe('coord-ingenierias');
-    expect(overview.coordinations[0].status).toBe('ALERTA');
-    expect(overview.totals).toEqual({ critical: 0, alert: 1, stable: 0 });
+    expect(overview.coordinations).toHaveLength(15);
+
+    const propia = overview.coordinations.find(
+      (item) => item.code === 'coord-ingenierias',
+    );
+    expect(propia?.status).toBe('ALERTA');
+
+    // El estado de OTRA área también llega, que es lo que dibuja su carta.
+    const ajena = overview.coordinations.find((item) => item.code === 'coord-b2b');
+    expect(ajena?.status).toBe('CRITICO');
+    expect(ajena?.criticalCount).toBe(3);
   });
 
   it('un actor coordination-scoped no recibe el Registro de analista institucional', async () => {
