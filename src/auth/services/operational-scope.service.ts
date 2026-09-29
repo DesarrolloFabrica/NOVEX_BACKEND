@@ -8,11 +8,23 @@ import { AuthPayload } from '../contracts/auth-payload.contract';
 /** Datos mínimos de una situación para decidir quién puede intervenirla. */
 export interface SituationOwnership {
   coordinationId: string | null;
+  /** Coordinación que sufre el impacto (INTER). Lectura, no cierre. */
+  affectedCoordinationId?: string | null;
   createdByUserId: string;
 }
 
-/** Código del rol que coordina un área. Única vía a la resolución. */
+/** Código del rol que coordina un área. */
 export const COORDINATOR_ROLE_CODE = 'COORDINADOR';
+
+/** Código del rol de analista operacional. */
+export const ANALYST_ROLE_CODE = 'ANALISTA';
+
+/**
+ * Coordinación General de Operaciones: código de catálogo canónico.
+ * Un ANALISTA solo puede resolver problemas cuya coordinación RESPONSABLE
+ * (`coordinationId`) es esta área. Ser afectada no concede cierre.
+ */
+export const GENERAL_OPERATIONS_COORDINATION_CODE = 'coord-general';
 
 @Injectable()
 export class OperationalScopeService {
@@ -93,11 +105,29 @@ export class OperationalScopeService {
    */
   assertSituationReadable(
     actor: AuthPayload,
-    situation: { coordinationId: string | null; createdByUserId: string },
+    situation: {
+      coordinationId: string | null;
+      affectedCoordinationId?: string | null;
+      createdByUserId: string;
+    },
   ): void {
     this.assertPermission(actor, 'SITUATIONS_VIEW');
 
     if (this.isOwnReport(actor, situation)) {
+      return;
+    }
+
+    /*
+     * COORDINADOR DE LA AFECTADA: puede consultar el avance de una dependencia
+     * que impacta su área, sin ganar permiso de cierre (eso sigue en
+     * canResolveSituation / coordinación responsable).
+     */
+    if (
+      this.isCoordinationScoped(actor) &&
+      actor.coordinationId &&
+      situation.affectedCoordinationId &&
+      situation.affectedCoordinationId === actor.coordinationId
+    ) {
       return;
     }
 
@@ -147,42 +177,45 @@ export class OperationalScopeService {
   }
 
   /**
-   * REGLA DE RESOLUCIÓN (solucionar). Es la política ÚNICA del sistema para
-   * decidir quién puede cerrar un problema registrando su aprendizaje, y la
-   * consumen tanto el endpoint de resolución como el indicador `canResolve` de
-   * las respuestas: no puede haber dos criterios que discrepen.
+   * REGLA DE RESOLUCIÓN (solucionar). Política ÚNICA del sistema: la consumen
+   * el endpoint de resolución y el indicador `canResolve` de las respuestas.
    *
-   * Solo resuelve quien COORDINA EL ÁREA RESPONSABLE:
-   *   - rol COORDINADOR, y
-   *   - su coordinación asignada es exactamente la coordinación responsable
-   *     persistida del problema.
+   *   COORDINADOR  Solo si coordina exactamente el área RESPONSABLE
+   *                (`coordinationId` del problema).
+   *   ANALISTA     Solo si la coordinación RESPONSABLE es Coordinación
+   *                General de Operaciones (`coord-general` → UUID
+   *                `generalCoordinationId`). `affectedCoordinationId` NO
+   *                concede permiso de resolución, ni siquiera si el ANALISTA
+   *                es el autor del reporte.
    *
-   * El vínculo real del dominio entre una persona y su área es
-   * `users.coordination_id`, que `AuthorizationEnrichmentGuard` resuelve desde
-   * la base de datos en CADA petición. Por eso `actor.coordinationId` es el
-   * valor vigente y no un dato de sesión que pudiera haber quedado obsoleto.
+   * NO conceden excepción: ADMIN, DIRECTOR, haber reportado, coordinar un
+   * área solo relacionada o afectada.
    *
-   * NO conceden excepción, por decisión funcional explícita:
-   *   - ADMIN ni DIRECTOR, por transversales que sean;
-   *   - haber REPORTADO el problema: la autoría no otorga resolución;
-   *   - coordinar un área RELACIONADA o AFECTADA por el problema;
-   *   - coordinar un área padre o hija de la responsable. La jerarquía entre
-   *     coordinaciones no se consulta aquí a propósito: la responsabilidad es
-   *     el vínculo directo, no una relación derivada.
-   *
-   * Un problema SIN coordinación responsable (`coordinationId === null`, el
-   * caso histórico del Registro de analista) no lo resuelve nadie por esta vía:
-   * no hay área responsable con la que comparar.
+   * Un problema SIN coordinación responsable igual a General no lo resuelve
+   * el ANALISTA por esta vía.
    */
   canResolveSituation(
     actor: AuthPayload,
-    situation: Pick<SituationOwnership, 'coordinationId'>,
+    situation: Pick<
+      SituationOwnership,
+      'coordinationId' | 'affectedCoordinationId'
+    >,
+    generalCoordinationId: string | null = null,
   ): boolean {
     if (!actor.permissions.includes('SITUATIONS_CLOSE')) {
       return false;
     }
 
-    if (this.normalizeRoleCode(actor.roleCode) !== COORDINATOR_ROLE_CODE) {
+    const role = this.normalizeRoleCode(actor.roleCode);
+
+    if (role === ANALYST_ROLE_CODE) {
+      if (!generalCoordinationId || !situation.coordinationId) {
+        return false;
+      }
+      return situation.coordinationId === generalCoordinationId;
+    }
+
+    if (role !== COORDINATOR_ROLE_CODE) {
       return false;
     }
 
@@ -196,15 +229,30 @@ export class OperationalScopeService {
   /** Variante que lanza. Misma política, para las rutas de escritura. */
   assertCanResolveSituation(
     actor: AuthPayload,
-    situation: Pick<SituationOwnership, 'coordinationId'>,
+    situation: Pick<
+      SituationOwnership,
+      'coordinationId' | 'affectedCoordinationId'
+    >,
+    generalCoordinationId: string | null = null,
   ): void {
     this.assertPermission(actor, 'SITUATIONS_CLOSE');
 
-    if (!this.canResolveSituation(actor, situation)) {
+    if (
+      this.canResolveSituation(actor, situation, generalCoordinationId)
+    ) {
+      return;
+    }
+
+    const role = this.normalizeRoleCode(actor.roleCode);
+    if (role === ANALYST_ROLE_CODE) {
       throw new ForbiddenException(
-        'Solo el coordinador de la coordinación responsable puede solucionar este problema.',
+        'Solo puede solucionar problemas de Coordinación General de Operaciones.',
       );
     }
+
+    throw new ForbiddenException(
+      'Solo el coordinador de la coordinación responsable puede solucionar este problema.',
+    );
   }
 
   /**
@@ -231,6 +279,75 @@ export class OperationalScopeService {
     return (
       actor.permissions.includes('SITUATIONS_UPDATE') &&
       this.ownsSituation(actor, situation)
+    );
+  }
+
+  /**
+   * REGLA DE AVANCE OPEN → IN_PROGRESS. Independiente de `canUpdateSituation`
+   * (autoría u otras ediciones) y de `canResolveSituation`.
+   *
+   *   COORDINADOR  Solo si coordina el área RESPONSABLE.
+   *   ANALISTA     Solo si la responsable es Coordinación General
+   *                (`coord-general` → UUID). Autoría o ser afectada NO
+   *                conceden el avance.
+   *
+   * ADMIN/DIRECTOR no avanzan. Reportar o haber creado el caso no basta.
+   */
+  canAdvanceSituationToInProgress(
+    actor: AuthPayload,
+    situation: Pick<SituationOwnership, 'coordinationId'>,
+    generalCoordinationId: string | null = null,
+  ): boolean {
+    if (!actor.permissions.includes('SITUATIONS_UPDATE')) {
+      return false;
+    }
+
+    const role = this.normalizeRoleCode(actor.roleCode);
+
+    if (role === ANALYST_ROLE_CODE) {
+      if (!generalCoordinationId || !situation.coordinationId) {
+        return false;
+      }
+      return situation.coordinationId === generalCoordinationId;
+    }
+
+    if (role !== COORDINATOR_ROLE_CODE) {
+      return false;
+    }
+
+    if (!actor.coordinationId || !situation.coordinationId) {
+      return false;
+    }
+
+    return situation.coordinationId === actor.coordinationId;
+  }
+
+  assertCanAdvanceSituationToInProgress(
+    actor: AuthPayload,
+    situation: Pick<SituationOwnership, 'coordinationId'>,
+    generalCoordinationId: string | null = null,
+  ): void {
+    this.assertPermission(actor, 'SITUATIONS_UPDATE');
+
+    if (
+      this.canAdvanceSituationToInProgress(
+        actor,
+        situation,
+        generalCoordinationId,
+      )
+    ) {
+      return;
+    }
+
+    const role = this.normalizeRoleCode(actor.roleCode);
+    if (role === ANALYST_ROLE_CODE) {
+      throw new ForbiddenException(
+        'Solo puede pasar a «En atención» problemas cuya coordinación responsable es Coordinación General de Operaciones.',
+      );
+    }
+
+    throw new ForbiddenException(
+      'Solo el coordinador de la coordinación responsable puede pasar este problema a «En atención».',
     );
   }
 

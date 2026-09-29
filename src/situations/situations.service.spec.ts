@@ -47,6 +47,9 @@ describe('SituationsService status transitions', () => {
       // `toResponse` consulta la política de resolución para poblar
       // `canResolve`. Este actor es ANALISTA, que nunca resuelve.
       canResolveSituation: jest.fn().mockReturnValue(false),
+      canUpdateSituation: jest.fn().mockReturnValue(true),
+      canAdvanceSituationToInProgress: jest.fn().mockReturnValue(true),
+      assertCanAdvanceSituationToInProgress: jest.fn(),
       // `getById` lee con la regla ampliada (alcance O reporte propio).
       assertSituationReadable: jest.fn(),
     };
@@ -103,7 +106,8 @@ describe('SituationsService status transitions', () => {
   };
 
   it('avanza OPEN → IN_PROGRESS y asigna responsable automático', async () => {
-    const { service, situationsRepository, timelineService } = createService();
+    const { service, situationsRepository, timelineService, scopeService } =
+      createService();
     situationsRepository.findByIdWithRelations
       .mockResolvedValueOnce({ ...baseSituation })
       .mockResolvedValueOnce({
@@ -134,7 +138,35 @@ describe('SituationsService status transitions', () => {
       }),
     );
     expect(result.status).toBe(SituationStatus.IN_PROGRESS);
+    expect(result.canUpdate).toBe(true);
+    expect(result.canAdvanceToInProgress).toBe(false);
+    expect(result.canResolve).toBe(false);
     expect(result.assignedUserName).toBe('Juan Pérez');
+    expect(scopeService.assertCanAdvanceSituationToInProgress).toHaveBeenCalled();
+    expect(scopeService.assertCanUpdateSituation).not.toHaveBeenCalled();
+  });
+
+  it('rechaza OPEN → IN_PROGRESS si assertCanAdvance lo deniega', async () => {
+    const { service, situationsRepository, scopeService, timelineService } =
+      createService();
+    situationsRepository.findByIdWithRelations.mockResolvedValue({
+      ...baseSituation,
+    });
+    scopeService.assertCanAdvanceSituationToInProgress.mockImplementation(() => {
+      throw new ForbiddenException('Solo puede pasar a «En atención»…');
+    });
+
+    await expect(
+      service.update(
+        'sit-1',
+        { status: SituationStatus.IN_PROGRESS },
+        analystActor,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(situationsRepository.save).not.toHaveBeenCalled();
+    expect(timelineService.createEntry).not.toHaveBeenCalled();
+    expect(scopeService.assertCanUpdateSituation).not.toHaveBeenCalled();
   });
 
   it('el PATCH genérico NO puede cerrar desde IN_PROGRESS', async () => {
@@ -335,6 +367,9 @@ describe('SituationsService related coordinations', () => {
         (_actor: AuthPayload, requested: string) => requested,
       ),
       canResolveSituation: jest.fn().mockReturnValue(false),
+      canUpdateSituation: jest.fn().mockReturnValue(false),
+      canAdvanceSituationToInProgress: jest.fn().mockReturnValue(false),
+      assertCanAdvanceSituationToInProgress: jest.fn(),
     };
 
     const service = new SituationsService(

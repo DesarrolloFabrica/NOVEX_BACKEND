@@ -4,15 +4,22 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, QueryFailedError, Repository } from 'typeorm';
 import { AuditAction, AuditResourceType } from '../audit/audit-action.enum';
 import { AuditLogService } from '../audit/audit-log.service';
-import { OperationalScopeService } from '../auth/services/operational-scope.service';
+import {
+  GENERAL_OPERATIONS_COORDINATION_CODE,
+  OperationalScopeService,
+} from '../auth/services/operational-scope.service';
 import { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { TimelineEventType } from '../common/enums/situation-timeline.enums';
-import { SituationStatus } from '../common/enums/situation.enums';
+import {
+  SituationReportKind,
+  SituationStatus,
+} from '../common/enums/situation.enums';
 import {
   computeDueAt,
   computeSlaHealth,
@@ -64,7 +71,10 @@ const RESOLVABLE_STATUSES: readonly SituationStatus[] = [
 ];
 
 @Injectable()
-export class SituationsService {
+export class SituationsService implements OnModuleInit {
+  /** UUID de `coord-general`; sin él el ANALISTA no puede resolver. */
+  private generalCoordinationId: string | null = null;
+
   constructor(
     private readonly situationsRepository: SituationsRepository,
     @InjectRepository(Coordination)
@@ -81,6 +91,25 @@ export class SituationsService {
     private readonly scopeService: OperationalScopeService,
     private readonly auditLogService: AuditLogService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.refreshGeneralCoordinationId();
+  }
+
+  private async refreshGeneralCoordinationId(): Promise<string | null> {
+    const general = await this.coordinationsRepository.findOne({
+      where: { code: GENERAL_OPERATIONS_COORDINATION_CODE },
+    });
+    this.generalCoordinationId = general?.id ?? null;
+    return this.generalCoordinationId;
+  }
+
+  private async ensureGeneralCoordinationId(): Promise<string | null> {
+    if (this.generalCoordinationId) {
+      return this.generalCoordinationId;
+    }
+    return this.refreshGeneralCoordinationId();
+  }
 
   async listIncidentCategories(): Promise<IncidentCategorySummaryDto[]> {
     const categories = await this.categoriesRepository.find({
@@ -101,21 +130,146 @@ export class SituationsService {
     dto: CreateSituationDto,
     actor: AuthPayload,
   ): Promise<SituationResponseDto> {
+    const reportKind = dto.reportKind ?? SituationReportKind.INTERNAL;
+
+    if (reportKind === SituationReportKind.INTER_COORDINATION) {
+      return this.createInterCoordination(dto, actor);
+    }
+
+    return this.createInternal(dto, actor);
+  }
+
+  /**
+   * Problema INTERNAL: ocurre en la coordinación responsable (carta).
+   * Conserva el contrato histórico (categoría obligatoria; sin área = registro
+   * de analista).
+   */
+  private async createInternal(
+    dto: CreateSituationDto,
+    actor: AuthPayload,
+  ): Promise<SituationResponseDto> {
+    if (!dto.categoryId) {
+      throw new BadRequestException(
+        'La categoría es obligatoria para un problema interno.',
+      );
+    }
+
     const coordinationId = this.scopeService.resolveCreateCoordinationId(
       actor,
       dto.coordinationId,
     );
 
-    const [coordination, category, relatedCoordinations] = await Promise.all([
-      coordinationId ? this.ensureCoordination(coordinationId) : null,
-      this.ensureCategory(dto.categoryId),
-      this.resolveRelatedCoordinations(
-        dto.relatedCoordinationIds ?? [],
-        coordinationId,
-      ),
-    ]);
+    const affectedId = dto.affectedCoordinationId ?? coordinationId;
 
-    const occurredAt = new Date(dto.occurredAt);
+    if (
+      coordinationId &&
+      affectedId &&
+      coordinationId !== affectedId
+    ) {
+      throw new BadRequestException(
+        'En un problema interno la coordinación afectada debe coincidir con la responsable.',
+      );
+    }
+
+    const [coordination, affectedCoordination, category, relatedCoordinations] =
+      await Promise.all([
+        coordinationId ? this.ensureCoordination(coordinationId) : null,
+        affectedId ? this.ensureCoordination(affectedId) : null,
+        this.ensureCategory(dto.categoryId),
+        this.resolveRelatedCoordinations(
+          dto.relatedCoordinationIds ?? [],
+          coordinationId,
+        ),
+      ]);
+
+    return this.persistNewSituation({
+      dto,
+      actor,
+      reportKind: SituationReportKind.INTERNAL,
+      coordination,
+      affectedCoordination,
+      category,
+      relatedCoordinations,
+      affectedProcess: null,
+      pendingDelivery: null,
+    });
+  }
+
+  /**
+   * Dependencia INTER: la afectada espera algo de la responsable externa.
+   * Un solo ID; resuelve solo el coordinador de la responsable.
+   */
+  private async createInterCoordination(
+    dto: CreateSituationDto,
+    actor: AuthPayload,
+  ): Promise<SituationResponseDto> {
+    if (!dto.coordinationId) {
+      throw new BadRequestException(
+        'Indique la coordinación responsable de atender la dependencia.',
+      );
+    }
+    if (!dto.affectedCoordinationId) {
+      throw new BadRequestException(
+        'Indique la coordinación afectada por la dependencia.',
+      );
+    }
+    if (dto.coordinationId === dto.affectedCoordinationId) {
+      throw new BadRequestException(
+        'La coordinación responsable no puede ser la misma que la afectada.',
+      );
+    }
+
+    const affectedProcess = dto.affectedProcess?.trim() ?? '';
+    const pendingDelivery = dto.pendingDelivery?.trim() ?? '';
+    if (!affectedProcess) {
+      throw new BadRequestException(
+        'Describa el proceso de la coordinación afectada que se retrasa o bloquea.',
+      );
+    }
+    if (!pendingDelivery) {
+      throw new BadRequestException(
+        'Describa la entrega o acción pendiente de la coordinación responsable.',
+      );
+    }
+
+    // Autoriza CREATE y fija el RESPONSABLE (selección explícita, nunca sustituida).
+    this.scopeService.resolveCreateCoordinationId(actor, dto.coordinationId);
+
+    const [coordination, affectedCoordination, relatedCoordinations] =
+      await Promise.all([
+        this.ensureCoordination(dto.coordinationId),
+        this.ensureCoordination(dto.affectedCoordinationId),
+        this.resolveRelatedCoordinations(
+          dto.relatedCoordinationIds ?? [],
+          dto.coordinationId,
+        ),
+      ]);
+
+    return this.persistNewSituation({
+      dto,
+      actor,
+      reportKind: SituationReportKind.INTER_COORDINATION,
+      coordination,
+      affectedCoordination,
+      category: null,
+      relatedCoordinations,
+      affectedProcess,
+      pendingDelivery,
+    });
+  }
+
+  private async persistNewSituation(input: {
+    dto: CreateSituationDto;
+    actor: AuthPayload;
+    reportKind: SituationReportKind;
+    coordination: Coordination | null;
+    affectedCoordination: Coordination | null;
+    category: IncidentCategory | null;
+    relatedCoordinations: Coordination[];
+    affectedProcess: string | null;
+    pendingDelivery: string | null;
+  }): Promise<SituationResponseDto> {
+    const occurredAt = new Date(input.dto.occurredAt);
     if (Number.isNaN(occurredAt.getTime())) {
       throw new BadRequestException('La fecha de ocurrencia no es válida.');
     }
@@ -127,25 +281,30 @@ export class SituationsService {
 
     const createdAt = new Date();
     const situation = this.situationsRepository.create({
-      title: dto.title.trim(),
-      description: dto.description.trim(),
-      coordinationId: coordination?.id ?? null,
-      coordination,
-      createdByUserId: actor.sub,
-      categoryId: category.id,
-      category,
-      severity: dto.severity,
+      title: input.dto.title.trim(),
+      description: input.dto.description.trim(),
+      reportKind: input.reportKind,
+      coordinationId: input.coordination?.id ?? null,
+      coordination: input.coordination,
+      affectedCoordinationId: input.affectedCoordination?.id ?? null,
+      affectedCoordination: input.affectedCoordination,
+      affectedProcess: input.affectedProcess,
+      pendingDelivery: input.pendingDelivery,
+      createdByUserId: input.actor.sub,
+      categoryId: input.category?.id ?? null,
+      category: input.category,
+      severity: input.dto.severity,
       status: SituationStatus.OPEN,
       assignedUserId: null,
       lastStatusComment: null,
       resolvedAt: null,
       closedAt: null,
-      dueAt: computeDueAt(dto.severity, createdAt),
+      dueAt: computeDueAt(input.dto.severity, createdAt),
       slaPolicyCode: SLA_POLICY_CODE,
       slaBreachedAt: null,
       lastSlaReminderAt: null,
-      occurredAt: occurredAt,
-      relatedCoordinations: relatedCoordinations.map((item, index) =>
+      occurredAt,
+      relatedCoordinations: input.relatedCoordinations.map((item, index) =>
         this.relatedCoordinationsRepository.create({
           coordinationId: item.id,
           coordination: item,
@@ -163,20 +322,24 @@ export class SituationsService {
     }
 
     await this.auditLogService.record({
-      actor,
+      actor: input.actor,
       action: AuditAction.SITUATION_CREATED,
       resourceType: AuditResourceType.SITUATION,
       resourceId: withRelations.id,
       metadata: {
         status: withRelations.status,
         severity: withRelations.severity,
+        reportKind: withRelations.reportKind,
         categoryId: withRelations.categoryId,
+        affectedCoordinationId: withRelations.affectedCoordinationId,
         dueAt: withRelations.dueAt,
         slaPolicyCode: withRelations.slaPolicyCode,
       },
     });
 
-    return this.toResponse(withRelations, actor);
+    await this.ensureGeneralCoordinationId();
+
+    return this.toResponse(withRelations, input.actor);
   }
 
   async list(
@@ -184,6 +347,21 @@ export class SituationsService {
     actor: AuthPayload,
   ): Promise<SituationsListResponseDto> {
     this.scopeService.assertPermission(actor, 'SITUATIONS_VIEW');
+    await this.ensureGeneralCoordinationId();
+
+    if (query.closedFrom && query.closedTo) {
+      const from = new Date(query.closedFrom);
+      const to = new Date(query.closedTo);
+      if (
+        Number.isNaN(from.getTime()) ||
+        Number.isNaN(to.getTime()) ||
+        from.getTime() > to.getTime()
+      ) {
+        throw new BadRequestException(
+          'El intervalo de cierre no es válido: closedFrom debe ser anterior o igual a closedTo.',
+        );
+      }
+    }
 
     /*
      * DOS MODOS DE LISTADO, con alcances distintos:
@@ -267,6 +445,7 @@ export class SituationsService {
     // otra área no concede ninguna operación sobre él; eso lo siguen decidiendo
     // `assertCanUpdateSituation` y `assertCanResolveSituation`.
     this.scopeService.assertSituationReadable(actor, situation);
+    await this.ensureGeneralCoordinationId();
     return this.toResponse(situation, actor);
   }
 
@@ -280,7 +459,24 @@ export class SituationsService {
       throw new NotFoundException(`Situación no encontrada: ${id}`);
     }
 
-    this.scopeService.assertCanUpdateSituation(actor, situation);
+    /*
+     * AVANCE OPEN → IN_PROGRESS: política propia (`canAdvance…`), más
+     * estrecha que `canUpdate` (autoría u otras ediciones). El resto del
+     * PATCH sigue con `assertCanUpdateSituation`.
+     */
+    const advancesToInProgress =
+      dto.status === SituationStatus.IN_PROGRESS &&
+      situation.status === SituationStatus.OPEN;
+
+    if (advancesToInProgress) {
+      this.scopeService.assertCanAdvanceSituationToInProgress(
+        actor,
+        situation,
+        await this.ensureGeneralCoordinationId(),
+      );
+    } else {
+      this.scopeService.assertCanUpdateSituation(actor, situation);
+    }
 
     /*
      * CIERRE FUERA DE ESTA RUTA.
@@ -495,7 +691,11 @@ export class SituationsService {
           throw new NotFoundException(`Situación no encontrada: ${id}`);
         }
 
-        this.scopeService.assertCanResolveSituation(actor, situation);
+        this.scopeService.assertCanResolveSituation(
+          actor,
+          situation,
+          await this.ensureGeneralCoordinationId(),
+        );
 
         if (!RESOLVABLE_STATUSES.includes(situation.status)) {
           throw new ConflictException(
@@ -823,17 +1023,23 @@ export class SituationsService {
       id: situation.id,
       title: situation.title,
       description: situation.description,
+      reportKind: situation.reportKind ?? SituationReportKind.INTERNAL,
       coordinationId: situation.coordinationId,
       coordinationCode: situation.coordination?.code ?? null,
       coordinationName: situation.coordination?.name ?? null,
+      affectedCoordinationId: situation.affectedCoordinationId ?? null,
+      affectedCoordinationCode: situation.affectedCoordination?.code ?? null,
+      affectedCoordinationName: situation.affectedCoordination?.name ?? null,
+      affectedProcess: situation.affectedProcess ?? null,
+      pendingDelivery: situation.pendingDelivery ?? null,
       createdByUserId: situation.createdByUserId,
       createdByUserName: situation.createdByUser.fullName,
       assignedUserId: situation.assignedUserId ?? null,
       assignedUserName: situation.assignedUser?.fullName ?? null,
-      categoryId: situation.categoryId,
-      categoryCode: situation.category.code,
-      categoryName: situation.category.name,
-      categoryIcon: situation.category.icon,
+      categoryId: situation.categoryId ?? null,
+      categoryCode: situation.category?.code ?? null,
+      categoryName: situation.category?.name ?? null,
+      categoryIcon: situation.category?.icon ?? null,
       severity: situation.severity,
       status: situation.status,
       lastStatusComment: situation.lastStatusComment ?? null,
@@ -861,7 +1067,23 @@ export class SituationsService {
       resolution: this.toResolutionResponse(situation),
       canResolve:
         RESOLVABLE_STATUSES.includes(situation.status) &&
-        this.scopeService.canResolveSituation(actor, situation),
+        this.scopeService.canResolveSituation(
+          actor,
+          situation,
+          this.generalCoordinationId,
+        ),
+      /**
+       * Pista de UI para OPEN → IN_PROGRESS. Independiente de `canUpdate`
+       * (otras ediciones / autoría) y de `canResolve`.
+       */
+      canAdvanceToInProgress:
+        situation.status === SituationStatus.OPEN &&
+        this.scopeService.canAdvanceSituationToInProgress(
+          actor,
+          situation,
+          this.generalCoordinationId,
+        ),
+      canUpdate: this.scopeService.canUpdateSituation(actor, situation),
     };
   }
 }

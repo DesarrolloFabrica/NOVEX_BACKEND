@@ -51,5 +51,6 @@ export class SituationAIAnalysisResponseDto {
 export class RegisterSituationWithAnalysisResponseDto {
   situation!: SituationResponseDto;
 
-  analysis!: ExecuteAIAnalysisResponseDto;
+  /** Nulo mientras el análisis en el registro esté desactivado. */
+  analysis!: ExecuteAIAnalysisResponseDto | null;
 }

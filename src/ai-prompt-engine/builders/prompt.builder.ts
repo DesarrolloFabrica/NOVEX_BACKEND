@@ -45,11 +45,18 @@ export class PromptBuilder {
     const allowedCoordinationCodes = context.availableCoordinations.map(
       (coordination) => coordination.code,
     );
-    const allowedCategoryCodes = (
+    const catalogCategories =
       (context.availableCategories ?? []).length > 0
         ? context.availableCategories
-        : [context.category]
-    ).map((category) => category.code);
+        : context.category
+          ? [context.category]
+          : [];
+    const allowedCategoryCodes = catalogCategories.map(
+      (category) => category.code,
+    );
+    const categoryInstruction = context.category
+      ? `La categoría persistida del expediente es ${context.category.code} (${context.category.name}). No la cambies ni contradigas: incidentClassification.categoryCode debe ser ${context.category.code} y categoryName debe coincidir con el catálogo. Códigos válidos del catálogo operativo: ${allowedCategoryCodes.join(', ')}.`
+      : `Este expediente no tiene categoría persistida (p. ej. dependencia entre coordinaciones). Elige incidentClassification.categoryCode únicamente del catálogo operativo: ${allowedCategoryCodes.join(', ') || '(vacío)'}.`;
     const instructions = this.renderSections('INSTRUCCIONES', [
       ...template.instructions,
       {
@@ -60,7 +67,7 @@ export class PromptBuilder {
       {
         key: 'allowed_categories',
         title: 'Categoría del expediente',
-        body: `La categoría persistida del expediente es ${context.category.code} (${context.category.name}). No la cambies ni contradigas: incidentClassification.categoryCode debe ser ${context.category.code} y categoryName debe coincidir con el catálogo. Códigos válidos del catálogo operativo: ${allowedCategoryCodes.join(', ')}.`,
+        body: categoryInstruction,
       },
     ]);
     const contextBlock = this.renderSections('CONTEXTO', contextSections);

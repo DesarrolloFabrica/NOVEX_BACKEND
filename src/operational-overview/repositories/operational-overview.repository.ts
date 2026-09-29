@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
 import { SituationSeverity } from '../../common/enums/situation.enums';
+import { SituationReportKind } from '../../common/enums/situation.enums';
 import { SituationAffectedCoordination } from '../../situation-impact/entities/situation-affected-coordination.entity';
 import { SituationImpactAssessment } from '../../situation-impact/entities/situation-impact-assessment.entity';
 import { Situation } from '../../situations/entities/situation.entity';
@@ -17,6 +18,16 @@ export interface ActiveSeverityRow {
 export interface AffectedCoordinationRow {
   coordinationId: string | null;
   total: number;
+}
+
+/**
+ * Dependencias INTER activas agrupadas por coordinación AFECTADA.
+ * No se mezclan con ActiveSeverityRow: el caso ya cuenta en la responsable.
+ */
+export interface IncomingDependencyRow {
+  affectedCoordinationId: string;
+  total: number;
+  criticalTotal: number;
 }
 
 /**
@@ -97,6 +108,40 @@ export class OperationalOverviewRepository extends Repository<Situation> {
     return rows.map((row) => ({
       coordinationId: row.coordinationId,
       total: Number(row.total),
+    }));
+  }
+
+  /**
+   * Conteo de dependencias INTER activas por coordinación AFECTADA.
+   * Excluye filas sin afectada y no cuenta en activeProblemsCount del dueño.
+   */
+  async aggregateIncomingDependencies(): Promise<IncomingDependencyRow[]> {
+    const rows = await this.createQueryBuilder('situation')
+      .select('situation.affectedCoordinationId', 'affectedCoordinationId')
+      .addSelect('COUNT(*)', 'total')
+      .addSelect(
+        `SUM(CASE WHEN situation.severity = :critical THEN 1 ELSE 0 END)`,
+        'criticalTotal',
+      )
+      .where('situation.status IN (:...statuses)', {
+        statuses: [...ACTIVE_SITUATION_STATUSES],
+      })
+      .andWhere('situation.reportKind = :kind', {
+        kind: SituationReportKind.INTER_COORDINATION,
+      })
+      .andWhere('situation.affectedCoordinationId IS NOT NULL')
+      .groupBy('situation.affectedCoordinationId')
+      .setParameter('critical', SituationSeverity.CRITICAL)
+      .getRawMany<{
+        affectedCoordinationId: string;
+        total: string;
+        criticalTotal: string;
+      }>();
+
+    return rows.map((row) => ({
+      affectedCoordinationId: row.affectedCoordinationId,
+      total: Number(row.total),
+      criticalTotal: Number(row.criticalTotal),
     }));
   }
 }

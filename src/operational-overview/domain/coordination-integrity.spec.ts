@@ -27,6 +27,8 @@ function snapshot(
     mediumCount: 0,
     lowCount: 0,
     affectedCoordinationCount: 0,
+    incomingDependencyCount: 0,
+    incomingCriticalCount: 0,
     ...overrides,
   };
 }
@@ -56,6 +58,8 @@ function snapshotFromSituations(
     mediumCount: countBySeverity(SituationSeverity.MEDIUM),
     lowCount: countBySeverity(SituationSeverity.LOW),
     affectedCoordinationCount,
+    incomingDependencyCount: 0,
+    incomingCriticalCount: 0,
   };
 }
 
@@ -135,12 +139,33 @@ describe('coordination-integrity · integridad por coordinación', () => {
     expect(evaluation.violations).toEqual([]);
   });
 
-  it('un problema LOW pone la coordinación en ALERTA', () => {
+  it('un LOW pone la coordinación en ALERTA', () => {
     expect(
       getCoordinationIntegrityStatus(
         snapshot({ activeProblemsCount: 1, lowCount: 1 }),
       ),
     ).toBe('ALERTA');
+  });
+
+  it('una dependencia INTER entrante eleva a ALERTA sin sumar activos propios', () => {
+    const evaluation = evaluateCoordinationIntegrity(
+      snapshot({ incomingDependencyCount: 1 }),
+    );
+    expect(evaluation.status).toBe('ALERTA');
+    expect(evaluation.triggeredCriticalRules).toEqual([]);
+  });
+
+  it('una dependencia INTER CRITICAL entrante eleva a CRITICO', () => {
+    const evaluation = evaluateCoordinationIntegrity(
+      snapshot({
+        incomingDependencyCount: 1,
+        incomingCriticalCount: 1,
+      }),
+    );
+    expect(evaluation.status).toBe('CRITICO');
+    expect(evaluation.triggeredCriticalRules).toContain(
+      'INCOMING_DEPENDENCY_CRITICAL',
+    );
   });
 
   it('un problema MEDIUM pone la coordinación en ALERTA', () => {

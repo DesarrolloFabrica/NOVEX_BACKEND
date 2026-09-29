@@ -111,6 +111,7 @@ function createService(options: {
     aggregateAffectedCoordinations: jest
       .fn()
       .mockResolvedValue(options.affectedRows ?? []),
+    aggregateIncomingDependencies: jest.fn().mockResolvedValue([]),
   };
   const service = new OperationalOverviewService(
     coordinationsRepository as never,
@@ -179,6 +180,7 @@ describe('OperationalOverviewService · catálogo e identificadores', () => {
       'criticalCount',
       'displayOrder',
       'id',
+      'incomingDependencyCount',
       'name',
       'shortName',
       'status',

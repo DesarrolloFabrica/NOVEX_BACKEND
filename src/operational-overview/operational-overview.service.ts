@@ -21,6 +21,7 @@ import {
 import {
   ActiveSeverityRow,
   AffectedCoordinationRow,
+  IncomingDependencyRow,
   OperationalOverviewRepository,
 } from './repositories/operational-overview.repository';
 
@@ -35,6 +36,8 @@ function emptySnapshot(): CoordinationIntegritySnapshot {
     mediumCount: 0,
     lowCount: 0,
     affectedCoordinationCount: 0,
+    incomingDependencyCount: 0,
+    incomingCriticalCount: 0,
   };
 }
 
@@ -80,12 +83,17 @@ export class OperationalOverviewService {
      */
     const coordinations = await this.coordinationsRepository.findCatalog(false);
 
-    const [severityRows, affectedRows] = await Promise.all([
+    const [severityRows, affectedRows, incomingRows] = await Promise.all([
       this.overviewRepository.aggregateActiveSituationsBySeverity(),
       this.overviewRepository.aggregateAffectedCoordinations(),
+      this.overviewRepository.aggregateIncomingDependencies(),
     ]);
 
-    const snapshots = this.buildSnapshots(severityRows, affectedRows);
+    const snapshots = this.buildSnapshots(
+      severityRows,
+      affectedRows,
+      incomingRows,
+    );
 
     const coordinationDtos = coordinations.map((coordination) =>
       this.toCoordinationDto(coordination, snapshots.get(coordination.id)),
@@ -121,6 +129,7 @@ export class OperationalOverviewService {
   private buildSnapshots(
     severityRows: readonly ActiveSeverityRow[],
     affectedRows: readonly AffectedCoordinationRow[],
+    incomingRows: readonly IncomingDependencyRow[],
   ): Map<string, CoordinationIntegritySnapshot> {
     const snapshots = new Map<string, CoordinationIntegritySnapshot>();
 
@@ -159,6 +168,12 @@ export class OperationalOverviewService {
       ensure(keyOf(row.coordinationId)).affectedCoordinationCount = row.total;
     }
 
+    for (const row of incomingRows) {
+      const snapshot = ensure(row.affectedCoordinationId);
+      snapshot.incomingDependencyCount = row.total;
+      snapshot.incomingCriticalCount = row.criticalTotal;
+    }
+
     return snapshots;
   }
 
@@ -185,6 +200,7 @@ export class OperationalOverviewService {
       activeProblemsCount: resolved.activeProblemsCount,
       criticalCount: resolved.criticalCount,
       affectedCoordinationCount: resolved.affectedCoordinationCount,
+      incomingDependencyCount: resolved.incomingDependencyCount,
     };
   }
 

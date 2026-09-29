@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
+import { SituationStatus } from '../../common/enums/situation.enums';
 import { Situation } from '../entities/situation.entity';
 import { ListSituationsQueryDto } from '../dto/situation.dto';
 
@@ -21,11 +22,9 @@ export class SituationsRepository extends Repository<Situation> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 50;
 
-    const qb = this.createFilteredQuery(query)
-      .orderBy('situation.occurredAt', 'DESC')
-      .addOrderBy('situation.createdAt', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit);
+    const qb = this.createFilteredQuery(query);
+    this.applyListOrder(qb, query);
+    qb.skip((page - 1) * limit).take(limit);
 
     return qb.getManyAndCount();
   }
@@ -35,6 +34,7 @@ export class SituationsRepository extends Repository<Situation> {
       where: { id },
       relations: {
         coordination: true,
+        affectedCoordination: true,
         createdByUser: true,
         assignedUser: true,
         category: true,
@@ -52,11 +52,35 @@ export class SituationsRepository extends Repository<Situation> {
     });
   }
 
+  private applyListOrder(
+    qb: SelectQueryBuilder<Situation>,
+    query: SituationSearchFilters,
+  ): void {
+    const byClosedAt =
+      Boolean(query.closedFrom) ||
+      Boolean(query.closedTo) ||
+      query.status === SituationStatus.CLOSED;
+
+    if (byClosedAt) {
+      qb.orderBy('situation.closedAt', 'DESC', 'NULLS LAST').addOrderBy(
+        'situation.createdAt',
+        'DESC',
+      );
+      return;
+    }
+
+    qb.orderBy('situation.occurredAt', 'DESC').addOrderBy(
+      'situation.createdAt',
+      'DESC',
+    );
+  }
+
   private createFilteredQuery(
     query: SituationSearchFilters,
   ): SelectQueryBuilder<Situation> {
     const qb = this.createQueryBuilder('situation')
       .leftJoinAndSelect('situation.coordination', 'coordination')
+      .leftJoinAndSelect('situation.affectedCoordination', 'affectedCoordination')
       .leftJoinAndSelect('situation.createdByUser', 'createdByUser')
       .leftJoinAndSelect('situation.assignedUser', 'assignedUser')
       .leftJoinAndSelect('situation.category', 'category')
@@ -83,10 +107,16 @@ export class SituationsRepository extends Repository<Situation> {
       });
     }
 
+    /*
+     * Visibilidad dual: la carta pide su coordinación y debe ver tanto los
+     * casos que LE RESPONDEN (responsable) como los que LE AFECTAN (impacto
+     * recibido). Una fila, un ID: el OR no duplica.
+     */
     if (query.coordinationId) {
-      qb.andWhere('situation.coordinationId = :coordinationId', {
-        coordinationId: query.coordinationId,
-      });
+      qb.andWhere(
+        '(situation.coordinationId = :coordinationId OR situation.affectedCoordinationId = :coordinationId)',
+        { coordinationId: query.coordinationId },
+      );
     }
 
     /*
@@ -115,6 +145,18 @@ export class SituationsRepository extends Repository<Situation> {
     if (query.occurredTo) {
       qb.andWhere('situation.occurredAt <= :occurredTo', {
         occurredTo: new Date(query.occurredTo),
+      });
+    }
+
+    if (query.closedFrom) {
+      qb.andWhere('situation.closedAt >= :closedFrom', {
+        closedFrom: new Date(query.closedFrom),
+      });
+    }
+
+    if (query.closedTo) {
+      qb.andWhere('situation.closedAt <= :closedTo', {
+        closedTo: new Date(query.closedTo),
       });
     }
 

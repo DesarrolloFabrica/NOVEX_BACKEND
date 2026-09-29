@@ -85,20 +85,18 @@ export class AIOrchestrator {
   ): Promise<RegisterSituationWithAnalysisResponseDto> {
     const situation = await this.situationsService.create(dto, actor);
 
-    try {
-      const analysis = await this.execute(situation.id, actor);
-      return { situation, analysis };
-    } catch (error) {
-      await this.discardFailedRegistration(situation.id);
-      const causeMessage =
-        error instanceof Error
-          ? error.message
-          : 'Error de análisis desconocido.';
-      throw new ServiceUnavailableException(
-        `La situación no fue registrada porque el análisis IA no pudo completarse: ${causeMessage}`,
-        { cause: error },
-      );
-    }
+    /*
+     * ANÁLISIS IA EN EL REGISTRO: desactivado de momento.
+     *
+     * Antes el flujo creaba el expediente y exigía Gemini en el mismo acto;
+     * si fallaba (p. ej. sin GEMINI_API_KEY), se borraba el expediente y el
+     * usuario no podía reportar. El análisis volverá con un enfoque aparte
+     * (`POST :id/analyze`); el registro solo persiste la situación.
+     */
+    this.logger.warn(
+      `Registro sin análisis IA (diferido): situationId=${situation.id}`,
+    );
+    return { situation, analysis: null };
   }
 
   async execute(
@@ -379,16 +377,6 @@ export class AIOrchestrator {
     return (
       this.configService.get<string>('gemini.model')?.trim() ??
       'gemini-3-flash-preview'
-    );
-  }
-
-  private async discardFailedRegistration(situationId: string): Promise<void> {
-    await this.analysisRecordRepository.delete({ situationId });
-    await this.analysisSessionsService.deleteBySituationId(situationId);
-    await this.situationsRepository.delete({ id: situationId });
-
-    this.logger.warn(
-      `Registro inicial revertido porque el análisis IA no se completó situationId=${situationId}`,
     );
   }
 

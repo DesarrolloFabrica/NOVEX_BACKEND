@@ -1,7 +1,7 @@
 import { SituationStatus } from '../common/enums/situation.enums';
 
 /**
- * Flujo operativo de tres pasos: Registrada → En atención → Cerrada.
+ * Flujo operativo de tres pasos: Abierto → En atención → Cerrado.
  * RESOLVED queda como legado (solo puede avanzar a CLOSED).
  */
 export const SITUATION_STATUS_TRANSITIONS: Record<
@@ -15,11 +15,11 @@ export const SITUATION_STATUS_TRANSITIONS: Record<
 };
 
 export const SITUATION_STATUS_LABEL_ES: Record<SituationStatus, string> = {
-  [SituationStatus.OPEN]: 'Registrada',
+  [SituationStatus.OPEN]: 'Abierto',
   [SituationStatus.IN_PROGRESS]: 'En atención',
   /** Valor legado: se presenta como En atención en la UI operativa. */
   [SituationStatus.RESOLVED]: 'En atención',
-  [SituationStatus.CLOSED]: 'Cerrada',
+  [SituationStatus.CLOSED]: 'Cerrado',
 };
 
 export function getNextSituationStatuses(

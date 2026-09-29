@@ -84,7 +84,10 @@ describe('SituationsService · resolver con aprendizaje', () => {
    * Doble de base de datos con semántica transaccional suficiente para el caso:
    * instantánea al entrar, restauración si el cuerpo lanza.
    */
-  function createHarness(seed: Situation = buildSituation()) {
+  function createHarness(
+    seed: Situation = buildSituation(),
+    options: { generalCoordinationId?: string | null } = {},
+  ) {
     const db = {
       situation: seed,
       resolution: null as SituationResolution | null,
@@ -152,9 +155,23 @@ describe('SituationsService · resolver con aprendizaje', () => {
     };
     const auditLogService = { record: jest.fn().mockResolvedValue(null) };
 
+    const generalId =
+      options.generalCoordinationId === undefined
+        ? null
+        : options.generalCoordinationId;
+
+    const coordinationsRepository = {
+      findOne: jest.fn(({ where }: { where: { code?: string } }) => {
+        if (where?.code === 'coord-general' && generalId) {
+          return Promise.resolve({ id: generalId, code: 'coord-general' });
+        }
+        return Promise.resolve(null);
+      }),
+    };
+
     const service = new SituationsService(
       situationsRepository as never,
-      { findOne: jest.fn() } as never,
+      coordinationsRepository as never,
       { findOne: jest.fn() } as never,
       { findOne: jest.fn() } as never,
       { create: jest.fn() } as never,
@@ -254,8 +271,8 @@ describe('SituationsService · resolver con aprendizaje', () => {
         actor({ roleCode: 'DIRECTOR', sub: 'dir-1' }),
       ],
       [
-        'ANALISTA, aunque tenga el permiso',
-        actor({ roleCode: 'ANALISTA', sub: 'ana-1' }),
+        'ANALISTA sobre un área que no es General',
+        actor({ roleCode: 'ANALISTA', sub: 'ana-1', coordinationId: null }),
       ],
       [
         'COORDINADOR de otra área',
@@ -268,7 +285,10 @@ describe('SituationsService · resolver con aprendizaje', () => {
     ];
 
     it.each(rechazados)('rechaza a %s y no escribe nada', async (_l, who) => {
-      const h = createHarness();
+      // General ≠ AREA_A: el ANALISTA tampoco cierra el harness por defecto.
+      const h = createHarness(buildSituation(), {
+        generalCoordinationId: AREA_B,
+      });
 
       await expect(
         h.service.resolve(SIT_ID, { learning: 'Intento' }, who),
@@ -277,6 +297,106 @@ describe('SituationsService · resolver con aprendizaje', () => {
       expect(h.db.situation.status).toBe(SituationStatus.OPEN);
       expect(h.db.resolution).toBeNull();
       expect(h.db.timeline).toHaveLength(0);
+    });
+
+    it('ANALISTA cierra cuando General es responsable', async () => {
+      const h = createHarness(buildSituation(), {
+        generalCoordinationId: AREA_A,
+      });
+      const analista = actor({
+        roleCode: 'ANALISTA',
+        sub: 'ana-close',
+        coordinationId: null,
+      });
+
+      await h.service.resolve(SIT_ID, { learning: 'Lección General' }, analista);
+
+      expect(h.db.situation.status).toBe(SituationStatus.CLOSED);
+      expect(h.db.resolution?.learning).toBe('Lección General');
+      expect(h.db.resolution?.resolvedByUserId).toBe('ana-close');
+    });
+
+    it('ANALISTA cierra INTER cuando General es responsable y otra es afectada', async () => {
+      const h = createHarness(
+        buildSituation({
+          coordinationId: AREA_A,
+          affectedCoordinationId: AREA_B,
+        } as Partial<Situation>),
+        { generalCoordinationId: AREA_A },
+      );
+      const analista = actor({
+        roleCode: 'ANALISTA',
+        sub: 'ana-inter-out',
+        coordinationId: null,
+      });
+
+      await h.service.resolve(
+        SIT_ID,
+        { learning: 'Dependencia saliente cerrada' },
+        analista,
+      );
+
+      expect(h.db.situation.status).toBe(SituationStatus.CLOSED);
+      expect(h.db.resolution?.resolvedByUserId).toBe('ana-inter-out');
+    });
+
+    it('ANALISTA NO cierra cuando General es solo afectada', async () => {
+      const h = createHarness(
+        buildSituation({
+          coordinationId: AREA_B,
+          affectedCoordinationId: AREA_A,
+        } as Partial<Situation>),
+        { generalCoordinationId: AREA_A },
+      );
+      const analista = actor({
+        roleCode: 'ANALISTA',
+        sub: 'ana-aff',
+        coordinationId: null,
+      });
+
+      await expect(
+        h.service.resolve(SIT_ID, { learning: 'Impacto atendido' }, analista),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+
+      expect(h.db.situation.status).toBe(SituationStatus.OPEN);
+      expect(h.db.resolution).toBeNull();
+    });
+
+    it('ANALISTA autor NO cierra si General es solo afectada', async () => {
+      const h = createHarness(
+        buildSituation({
+          coordinationId: AREA_B,
+          affectedCoordinationId: AREA_A,
+          createdByUserId: 'ana-autor',
+        } as Partial<Situation>),
+        { generalCoordinationId: AREA_A },
+      );
+      const analista = actor({
+        roleCode: 'ANALISTA',
+        sub: 'ana-autor',
+        coordinationId: null,
+      });
+
+      await expect(
+        h.service.resolve(SIT_ID, { learning: 'Soy el autor' }, analista),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(h.db.resolution).toBeNull();
+    });
+
+    it('ANALISTA no cierra problema interno de otra coordinación', async () => {
+      const h = createHarness(buildSituation({ coordinationId: AREA_B }), {
+        generalCoordinationId: AREA_A,
+      });
+      const analista = actor({
+        roleCode: 'ANALISTA',
+        sub: 'ana-other',
+        coordinationId: null,
+      });
+
+      await expect(
+        h.service.resolve(SIT_ID, { learning: 'Intento' }, analista),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(h.db.resolution).toBeNull();
     });
 
     it('rechaza a quien coordina un área solo RELACIONADA con el problema', async () => {
@@ -432,6 +552,52 @@ describe('SituationsService · resolver con aprendizaje', () => {
       });
       const paraDirector = await h.service.getById(SIT_ID, director);
       expect(paraDirector.canResolve).toBe(false);
+    });
+
+    it('es true para ANALISTA cuando General es responsable', async () => {
+      const h = createHarness(buildSituation(), {
+        generalCoordinationId: AREA_A,
+      });
+      const analista = actor({
+        roleCode: 'ANALISTA',
+        coordinationId: null,
+        permissions: ['SITUATIONS_VIEW', 'SITUATIONS_CLOSE'],
+      });
+
+      const respuesta = await h.service.getById(SIT_ID, analista);
+      expect(respuesta.canResolve).toBe(true);
+    });
+
+    it('es false para ANALISTA cuando General es solo afectada', async () => {
+      const h = createHarness(
+        buildSituation({
+          coordinationId: AREA_B,
+          affectedCoordinationId: AREA_A,
+        } as Partial<Situation>),
+        { generalCoordinationId: AREA_A },
+      );
+      const analista = actor({
+        roleCode: 'ANALISTA',
+        coordinationId: null,
+        permissions: ['SITUATIONS_VIEW', 'SITUATIONS_CLOSE'],
+      });
+
+      const respuesta = await h.service.getById(SIT_ID, analista);
+      expect(respuesta.canResolve).toBe(false);
+    });
+
+    it('es false para ANALISTA en problema interno de otra área', async () => {
+      const h = createHarness(buildSituation({ coordinationId: AREA_B }), {
+        generalCoordinationId: AREA_A,
+      });
+      const analista = actor({
+        roleCode: 'ANALISTA',
+        coordinationId: null,
+        permissions: ['SITUATIONS_VIEW', 'SITUATIONS_CLOSE'],
+      });
+
+      const respuesta = await h.service.getById(SIT_ID, analista);
+      expect(respuesta.canResolve).toBe(false);
     });
   });
 });

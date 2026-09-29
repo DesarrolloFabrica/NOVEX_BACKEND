@@ -10,8 +10,10 @@ import {
   IsUUID,
   MaxLength,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import {
+  SituationReportKind,
   SituationSeverity,
   SituationStatus,
 } from '../../common/enums/situation.enums';
@@ -35,19 +37,71 @@ export class CreateSituationDto {
   @MaxLength(4000)
   description!: string;
 
-  /** Ausente cuando registra un analista: el caso queda a su nombre. */
+  /**
+   * Tipo de registro. Ausente o INTERNAL = problema interno (contrato histórico).
+   * INTER_COORDINATION = dependencia entre coordinaciones.
+   */
   @IsOptional()
+  @IsEnum(SituationReportKind)
+  reportKind?: SituationReportKind;
+
+  /**
+   * Coordinación RESPONSABLE. En INTERNAL es la carta seleccionada; en INTER
+   * es la externa que debe atender. Ausente solo en el contrato histórico del
+   * analista (INTERNAL sin área).
+   */
+  @ValidateIf(
+    (dto: CreateSituationDto) =>
+      dto.reportKind === SituationReportKind.INTER_COORDINATION ||
+      dto.coordinationId !== undefined,
+  )
   @IsUUID()
   coordinationId?: string;
 
+  /**
+   * Coordinación AFECTADA. Obligatoria en INTER (carta seleccionada). En
+   * INTERNAL el servicio la iguala a la responsable si no viene.
+   */
+  @ValidateIf(
+    (dto: CreateSituationDto) =>
+      dto.reportKind === SituationReportKind.INTER_COORDINATION,
+  )
   @IsUUID()
-  categoryId!: string;
+  affectedCoordinationId?: string;
+
+  /** Obligatoria en INTERNAL; omitida en INTER (el tipo no se simula así). */
+  @ValidateIf(
+    (dto: CreateSituationDto) =>
+      dto.reportKind !== SituationReportKind.INTER_COORDINATION,
+  )
+  @IsUUID()
+  categoryId?: string;
 
   @IsEnum(SituationSeverity)
   severity!: SituationSeverity;
 
   @IsDateString()
   occurredAt!: string;
+
+  /** Proceso de la afectada que se retrasa (INTER). */
+  @ValidateIf(
+    (dto: CreateSituationDto) =>
+      dto.reportKind === SituationReportKind.INTER_COORDINATION,
+  )
+  @IsString()
+  @MinLength(1)
+  @MaxLength(2000)
+  affectedProcess?: string;
+
+  /** Entrega o acción pendiente de la responsable (INTER). */
+  @ValidateIf(
+    (dto: CreateSituationDto) =>
+      dto.reportKind === SituationReportKind.INTER_COORDINATION,
+  )
+  @IsString()
+  @MinLength(1)
+  @MaxLength(2000)
+  pendingDelivery?: string;
 
   /**
    * Coordinaciones que el usuario declara como potencialmente relacionadas.
@@ -188,23 +242,44 @@ export class ListSituationsQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsDateString()
   occurredTo?: string;
+
+  /**
+   * Historial por fecha de cierre. Filtra `closed_at` (no `occurred_at`).
+   * Pensado para `status=CLOSED`; si no se envía status, igual acota por cierre.
+   */
+  @IsOptional()
+  @IsDateString()
+  closedFrom?: string;
+
+  @IsOptional()
+  @IsDateString()
+  closedTo?: string;
 }
 
 export class SituationResponseDto {
   id!: string;
   title!: string;
   description!: string;
+  /** Tipo de registro. Los históricos viajan como INTERNAL. */
+  reportKind!: SituationReportKind;
+  /** Coordinación RESPONSABLE (quien atiende / puede resolver). */
   coordinationId!: string | null;
   coordinationCode!: string | null;
   coordinationName!: string | null;
+  /** Coordinación AFECTADA (impacto). En INTERNAL coincide con la responsable. */
+  affectedCoordinationId!: string | null;
+  affectedCoordinationCode!: string | null;
+  affectedCoordinationName!: string | null;
+  affectedProcess!: string | null;
+  pendingDelivery!: string | null;
   createdByUserId!: string;
   createdByUserName!: string;
   assignedUserId!: string | null;
   assignedUserName!: string | null;
-  categoryId!: string;
-  categoryCode!: string;
-  categoryName!: string;
-  categoryIcon!: string;
+  categoryId!: string | null;
+  categoryCode!: string | null;
+  categoryName!: string | null;
+  categoryIcon!: string | null;
   severity!: SituationSeverity;
   status!: SituationStatus;
   lastStatusComment!: string | null;
@@ -234,6 +309,19 @@ export class SituationResponseDto {
    * autorización definitiva la sigue aplicando el servidor en cada escritura.
    */
   canResolve!: boolean;
+  /**
+   * Si puede avanzar OPEN → IN_PROGRESS. Misma política que
+   * `assertCanAdvanceSituationToInProgress` (COORDINADOR responsable o
+   * ANALISTA cuando General es responsable). Independiente de `canUpdate`
+   * (autoría / otras ediciones) y de `canResolve`.
+   */
+  canAdvanceToInProgress!: boolean;
+  /**
+   * Si el USUARIO DE ESTA PETICIÓN puede aplicar otras actualizaciones vía
+   * PATCH (campos / autoría u ownership). No sustituye a
+   * `canAdvanceToInProgress` para el botón «En atención».
+   */
+  canUpdate!: boolean;
 }
 
 /**

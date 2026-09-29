@@ -38,11 +38,19 @@ export function isActiveForIntegrity(status: SituationStatus): boolean {
 }
 
 /**
- * Agregado por coordinación. Todos los conteos deben provenir únicamente de
- * situaciones OPEN e IN_PROGRESS.
+ * Agregado por coordinación.
+ *
+ *   activeProblemsCount / severidades  Problemas donde esta área es RESPONSABLE
+ *                                      (debe atender). Significado histórico.
+ *   affectedCoordinationCount          Propagación IA de esos problemas propios.
+ *   incomingDependencyCount            Dependencias INTER activas donde esta
+ *                                      área es la AFECTADA (impacto recibido).
+ *                                      NO se suman a activeProblemsCount: un
+ *                                      caso no se cuenta dos veces en el total
+ *                                      global de situaciones.
  */
 export interface CoordinationIntegritySnapshot {
-  /** Total de problemas activos de la coordinación. */
+  /** Total de problemas activos de la coordinación (como responsable). */
   activeProblemsCount: number;
   criticalCount: number;
   highCount: number;
@@ -50,6 +58,10 @@ export interface CoordinationIntegritySnapshot {
   lowCount: number;
   /** Coordinaciones distintas alcanzadas por la propagación de esos problemas. */
   affectedCoordinationCount: number;
+  /** Dependencias INTER activas que impactan a esta área. */
+  incomingDependencyCount: number;
+  /** De esas dependencias entrantes, cuántas son CRITICAL. */
+  incomingCriticalCount: number;
 }
 
 /** Umbrales del MVP. Cualquier ajuste de política se hace aquí, no en el flujo. */
@@ -67,7 +79,8 @@ export type CoordinationCriticalRule =
   | 'CRITICAL_SEVERITY'
   | 'HIGH_ACCUMULATION'
   | 'ACTIVE_ACCUMULATION'
-  | 'IMPACT_PROPAGATION';
+  | 'IMPACT_PROPAGATION'
+  | 'INCOMING_DEPENDENCY_CRITICAL';
 
 /**
  * Motivos por los que un snapshot no es interpretable.
@@ -107,6 +120,8 @@ const COUNT_FIELDS: readonly (keyof CoordinationIntegritySnapshot)[] = [
   'mediumCount',
   'lowCount',
   'affectedCoordinationCount',
+  'incomingDependencyCount',
+  'incomingCriticalCount',
 ];
 
 /**
@@ -159,6 +174,16 @@ export function validateCoordinationIntegritySnapshot(
     });
   }
 
+  if (
+    snapshot.incomingCriticalCount > snapshot.incomingDependencyCount
+  ) {
+    violations.push({
+      field: 'incomingCriticalCount',
+      issue: 'SEVERITY_SUM_MISMATCH',
+      value: snapshot.incomingCriticalCount,
+    });
+  }
+
   return violations;
 }
 
@@ -191,12 +216,22 @@ export function evaluateCoordinationIntegrity(
   ) {
     triggeredCriticalRules.push('IMPACT_PROPAGATION');
   }
+  /*
+   * IMPACTO RECIBIDO (INTER). Eleva el aura de la afectada sin sumar a
+   * activeProblemsCount: el caso ya cuenta en la responsable.
+   */
+  if (snapshot.incomingCriticalCount >= MVP_CRITICAL_CRITICAL_COUNT) {
+    triggeredCriticalRules.push('INCOMING_DEPENDENCY_CRITICAL');
+  }
 
   if (triggeredCriticalRules.length > 0) {
     return { status: 'CRITICO', triggeredCriticalRules, violations: [] };
   }
 
-  if (snapshot.activeProblemsCount === 0) {
+  if (
+    snapshot.activeProblemsCount === 0 &&
+    snapshot.incomingDependencyCount === 0
+  ) {
     return { status: 'ESTABLE', triggeredCriticalRules: [], violations: [] };
   }
 

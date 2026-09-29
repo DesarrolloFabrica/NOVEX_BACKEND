@@ -26,6 +26,11 @@ export class CoordinationOverviewDto {
   activeProblemsCount!: number;
   criticalCount!: number;
   affectedCoordinationCount!: number;
+  /**
+   * Dependencias INTER activas donde esta coordinación es la afectada.
+   * No se incluyen en `activeProblemsCount` (esos son los que debe atender).
+   */
+  incomingDependencyCount!: number;
 }
 
 /**

@@ -139,16 +139,13 @@ const OPERATIONAL_ONLY_PERMISSION_CODES = [
  *
  *   REPORTAR    `SITUATIONS_CREATE`: los CUATRO roles. La coordinación
  *               responsable la elige el usuario y la valida el catálogo.
- *   SOLUCIONAR  `SITUATIONS_CLOSE`: SOLO COORDINADOR, y aun así el servicio
- *               exige además que coordine el área responsable del problema.
- *               El permiso delimita el rol; la política delimita el caso.
+ *   SOLUCIONAR  `SITUATIONS_CLOSE`: COORDINADOR (área responsable) y ANALISTA
+ *               (solo si Coordinación General es la responsable). El permiso
+ *               delimita el rol; la política delimita el caso.
  *
  * ADMIN y DIRECTOR ganan únicamente `SITUATIONS_CREATE`. NO reciben
  * `SITUATIONS_UPDATE`, `SITUATIONS_CLOSE` ni `AI_ANALYZE`: pueden declarar un
  * problema, no gestionarlo ni cerrarlo.
- *
- * ANALISTA conserva lo que tenía y NO recibe `SITUATIONS_CLOSE`: reporta y
- * actualiza sus propios casos, pero no soluciona.
  */
 export const ROLE_PERMISSION_CODES: Readonly<
   Record<'ADMIN' | 'DIRECTOR' | 'ANALISTA' | 'COORDINADOR', readonly string[]>
@@ -171,6 +168,7 @@ export const ROLE_PERMISSION_CODES: Readonly<
     'SITUATIONS_VIEW',
     'SITUATIONS_CREATE',
     'SITUATIONS_UPDATE',
+    'SITUATIONS_CLOSE',
     'AI_ANALYZE',
     'AI_VIEW_REPORTS',
     'REPORTS_VIEW',
@@ -181,7 +179,7 @@ export const ROLE_PERMISSION_CODES: Readonly<
     'SITUATIONS_VIEW',
     'SITUATIONS_CREATE',
     'SITUATIONS_UPDATE',
-    // Único rol que soluciona. La comprobación efectiva vive en
+    // Soluciona el área que coordina. La comprobación efectiva vive en
     // `SituationsController.resolve` y `OperationalScopeService`.
     'SITUATIONS_CLOSE',
     'AI_ANALYZE',

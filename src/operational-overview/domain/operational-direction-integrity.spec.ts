@@ -146,6 +146,8 @@ describe('evaluateAnalystRegistryIntegrity', () => {
     mediumCount: 0,
     lowCount: 0,
     affectedCoordinationCount: 0,
+    incomingDependencyCount: 0,
+    incomingCriticalCount: 0,
   };
 
   it('sin situaciones el registro está ESTABLE', () => {
