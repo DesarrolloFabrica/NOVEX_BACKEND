@@ -31,6 +31,13 @@ export class CoordinationOverviewDto {
    * No se incluyen en `activeProblemsCount` (esos son los que debe atender).
    */
   incomingDependencyCount!: number;
+  /**
+   * Vidas del personaje para esta coordinación: entero en 0..10 (5 corazones ×
+   * 2 puntos). Derivadas de los problemas activos en cada lectura, nunca
+   * persistidas. `null` si el snapshot no es interpretable: nunca se finge 10.
+   * Política en `domain/coordination-life-points`; independiente de `status`.
+   */
+  lifePoints!: number | null;
 }
 
 /**
