@@ -28,6 +28,16 @@ export interface IncomingDependencyRow {
   affectedCoordinationId: string;
   total: number;
   criticalTotal: number;
+  /**
+   * Desglose por severidad de las dependencias cuya responsable es OTRA
+   * coordinación (`coordination_id IS DISTINCT FROM affected_coordination_id`).
+   * Alimenta solo las vidas; `total` y `criticalTotal` siguen alimentando la
+   * integridad sin cambios.
+   */
+  externalLowTotal: number;
+  externalMediumTotal: number;
+  externalHighTotal: number;
+  externalCriticalTotal: number;
 }
 
 /**
@@ -114,8 +124,18 @@ export class OperationalOverviewRepository extends Repository<Situation> {
   /**
    * Conteo de dependencias INTER activas por coordinación AFECTADA.
    * Excluye filas sin afectada y no cuenta en activeProblemsCount del dueño.
+   *
+   * Las columnas `external*` salen de la MISMA consulta y el mismo universo
+   * (sin query paralela). Solo cuentan filas cuya responsable es otra
+   * coordinación: una fila INTER con responsable = afectada ya figura en los
+   * conteos propios, y contarla aquí también duplicaría su daño en las vidas.
    */
   async aggregateIncomingDependencies(): Promise<IncomingDependencyRow[]> {
+    const external =
+      'situation.coordinationId IS DISTINCT FROM situation.affectedCoordinationId';
+    const externalBySeverity = (parameter: string) =>
+      `SUM(CASE WHEN situation.severity = :${parameter} AND ${external} THEN 1 ELSE 0 END)`;
+
     const rows = await this.createQueryBuilder('situation')
       .select('situation.affectedCoordinationId', 'affectedCoordinationId')
       .addSelect('COUNT(*)', 'total')
@@ -123,6 +143,10 @@ export class OperationalOverviewRepository extends Repository<Situation> {
         `SUM(CASE WHEN situation.severity = :critical THEN 1 ELSE 0 END)`,
         'criticalTotal',
       )
+      .addSelect(externalBySeverity('low'), 'externalLowTotal')
+      .addSelect(externalBySeverity('medium'), 'externalMediumTotal')
+      .addSelect(externalBySeverity('high'), 'externalHighTotal')
+      .addSelect(externalBySeverity('critical'), 'externalCriticalTotal')
       .where('situation.status IN (:...statuses)', {
         statuses: [...ACTIVE_SITUATION_STATUSES],
       })
@@ -131,17 +155,30 @@ export class OperationalOverviewRepository extends Repository<Situation> {
       })
       .andWhere('situation.affectedCoordinationId IS NOT NULL')
       .groupBy('situation.affectedCoordinationId')
-      .setParameter('critical', SituationSeverity.CRITICAL)
+      .setParameters({
+        low: SituationSeverity.LOW,
+        medium: SituationSeverity.MEDIUM,
+        high: SituationSeverity.HIGH,
+        critical: SituationSeverity.CRITICAL,
+      })
       .getRawMany<{
         affectedCoordinationId: string;
         total: string;
         criticalTotal: string;
+        externalLowTotal: string;
+        externalMediumTotal: string;
+        externalHighTotal: string;
+        externalCriticalTotal: string;
       }>();
 
     return rows.map((row) => ({
       affectedCoordinationId: row.affectedCoordinationId,
       total: Number(row.total),
       criticalTotal: Number(row.criticalTotal),
+      externalLowTotal: Number(row.externalLowTotal),
+      externalMediumTotal: Number(row.externalMediumTotal),
+      externalHighTotal: Number(row.externalHighTotal),
+      externalCriticalTotal: Number(row.externalCriticalTotal),
     }));
   }
 }

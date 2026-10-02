@@ -5,10 +5,13 @@ import { SituationSeverity } from '../common/enums/situation.enums';
 import { Coordination } from '../coordinations/entities/coordination.entity';
 import { CoordinationsRepository } from '../coordinations/repositories/coordinations.repository';
 import {
-  CoordinationIntegritySnapshot,
   OperationalIntegrityStatus,
   evaluateCoordinationIntegrity,
 } from './domain/coordination-integrity';
+import {
+  CoordinationLifeSnapshot,
+  evaluateCoordinationLifePoints,
+} from './domain/coordination-life-points';
 import {
   evaluateAnalystRegistryIntegrity,
   evaluateOperationalDirectionIntegrity,
@@ -28,7 +31,11 @@ import {
 /** Clave del grupo sin coordinación dueña: Registro de analista. */
 const ANALYST_REGISTRY_KEY = '__analyst_registry__';
 
-function emptySnapshot(): CoordinationIntegritySnapshot {
+/**
+ * Un único snapshot por dueño alimenta las dos políticas: la integridad lee
+ * sus campos de siempre y las vidas, además, el desglose entrante externo.
+ */
+function emptySnapshot(): CoordinationLifeSnapshot {
   return {
     activeProblemsCount: 0,
     criticalCount: 0,
@@ -38,6 +45,10 @@ function emptySnapshot(): CoordinationIntegritySnapshot {
     affectedCoordinationCount: 0,
     incomingDependencyCount: 0,
     incomingCriticalCount: 0,
+    externalIncomingLowCount: 0,
+    externalIncomingMediumCount: 0,
+    externalIncomingHighCount: 0,
+    externalIncomingCriticalCount: 0,
   };
 }
 
@@ -130,13 +141,13 @@ export class OperationalOverviewService {
     severityRows: readonly ActiveSeverityRow[],
     affectedRows: readonly AffectedCoordinationRow[],
     incomingRows: readonly IncomingDependencyRow[],
-  ): Map<string, CoordinationIntegritySnapshot> {
-    const snapshots = new Map<string, CoordinationIntegritySnapshot>();
+  ): Map<string, CoordinationLifeSnapshot> {
+    const snapshots = new Map<string, CoordinationLifeSnapshot>();
 
     const keyOf = (coordinationId: string | null): string =>
       coordinationId ?? ANALYST_REGISTRY_KEY;
 
-    const ensure = (key: string): CoordinationIntegritySnapshot => {
+    const ensure = (key: string): CoordinationLifeSnapshot => {
       const existing = snapshots.get(key);
       if (existing) return existing;
       const created = emptySnapshot();
@@ -172,6 +183,10 @@ export class OperationalOverviewService {
       const snapshot = ensure(row.affectedCoordinationId);
       snapshot.incomingDependencyCount = row.total;
       snapshot.incomingCriticalCount = row.criticalTotal;
+      snapshot.externalIncomingLowCount = row.externalLowTotal;
+      snapshot.externalIncomingMediumCount = row.externalMediumTotal;
+      snapshot.externalIncomingHighCount = row.externalHighTotal;
+      snapshot.externalIncomingCriticalCount = row.externalCriticalTotal;
     }
 
     return snapshots;
@@ -179,7 +194,7 @@ export class OperationalOverviewService {
 
   private toCoordinationDto(
     coordination: Coordination,
-    snapshot: CoordinationIntegritySnapshot | undefined,
+    snapshot: CoordinationLifeSnapshot | undefined,
   ): CoordinationOverviewDto {
     const resolved = snapshot ?? emptySnapshot();
     const evaluation = evaluateCoordinationIntegrity(resolved);
@@ -188,6 +203,18 @@ export class OperationalOverviewService {
       evaluation.status,
       evaluation.violations,
     );
+
+    // Misma fuente, regla distinta. Si la integridad ya registró el snapshot
+    // como inconsistente no se repite el aviso; solo se avisa de lo que es
+    // exclusivo de las vidas (el desglose entrante).
+    const life = evaluateCoordinationLifePoints(resolved);
+    if (life.violations.length > 0 && evaluation.violations.length === 0) {
+      this.logger.warn(
+        `Vidas no calculables en coordination ${coordination.code}: ${life.violations
+          .map((violation) => `${violation.field}=${violation.issue}`)
+          .join(', ')}. Se reporta lifePoints=null.`,
+      );
+    }
 
     return {
       id: coordination.id,
@@ -201,11 +228,12 @@ export class OperationalOverviewService {
       criticalCount: resolved.criticalCount,
       affectedCoordinationCount: resolved.affectedCoordinationCount,
       incomingDependencyCount: resolved.incomingDependencyCount,
+      lifePoints: life.lifePoints,
     };
   }
 
   private toAnalystRegistryDto(
-    snapshot: CoordinationIntegritySnapshot | undefined,
+    snapshot: CoordinationLifeSnapshot | undefined,
   ): AnalystRegistryOverviewDto {
     const resolved = snapshot ?? emptySnapshot();
     const evaluation = evaluateAnalystRegistryIntegrity(resolved);
