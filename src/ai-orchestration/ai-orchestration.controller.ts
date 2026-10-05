@@ -40,10 +40,10 @@ export class AIOrchestrationController {
    *
    * Antes exigía también `AI_ANALYZE`, y eso convertía el análisis —que aquí es
    * un PASO INTERNO del registro, no una acción que el usuario invoque— en una
-   * capacidad que había que conceder para poder reportar. Con los cuatro roles
-   * reportando, la alternativa habría sido dar `AI_ANALYZE` a ADMIN y DIRECTOR,
-   * lo que de paso les habría abierto `POST :id/analyze`: relanzar el análisis
-   * de CUALQUIER situación. Eso es mucho más de lo que pide reportar.
+   * capacidad que había que conceder para poder reportar. ANALISTA y
+   * COORDINADOR reportan; dar `AI_ANALYZE` a ADMIN y DIRECTOR les habría
+   * abierto `POST :id/analyze` sobre cualquier situación. Eso es más de lo que
+   * pide reportar, y esos roles ya no tienen `SITUATIONS_CREATE`.
    *
    * El cambio concede exactamente esto: quien puede registrar un problema
    * provoca el análisis de ESE problema, en el acto de crearlo. Ejecutar un

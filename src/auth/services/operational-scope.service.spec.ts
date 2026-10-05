@@ -113,19 +113,20 @@ describe('OperationalScopeService', () => {
   });
 
   it('el permiso es la autoridad para registrar, no una lista de roles', () => {
-    // Regla nueva: reportar dejó de estar reservado a Analista y Coordinador.
-    // Quien tenga SITUATIONS_CREATE registra; quien no lo tenga, no.
-    const directorConPermiso = {
+    expect(() =>
+      service.resolveCreateCoordinationId(director, 'coord-b2b'),
+    ).toThrow(ForbiddenException);
+
+    const directorConPermisoObsoleto = {
       ...director,
       permissions: [...director.permissions, 'SITUATIONS_CREATE'],
     };
     expect(
-      service.resolveCreateCoordinationId(directorConPermiso, 'coord-b2b'),
+      service.resolveCreateCoordinationId(
+        directorConPermisoObsoleto,
+        'coord-b2b',
+      ),
     ).toBe('coord-b2b');
-
-    expect(() =>
-      service.resolveCreateCoordinationId(director, 'coord-b2b'),
-    ).toThrow(ForbiddenException);
   });
 
   it('sin rol reconocible sigue mandando el permiso', () => {

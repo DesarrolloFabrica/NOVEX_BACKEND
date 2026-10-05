@@ -39,6 +39,8 @@ import { OperationalEventsModule } from './operational-events/operational-events
 
 import { OperationalOverviewModule } from './operational-overview/operational-overview.module';
 
+import { OperationalKpiModule } from './operational-kpis/operational-kpi.module';
+
 import { PermissionsModule } from './permissions/permissions.module';
 
 import { RbacModule } from './rbac/rbac.module';
@@ -98,6 +100,8 @@ import { UsersModule } from './users/users.module';
     OperationalEventsModule,
 
     OperationalOverviewModule,
+
+    OperationalKpiModule,
 
     IntelligenceModule,
 

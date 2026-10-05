@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, Repository } from 'typeorm';
-import { SituationSeverity } from '../../common/enums/situation.enums';
-import { SituationReportKind } from '../../common/enums/situation.enums';
+import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
+import {
+  SituationReportKind,
+  SituationSeverity,
+  SituationStatus,
+} from '../../common/enums/situation.enums';
 import { SituationAffectedCoordination } from '../../situation-impact/entities/situation-affected-coordination.entity';
 import { SituationImpactAssessment } from '../../situation-impact/entities/situation-impact-assessment.entity';
 import { Situation } from '../../situations/entities/situation.entity';
@@ -40,6 +43,27 @@ export interface IncomingDependencyRow {
   externalCriticalTotal: number;
 }
 
+export interface ActiveStatusRow {
+  coordinationId: string | null;
+  status: SituationStatus;
+  total: number;
+}
+
+/** INTER activas agrupadas por coordinación responsable. */
+export interface OutgoingDependencyRow {
+  coordinationId: string;
+  total: number;
+}
+
+/**
+ * Recorte opcional para KPIs (coordination / compare).
+ * Overview no lo pasa: agrega el universo completo, incluido el registro.
+ */
+export interface OperationalAggregationScope {
+  ownerCoordinationIds?: readonly string[];
+  affectedCoordinationIds?: readonly string[];
+}
+
 /**
  * Agregación de LEVEL 0. Dos consultas con `GROUP BY`, ambas sobre el MISMO
  * universo filtrado (`status IN (OPEN, IN_PROGRESS)`), de modo que el número
@@ -59,14 +83,18 @@ export class OperationalOverviewRepository extends Repository<Situation> {
    * Incluye el grupo `coordination_id IS NULL` (Registro de analista): el
    * filtrado por alcance se aplica después, en el service.
    */
-  async aggregateActiveSituationsBySeverity(): Promise<ActiveSeverityRow[]> {
-    const rows = await this.createQueryBuilder('situation')
+  async aggregateActiveSituationsBySeverity(
+    scope?: OperationalAggregationScope,
+  ): Promise<ActiveSeverityRow[]> {
+    const qb = this.createQueryBuilder('situation')
       .select('situation.coordinationId', 'coordinationId')
       .addSelect('situation.severity', 'severity')
       .addSelect('COUNT(*)', 'total')
       .where('situation.status IN (:...statuses)', {
         statuses: [...ACTIVE_SITUATION_STATUSES],
-      })
+      });
+    this.applyOwnerScope(qb, scope);
+    const rows = await qb
       .groupBy('situation.coordinationId')
       .addGroupBy('situation.severity')
       .getRawMany<{
@@ -92,8 +120,10 @@ export class OperationalOverviewRepository extends Repository<Situation> {
    * la descarta (`SituationImpactService.selectSimulatedCandidates`). El
    * Registro de analista no tiene dueña, así que no se excluye nada.
    */
-  async aggregateAffectedCoordinations(): Promise<AffectedCoordinationRow[]> {
-    const rows = await this.createQueryBuilder('situation')
+  async aggregateAffectedCoordinations(
+    scope?: OperationalAggregationScope,
+  ): Promise<AffectedCoordinationRow[]> {
+    const qb = this.createQueryBuilder('situation')
       .innerJoin(
         SituationImpactAssessment,
         'assessment',
@@ -111,7 +141,9 @@ export class OperationalOverviewRepository extends Repository<Situation> {
       })
       .andWhere(
         '(situation.coordinationId IS NULL OR affected.coordinationId <> situation.coordinationId)',
-      )
+      );
+    this.applyOwnerScope(qb, scope);
+    const rows = await qb
       .groupBy('situation.coordinationId')
       .getRawMany<{ coordinationId: string | null; total: string }>();
 
@@ -130,13 +162,15 @@ export class OperationalOverviewRepository extends Repository<Situation> {
    * coordinación: una fila INTER con responsable = afectada ya figura en los
    * conteos propios, y contarla aquí también duplicaría su daño en las vidas.
    */
-  async aggregateIncomingDependencies(): Promise<IncomingDependencyRow[]> {
+  async aggregateIncomingDependencies(
+    scope?: OperationalAggregationScope,
+  ): Promise<IncomingDependencyRow[]> {
     const external =
       'situation.coordinationId IS DISTINCT FROM situation.affectedCoordinationId';
     const externalBySeverity = (parameter: string) =>
       `SUM(CASE WHEN situation.severity = :${parameter} AND ${external} THEN 1 ELSE 0 END)`;
 
-    const rows = await this.createQueryBuilder('situation')
+    const qb = this.createQueryBuilder('situation')
       .select('situation.affectedCoordinationId', 'affectedCoordinationId')
       .addSelect('COUNT(*)', 'total')
       .addSelect(
@@ -153,7 +187,9 @@ export class OperationalOverviewRepository extends Repository<Situation> {
       .andWhere('situation.reportKind = :kind', {
         kind: SituationReportKind.INTER_COORDINATION,
       })
-      .andWhere('situation.affectedCoordinationId IS NOT NULL')
+      .andWhere('situation.affectedCoordinationId IS NOT NULL');
+    this.applyAffectedScope(qb, scope);
+    const rows = await qb
       .groupBy('situation.affectedCoordinationId')
       .setParameters({
         low: SituationSeverity.LOW,
@@ -180,5 +216,88 @@ export class OperationalOverviewRepository extends Repository<Situation> {
       externalHighTotal: Number(row.externalHighTotal),
       externalCriticalTotal: Number(row.externalCriticalTotal),
     }));
+  }
+
+  /**
+   * Activos por dueña y status (OPEN / IN_PROGRESS). RESOLVED no entra.
+   * `coordinationId` null = Registro de analista.
+   */
+  async aggregateActiveSituationsByStatus(
+    scope?: OperationalAggregationScope,
+  ): Promise<ActiveStatusRow[]> {
+    const qb = this.createQueryBuilder('situation')
+      .select('situation.coordinationId', 'coordinationId')
+      .addSelect('situation.status', 'status')
+      .addSelect('COUNT(*)', 'total')
+      .where('situation.status IN (:...statuses)', {
+        statuses: [...ACTIVE_SITUATION_STATUSES],
+      });
+    this.applyOwnerScope(qb, scope);
+    const rows = await qb
+      .groupBy('situation.coordinationId')
+      .addGroupBy('situation.status')
+      .getRawMany<{
+        coordinationId: string | null;
+        status: SituationStatus;
+        total: string;
+      }>();
+
+    return rows.map((row) => ({
+      coordinationId: row.coordinationId,
+      status: row.status,
+      total: Number(row.total),
+    }));
+  }
+
+  /**
+   * INTER activas agrupadas por coordinación RESPONSABLE (salientes).
+   */
+  async aggregateOutgoingDependencies(
+    scope?: OperationalAggregationScope,
+  ): Promise<OutgoingDependencyRow[]> {
+    const qb = this.createQueryBuilder('situation')
+      .select('situation.coordinationId', 'coordinationId')
+      .addSelect('COUNT(*)', 'total')
+      .where('situation.status IN (:...statuses)', {
+        statuses: [...ACTIVE_SITUATION_STATUSES],
+      })
+      .andWhere('situation.reportKind = :kind', {
+        kind: SituationReportKind.INTER_COORDINATION,
+      })
+      .andWhere('situation.coordinationId IS NOT NULL');
+    this.applyOwnerScope(qb, scope);
+    const rows = await qb
+      .groupBy('situation.coordinationId')
+      .getRawMany<{ coordinationId: string; total: string }>();
+
+    return rows.map((row) => ({
+      coordinationId: row.coordinationId,
+      total: Number(row.total),
+    }));
+  }
+
+  private applyOwnerScope(
+    qb: SelectQueryBuilder<Situation>,
+    scope?: OperationalAggregationScope,
+  ): void {
+    if (!scope?.ownerCoordinationIds?.length) {
+      return;
+    }
+    qb.andWhere('situation.coordinationId IN (:...ownerCoordinationIds)', {
+      ownerCoordinationIds: [...scope.ownerCoordinationIds],
+    });
+  }
+
+  private applyAffectedScope(
+    qb: SelectQueryBuilder<Situation>,
+    scope?: OperationalAggregationScope,
+  ): void {
+    if (!scope?.affectedCoordinationIds?.length) {
+      return;
+    }
+    qb.andWhere(
+      'situation.affectedCoordinationId IN (:...affectedCoordinationIds)',
+      { affectedCoordinationIds: [...scope.affectedCoordinationIds] },
+    );
   }
 }

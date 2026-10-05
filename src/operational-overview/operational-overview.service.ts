@@ -1,9 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { OperationalScopeService } from '../auth/services/operational-scope.service';
-import { SituationSeverity } from '../common/enums/situation.enums';
 import { Coordination } from '../coordinations/entities/coordination.entity';
 import { CoordinationsRepository } from '../coordinations/repositories/coordinations.repository';
+import {
+  ANALYST_REGISTRY_KEY,
+  buildCoordinationLifeSnapshots,
+  emptyCoordinationLifeSnapshot,
+} from './domain/build-coordination-snapshots';
 import {
   OperationalIntegrityStatus,
   evaluateCoordinationIntegrity,
@@ -21,36 +25,7 @@ import {
   CoordinationOverviewDto,
   OperationalOverviewDto,
 } from './dto/operational-overview.dto';
-import {
-  ActiveSeverityRow,
-  AffectedCoordinationRow,
-  IncomingDependencyRow,
-  OperationalOverviewRepository,
-} from './repositories/operational-overview.repository';
-
-/** Clave del grupo sin coordinación dueña: Registro de analista. */
-const ANALYST_REGISTRY_KEY = '__analyst_registry__';
-
-/**
- * Un único snapshot por dueño alimenta las dos políticas: la integridad lee
- * sus campos de siempre y las vidas, además, el desglose entrante externo.
- */
-function emptySnapshot(): CoordinationLifeSnapshot {
-  return {
-    activeProblemsCount: 0,
-    criticalCount: 0,
-    highCount: 0,
-    mediumCount: 0,
-    lowCount: 0,
-    affectedCoordinationCount: 0,
-    incomingDependencyCount: 0,
-    incomingCriticalCount: 0,
-    externalIncomingLowCount: 0,
-    externalIncomingMediumCount: 0,
-    externalIncomingHighCount: 0,
-    externalIncomingCriticalCount: 0,
-  };
-}
+import { OperationalOverviewRepository } from './repositories/operational-overview.repository';
 
 /**
  * LEVEL 0 de la experiencia de cartas: estado de la Dirección de Operaciones,
@@ -100,7 +75,7 @@ export class OperationalOverviewService {
       this.overviewRepository.aggregateIncomingDependencies(),
     ]);
 
-    const snapshots = this.buildSnapshots(
+    const snapshots = buildCoordinationLifeSnapshots(
       severityRows,
       affectedRows,
       incomingRows,
@@ -132,71 +107,11 @@ export class OperationalOverviewService {
     };
   }
 
-  /**
-   * Fusiona las dos agregaciones en un snapshot por dueño. Ambas provienen del
-   * mismo filtro de estados activos, así que la invariante de severidades
-   * (suma === activos) se cumple por construcción.
-   */
-  private buildSnapshots(
-    severityRows: readonly ActiveSeverityRow[],
-    affectedRows: readonly AffectedCoordinationRow[],
-    incomingRows: readonly IncomingDependencyRow[],
-  ): Map<string, CoordinationLifeSnapshot> {
-    const snapshots = new Map<string, CoordinationLifeSnapshot>();
-
-    const keyOf = (coordinationId: string | null): string =>
-      coordinationId ?? ANALYST_REGISTRY_KEY;
-
-    const ensure = (key: string): CoordinationLifeSnapshot => {
-      const existing = snapshots.get(key);
-      if (existing) return existing;
-      const created = emptySnapshot();
-      snapshots.set(key, created);
-      return created;
-    };
-
-    for (const row of severityRows) {
-      const snapshot = ensure(keyOf(row.coordinationId));
-      snapshot.activeProblemsCount += row.total;
-
-      switch (row.severity) {
-        case SituationSeverity.CRITICAL:
-          snapshot.criticalCount += row.total;
-          break;
-        case SituationSeverity.HIGH:
-          snapshot.highCount += row.total;
-          break;
-        case SituationSeverity.MEDIUM:
-          snapshot.mediumCount += row.total;
-          break;
-        case SituationSeverity.LOW:
-          snapshot.lowCount += row.total;
-          break;
-      }
-    }
-
-    for (const row of affectedRows) {
-      ensure(keyOf(row.coordinationId)).affectedCoordinationCount = row.total;
-    }
-
-    for (const row of incomingRows) {
-      const snapshot = ensure(row.affectedCoordinationId);
-      snapshot.incomingDependencyCount = row.total;
-      snapshot.incomingCriticalCount = row.criticalTotal;
-      snapshot.externalIncomingLowCount = row.externalLowTotal;
-      snapshot.externalIncomingMediumCount = row.externalMediumTotal;
-      snapshot.externalIncomingHighCount = row.externalHighTotal;
-      snapshot.externalIncomingCriticalCount = row.externalCriticalTotal;
-    }
-
-    return snapshots;
-  }
-
   private toCoordinationDto(
     coordination: Coordination,
     snapshot: CoordinationLifeSnapshot | undefined,
   ): CoordinationOverviewDto {
-    const resolved = snapshot ?? emptySnapshot();
+    const resolved = snapshot ?? emptyCoordinationLifeSnapshot();
     const evaluation = evaluateCoordinationIntegrity(resolved);
     this.logInconsistency(
       `coordination ${coordination.code}`,
@@ -235,7 +150,7 @@ export class OperationalOverviewService {
   private toAnalystRegistryDto(
     snapshot: CoordinationLifeSnapshot | undefined,
   ): AnalystRegistryOverviewDto {
-    const resolved = snapshot ?? emptySnapshot();
+    const resolved = snapshot ?? emptyCoordinationLifeSnapshot();
     const evaluation = evaluateAnalystRegistryIntegrity(resolved);
     this.logInconsistency(
       'analyst registry',

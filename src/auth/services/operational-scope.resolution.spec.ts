@@ -32,8 +32,6 @@ describe('OperationalScopeService · reportar y solucionar', () => {
   const CREATE = ['SITUATIONS_VIEW', 'SITUATIONS_CREATE'];
   const CLOSE = ['SITUATIONS_VIEW', 'SITUATIONS_CLOSE'];
 
-  const admin = actor({ roleCode: 'ADMIN', permissions: CREATE });
-  const director = actor({ roleCode: 'DIRECTOR', permissions: CREATE });
   const analista = actor({ roleCode: 'ANALISTA', permissions: CREATE });
   const coordinadorA = actor({
     roleCode: 'COORDINADOR',
@@ -41,14 +39,24 @@ describe('OperationalScopeService · reportar y solucionar', () => {
     permissions: CREATE,
   });
 
-  describe('crear: los cuatro roles reportan en otra coordinación', () => {
+  describe('crear: ANALISTA y COORDINADOR reportan; DIRECTOR/ADMIN no tienen CREATE de catálogo', () => {
     it.each([
-      ['ADMIN', admin],
-      ['DIRECTOR', director],
       ['ANALISTA', analista],
       ['COORDINADOR', coordinadorA],
     ])('%s conserva la coordinación seleccionada', (_label, who) => {
       expect(service.resolveCreateCoordinationId(who, AREA_B)).toBe(AREA_B);
+    });
+
+    it.each([
+      ['ADMIN', actor({ roleCode: 'ADMIN', permissions: ['SITUATIONS_VIEW'] })],
+      [
+        'DIRECTOR',
+        actor({ roleCode: 'DIRECTOR', permissions: ['SITUATIONS_VIEW'] }),
+      ],
+    ])('%s sin SITUATIONS_CREATE no reporta', (_label, who) => {
+      expect(() =>
+        service.resolveCreateCoordinationId(who, AREA_B),
+      ).toThrow(ForbiddenException);
     });
 
     it('el COORDINADOR también puede reportar en la suya', () => {
@@ -63,11 +71,8 @@ describe('OperationalScopeService · reportar y solucionar', () => {
       expect(service.resolveCreateCoordinationId(analista, AREA_B)).toBe(AREA_B);
     });
 
-    it('sin selección se conserva el contrato histórico de cada rol', () => {
-      // Consumidor existente: el asistente de captura registra a nombre del
-      // analista omitiendo la coordinación.
+    it('sin selección se conserva el contrato histórico de ANALISTA y COORDINADOR', () => {
       expect(service.resolveCreateCoordinationId(analista)).toBeNull();
-      expect(service.resolveCreateCoordinationId(admin)).toBeNull();
       expect(service.resolveCreateCoordinationId(coordinadorA)).toBe(AREA_A);
     });
 
@@ -337,19 +342,17 @@ describe('OperationalScopeService · reportar y solucionar', () => {
 
   describe('separación de reglas', () => {
     it('poder reportar en un área NO concede operarla', () => {
-      // El director reporta en AREA_A y, aun así, sigue sin poder intervenirla:
-      // la regla de creación no toca las de actualización ni resolución.
-      expect(service.resolveCreateCoordinationId(director, AREA_A)).toBe(
+      expect(service.resolveCreateCoordinationId(analista, AREA_A)).toBe(
         AREA_A,
       );
       expect(
-        service.canUpdateSituation(director, {
+        service.canUpdateSituation(analista, {
           coordinationId: AREA_A,
           createdByUserId: 'otro',
         }),
       ).toBe(false);
       expect(
-        service.canResolveSituation(director, {
+        service.canResolveSituation(analista, {
           coordinationId: AREA_A,
           createdByUserId: 'otro',
         }),

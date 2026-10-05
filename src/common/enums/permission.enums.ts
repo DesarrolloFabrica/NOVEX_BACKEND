@@ -5,6 +5,7 @@ export const PERMISSION_MODULES = [
   'SITUATIONS',
   'AI',
   'REPORTS',
+  'KPIS',
   'SYSTEM',
 ] as const;
 
