@@ -11,8 +11,10 @@ import { SituationAIAnalysisRecord } from '../../ai-orchestration/entities/situa
 import { SituationAnalysisSession } from '../../ai-analysis-sessions/entities/situation-analysis-session.entity';
 import {
   SituationSeverity,
+  SituationSeverityChangeSource,
   SituationStatus,
 } from '../../common/enums/situation.enums';
+import { SituationSeverityChange } from '../../situations/entities/situation-severity-change.entity';
 import { EvidenceType } from '../../common/enums/situation-evidence.enums';
 import {
   ImpactLevel,
@@ -583,6 +585,8 @@ export async function runSituationsMockSeed(
         assignedUserId: assignee?.id ?? null,
         categoryId: category.id,
         severity,
+        // Sin escalamiento: la efectiva nace igual a la reportada.
+        reportedSeverity: severity,
         status,
         lastStatusComment: isFinal
           ? 'Cierre simulado por seed mock local.'
@@ -599,6 +603,14 @@ export async function runSituationsMockSeed(
         updatedAt,
       }),
     );
+    await dataSource.getRepository(SituationSeverityChange).insert({
+      situationId: situation.id,
+      previousSeverity: null,
+      newSeverity: severity,
+      source: SituationSeverityChangeSource.REPORTED,
+      effectiveAt: createdAt,
+      actorUserId: creator.id,
+    });
     created += 1;
 
     const uniqueRelated =

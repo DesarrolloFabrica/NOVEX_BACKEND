@@ -1,8 +1,13 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import {
+  SituationReportKind,
+  SituationStatus,
+} from '../../common/enums/situation.enums';
 import { AuthPayload } from '../contracts/auth-payload.contract';
 
 /** Datos mínimos de una situación para decidir quién puede intervenirla. */
@@ -12,6 +17,19 @@ export interface SituationOwnership {
   affectedCoordinationId?: string | null;
   createdByUserId: string;
 }
+
+/** Lo que necesita la regla de afectaciones. */
+export interface SituationConsequenceTarget
+  extends Pick<SituationOwnership, 'coordinationId' | 'createdByUserId'> {
+  reportKind: SituationReportKind;
+  status: SituationStatus;
+}
+
+/** Estados en los que un problema todavía admite afectaciones. */
+export const CONSEQUENCE_OPEN_STATUSES: readonly SituationStatus[] = [
+  SituationStatus.OPEN,
+  SituationStatus.IN_PROGRESS,
+];
 
 /** Código del rol que coordina un área. */
 export const COORDINATOR_ROLE_CODE = 'COORDINADOR';
@@ -174,6 +192,116 @@ export class OperationalScopeService {
     }
 
     return null;
+  }
+
+  /**
+   * REGLA DE CREACIÓN DE UN PROBLEMA INTERNAL. Más estricta que la general
+   * (`resolveCreateCoordinationId`, que sigue rigiendo INTER):
+   *
+   *   - la coordinación responsable es OBLIGATORIA para todos los roles: ya no
+   *     existe el INTERNAL «sin área» del asistente legado;
+   *   - un actor acotado por coordinación (COORDINADOR) solo registra INTERNAL
+   *     en la SUYA. Para un problema que ocurre en otra área existe la
+   *     dependencia INTER; un INTERNAL ajeno quedaba fuera de su alcance y no
+   *     podía avanzarlo, cerrarlo ni registrarle afectaciones.
+   */
+  resolveInternalCreateCoordinationId(
+    actor: AuthPayload,
+    requestedCoordinationId?: string | null,
+  ): string {
+    this.assertPermission(actor, 'SITUATIONS_CREATE');
+
+    if (!requestedCoordinationId) {
+      throw new BadRequestException(
+        'Indique la coordinación del problema interno.',
+      );
+    }
+
+    if (
+      this.isCoordinationScoped(actor) &&
+      (!actor.coordinationId || requestedCoordinationId !== actor.coordinationId)
+    ) {
+      throw new ForbiddenException(
+        'Un coordinador solo registra problemas internos de su propia coordinación.',
+      );
+    }
+
+    return requestedCoordinationId;
+  }
+
+  /**
+   * REGLA DE AFECTACIONES: «quien reportó + quien gestiona». Política ÚNICA:
+   * la consumen `POST /situations/:id/consequences` y el indicador
+   * `canAddConsequence` del detalle.
+   *
+   *   ANALISTA     Solo en los problemas que ÉL registró.
+   *   COORDINADOR  Solo en los problemas cuya coordinación RESPONSABLE es la
+   *                suya.
+   *   DIRECTOR / ADMIN  Nunca (no tienen `SITUATIONS_UPDATE`; además no son
+   *                ninguno de los dos papeles).
+   *
+   * Siempre exige además un INTERNAL activo (OPEN o IN_PROGRESS): el cierre
+   * congela la historia operacional.
+   */
+  canAddConsequence(
+    actor: AuthPayload,
+    situation: SituationConsequenceTarget,
+  ): boolean {
+    if (!actor.permissions.includes('SITUATIONS_UPDATE')) {
+      return false;
+    }
+    if (situation.reportKind !== SituationReportKind.INTERNAL) {
+      return false;
+    }
+    if (!CONSEQUENCE_OPEN_STATUSES.includes(situation.status)) {
+      return false;
+    }
+    return this.isConsequenceParticipant(actor, situation);
+  }
+
+  /**
+   * Variante que lanza, para la ruta de escritura. El tipo de registro y el
+   * estado los valida antes el servicio (400 / 409); aquí solo queda quién.
+   */
+  assertCanAddConsequence(
+    actor: AuthPayload,
+    situation: SituationConsequenceTarget,
+  ): void {
+    this.assertPermission(actor, 'SITUATIONS_UPDATE');
+
+    if (this.isConsequenceParticipant(actor, situation)) {
+      return;
+    }
+
+    if (this.isAnalyst(actor)) {
+      throw new ForbiddenException(
+        'Solo puede registrar afectaciones en los problemas que usted reportó.',
+      );
+    }
+
+    throw new ForbiddenException(
+      'Solo el coordinador de la coordinación responsable puede registrar afectaciones en este problema.',
+    );
+  }
+
+  private isConsequenceParticipant(
+    actor: AuthPayload,
+    situation: Pick<SituationOwnership, 'coordinationId' | 'createdByUserId'>,
+  ): boolean {
+    const role = this.normalizeRoleCode(actor.roleCode);
+
+    if (role === ANALYST_ROLE_CODE) {
+      return situation.createdByUserId === actor.sub;
+    }
+
+    if (role === COORDINATOR_ROLE_CODE) {
+      return (
+        Boolean(actor.coordinationId) &&
+        situation.coordinationId === actor.coordinationId
+      );
+    }
+
+    return false;
   }
 
   /**

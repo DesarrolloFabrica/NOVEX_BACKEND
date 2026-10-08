@@ -87,6 +87,8 @@ function buildService(
     periodRepository as never,
     relationsRepository as never,
     categoriesRepository as never,
+    {} as never,
+    {} as never,
   );
 }
 
@@ -160,9 +162,11 @@ describe('OperationalKpiService', () => {
     coordinationsRepository = {
       findCatalog: jest.fn().mockResolvedValue(catalog),
       findActiveById: jest.fn().mockResolvedValue(catalog[0]),
-      findActiveByIds: jest.fn().mockImplementation(async (ids: string[]) =>
-        catalog.filter((item) => ids.includes(item.id)),
-      ),
+      findActiveByIds: jest
+        .fn()
+        .mockImplementation(async (ids: string[]) =>
+          catalog.filter((item) => ids.includes(item.id)),
+        ),
     };
     overviewRepository = {
       aggregateActiveSituationsBySeverity: jest.fn().mockResolvedValue([]),
@@ -211,7 +215,11 @@ describe('OperationalKpiService', () => {
 
   it('coordination: 2 OPEN, 3 IN_PROGRESS y desglose de severidad', async () => {
     const severityRows: ActiveSeverityRow[] = [
-      { coordinationId: AREA_A, severity: SituationSeverity.CRITICAL, total: 1 },
+      {
+        coordinationId: AREA_A,
+        severity: SituationSeverity.CRITICAL,
+        total: 1,
+      },
       { coordinationId: AREA_A, severity: SituationSeverity.HIGH, total: 2 },
       { coordinationId: AREA_A, severity: SituationSeverity.MEDIUM, total: 1 },
       { coordinationId: AREA_A, severity: SituationSeverity.LOW, total: 1 },
@@ -376,9 +384,11 @@ describe('OperationalKpiService.compare', () => {
     coordinationsRepository = {
       findCatalog: jest.fn().mockResolvedValue(catalog),
       findActiveById: jest.fn(),
-      findActiveByIds: jest.fn().mockImplementation(async (ids: string[]) =>
-        catalog.filter((item) => ids.includes(item.id)),
-      ),
+      findActiveByIds: jest
+        .fn()
+        .mockImplementation(async (ids: string[]) =>
+          catalog.filter((item) => ids.includes(item.id)),
+        ),
     };
     overviewRepository = {
       aggregateActiveSituationsBySeverity: jest.fn().mockResolvedValue([]),
@@ -400,7 +410,11 @@ describe('OperationalKpiService.compare', () => {
 
   it('A + B preserva orden, identidad y conteos', async () => {
     overviewRepository.aggregateActiveSituationsBySeverity.mockResolvedValue([
-      { coordinationId: AREA_A, severity: SituationSeverity.CRITICAL, total: 1 },
+      {
+        coordinationId: AREA_A,
+        severity: SituationSeverity.CRITICAL,
+        total: 1,
+      },
       { coordinationId: AREA_A, severity: SituationSeverity.HIGH, total: 2 },
       { coordinationId: AREA_B, severity: SituationSeverity.LOW, total: 3 },
     ]);

@@ -14,16 +14,21 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import {
+  CreateSituationConsequenceDto,
   ListSituationsQueryDto,
   ResolveSituationDto,
   UpdateSituationDto,
 } from './dto/situation.dto';
+import { SituationConsequencesService } from './situation-consequences.service';
 import { SituationsService } from './situations.service';
 
 @Controller('situations')
 @UseGuards(PermissionsGuard)
 export class SituationsController {
-  constructor(private readonly situationsService: SituationsService) {}
+  constructor(
+    private readonly situationsService: SituationsService,
+    private readonly consequencesService: SituationConsequencesService,
+  ) {}
 
   @Get('categories')
   @RequirePermissions('SITUATIONS_VIEW')
@@ -78,5 +83,21 @@ export class SituationsController {
     @CurrentUser() user: AuthPayload,
   ) {
     return this.situationsService.resolve(id, dto, user);
+  }
+
+  /**
+   * AGREGAR UNA AFECTACIÓN a un problema INTERNAL activo. Append-only: no hay
+   * PATCH ni DELETE. `SITUATIONS_UPDATE` es el primer filtro; el servicio exige
+   * además la política `canAddConsequence` (autor ANALISTA o coordinador
+   * responsable) contra la situación persistida y bloqueada.
+   */
+  @Post(':id/consequences')
+  @RequirePermissions('SITUATIONS_UPDATE')
+  addConsequence(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateSituationConsequenceDto,
+    @CurrentUser() user: AuthPayload,
+  ) {
+    return this.consequencesService.addConsequence(id, dto, user);
   }
 }

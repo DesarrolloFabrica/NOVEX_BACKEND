@@ -18,6 +18,7 @@ import { DashboardController } from '../../src/dashboard/dashboard.controller';
 import { DashboardService } from '../../src/dashboard/dashboard.service';
 import { SituationsController } from '../../src/situations/situations.controller';
 import { SituationsService } from '../../src/situations/situations.service';
+import { SituationConsequencesService } from '../../src/situations/situation-consequences.service';
 import { UsersController } from '../../src/users/users.controller';
 import { UsersService } from '../../src/users/users.service';
 import { RbacService } from '../../src/rbac/rbac.service';
@@ -77,6 +78,7 @@ describe('Phase 2 global authentication (private by default)', () => {
             getMe: jest.fn().mockResolvedValue({ id: 'user-1' }),
           },
         },
+        { provide: SituationConsequencesService, useValue: { addConsequence: jest.fn() } },
         {
           provide: SituationsService,
           useValue: {

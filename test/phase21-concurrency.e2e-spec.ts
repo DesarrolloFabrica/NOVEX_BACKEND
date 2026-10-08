@@ -118,6 +118,7 @@ describe('Fase 2.1 · resolución concurrente contra Nest real', () => {
       .send({
         title: 'Problema para la carrera',
         description: 'Descripción suficiente para la prueba de concurrencia.',
+        reportKind: 'INTERNAL',
         coordinationId: areaId,
         categoryId: categoriaId,
         severity: 'HIGH',

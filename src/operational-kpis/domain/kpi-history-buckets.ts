@@ -37,6 +37,14 @@ export type KpiHistoryBucket = {
   endExclusiveIso: string;
   /** Fin inclusive 23:59:59.999 Bogotá como instante UTC. */
   endInclusiveIso: string;
+  /**
+   * Unidad de calendario completa a la que pertenece el bucket (día, semana
+   * lun–dom o mes). Puede exceder [start, end] cuando el bucket está recortado
+   * al periodo: «1–4 oct» pertenece a la semana 28 sep – 4 oct. Solo en los
+   * buckets de ESTADO (drill-down).
+   */
+  calendarStart?: string;
+  calendarEnd?: string;
 };
 
 function pad2(value: number): string {
@@ -180,10 +188,7 @@ function cycleBounds(
   };
 }
 
-function nextCycle(
-  year: number,
-  half: 1 | 2,
-): { year: number; half: 1 | 2 } {
+function nextCycle(year: number, half: 1 | 2): { year: number; half: 1 | 2 } {
   return half === 1 ? { year, half: 2 } : { year: year + 1, half: 1 };
 }
 
@@ -235,11 +240,7 @@ export function buildKpiHistoryBuckets(
       (year === end.year && monthIndex <= end.monthIndex)
     ) {
       const start = formatYmd(year, monthIndex, 1);
-      const endDay = formatYmd(
-        year,
-        monthIndex,
-        daysInMonth(year, monthIndex),
-      );
+      const endDay = formatYmd(year, monthIndex, daysInMonth(year, monthIndex));
       buckets.push(toBucket(start, endDay, monthLabel(year, monthIndex)));
       if (buckets.length > max) {
         throw new BadRequestException(

@@ -1,7 +1,17 @@
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { UserStatus } from '../../src/common/enums/identity.enums';
-import { SituationStatus } from '../../src/common/enums/situation.enums';
+import {
+  SituationReportKind,
+  SituationSeverity,
+  SituationStatus,
+} from '../../src/common/enums/situation.enums';
+import {
+  createManagerMock,
+  emptyDetailRepositories,
+  inertEscalationService,
+  transactionalManager,
+} from '../../src/situations/testing/situations-service.test-kit-spec';
 import type { AuthPayload } from '../../src/auth/contracts/auth-payload.contract';
 import {
   AuditAction,
@@ -73,9 +83,14 @@ describe('Institutional audit trail', () => {
 
   it('registra SITUATION_CREATED al crear situación', async () => {
     const auditLogService = { record: jest.fn().mockResolvedValue(null) };
+    const manager = createManagerMock();
+    // El alta corre en una transacción: la situación sale de `manager.save`.
+    manager.save.mockImplementation(async (_entity: unknown, data: object) => ({
+      ...data,
+      id: 'sit-new',
+    }));
     const situationsRepository = {
-      create: jest.fn((input: unknown) => input),
-      save: jest.fn().mockResolvedValue({ id: 'sit-new' }),
+      manager: transactionalManager(manager),
       findByIdWithRelations: jest.fn().mockResolvedValue({
         id: 'sit-new',
         status: SituationStatus.OPEN,
@@ -97,31 +112,43 @@ describe('Institutional audit trail', () => {
       }),
     };
 
+    const detail = emptyDetailRepositories();
     const service = new SituationsService(
       situationsRepository as never,
       {
         findOne: jest.fn().mockResolvedValue({ id: 'coord-1', isActive: true }),
       } as never,
-      { findOne: jest.fn().mockResolvedValue({ id: 'cat-1' }) } as never,
+      {
+        findOne: jest
+          .fn()
+          .mockResolvedValue({ id: 'cat-1', isSelectable: true }),
+      } as never,
       {} as never,
       { create: jest.fn((input: unknown) => input) } as never,
       // Repositorio de resoluciones: inerte, este caso no cierra nada.
       {} as never,
+      detail.severityChangesRepository as never,
+      detail.consequencesRepository as never,
       { createEntry: jest.fn() } as never,
       {
-        resolveCreateCoordinationId: jest.fn().mockReturnValue('coord-1'),
+        resolveInternalCreateCoordinationId: jest.fn().mockReturnValue('coord-1'),
         // `toResponse` consulta la política de resolución para `canResolve`.
         canResolveSituation: jest.fn().mockReturnValue(false),
+        canAdvanceSituationToInProgress: jest.fn().mockReturnValue(false),
+        canUpdateSituation: jest.fn().mockReturnValue(false),
+        canAddConsequence: jest.fn().mockReturnValue(false),
       } as never,
       auditLogService as never,
+      inertEscalationService() as never,
     );
 
     await service.create(
       {
         title: 'Incidente',
         description: 'Desc',
+        reportKind: SituationReportKind.INTERNAL,
         categoryId: 'cat-1',
-        severity: 'HIGH',
+        severity: SituationSeverity.HIGH,
         occurredAt: '2026-08-10T10:00:00.000Z',
         coordinationId: 'coord-1',
       },
@@ -173,23 +200,32 @@ describe('Institutional audit trail', () => {
         .mockResolvedValue({ id: actor.sub, fullName: 'Actor' }),
     };
 
+    const detail = emptyDetailRepositories();
     const service = new SituationsService(
       situationsRepository as never,
-      {} as never,
+      // Coordinación General: el avance OPEN → IN_PROGRESS la consulta.
+      { findOne: jest.fn().mockResolvedValue(null) } as never,
       {} as never,
       usersRepository as never,
       {} as never,
       // Repositorio de resoluciones: inerte, este caso no cierra nada.
       {} as never,
+      detail.severityChangesRepository as never,
+      detail.consequencesRepository as never,
       { createEntry: jest.fn().mockResolvedValue({}) } as never,
       {
         assertCanUpdateSituation: jest.fn(),
+        assertCanAdvanceSituationToInProgress: jest.fn(),
         assertSituationInScope: jest.fn(),
         isCoordinationScoped: jest.fn().mockReturnValue(false),
         canResolveSituation: jest.fn().mockReturnValue(false),
+        canAdvanceSituationToInProgress: jest.fn().mockReturnValue(false),
+        canUpdateSituation: jest.fn().mockReturnValue(false),
+        canAddConsequence: jest.fn().mockReturnValue(false),
         assertSituationReadable: jest.fn(),
       } as never,
       auditLogService as never,
+      inertEscalationService() as never,
     );
 
     await service.update(

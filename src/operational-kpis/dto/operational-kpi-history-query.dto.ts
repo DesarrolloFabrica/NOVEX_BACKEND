@@ -6,6 +6,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { OperationalKpiScopeType } from './operational-kpi-query.dto';
+import { OperationalKpiEstadoPeriodKind } from './operational-kpi-state-query.dto';
 
 export enum OperationalKpiHistoryMetric {
   BACKLOG = 'backlog',
@@ -35,6 +36,12 @@ const YMD = /^\d{4}-\d{2}-\d{2}$/;
  *
  * `partnerCoordinationId` + `dependencySide`: filtra INTER con esa pareja
  * (excluye categoryId).
+ *
+ * Dos modos temporales (exactamente uno):
+ * - `kind` (+ `calendarEnd`): periodo de análisis explícito, mismo contrato
+ *   que /state. Buckets automáticos week→day, month→week, cycle→month,
+ *   recortados al periodo y a hoy.
+ * - `granularity` (legacy): buckets calendario completos.
  */
 export class OperationalKpiHistoryQueryDto {
   @IsEnum(OperationalKpiScopeType)
@@ -50,14 +57,24 @@ export class OperationalKpiHistoryQueryDto {
   @IsEnum(OperationalKpiHistoryMetric)
   metric!: OperationalKpiHistoryMetric;
 
+  @ValidateIf((dto: OperationalKpiHistoryQueryDto) => dto.kind == null)
   @IsEnum(OperationalKpiHistoryGranularity)
-  granularity!: OperationalKpiHistoryGranularity;
+  granularity?: OperationalKpiHistoryGranularity;
+
+  @IsOptional()
+  @IsEnum(OperationalKpiEstadoPeriodKind)
+  kind?: OperationalKpiEstadoPeriodKind;
 
   @Matches(YMD, { message: 'from debe ser YYYY-MM-DD' })
   from!: string;
 
   @Matches(YMD, { message: 'to debe ser YYYY-MM-DD' })
   to!: string;
+
+  /** Solo con `kind`: fin calendario del periodo (default = to). */
+  @ValidateIf((dto: OperationalKpiHistoryQueryDto) => dto.calendarEnd != null)
+  @Matches(YMD, { message: 'calendarEnd debe ser YYYY-MM-DD' })
+  calendarEnd?: string;
 
   @IsOptional()
   @IsUUID('4')
@@ -67,9 +84,8 @@ export class OperationalKpiHistoryQueryDto {
   @IsUUID('4')
   partnerCoordinationId?: string;
 
-  @ValidateIf(
-    (dto: OperationalKpiHistoryQueryDto) =>
-      Boolean(dto.partnerCoordinationId),
+  @ValidateIf((dto: OperationalKpiHistoryQueryDto) =>
+    Boolean(dto.partnerCoordinationId),
   )
   @IsEnum(OperationalKpiDependencySide)
   dependencySide?: OperationalKpiDependencySide;

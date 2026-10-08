@@ -71,12 +71,16 @@ export class SituationTimelineSubscriber implements EntitySubscriberInterface<Si
       userId: null,
     };
 
-    // Las transiciones de estado las registra SituationsService (actor,
-    // comentario y metadata). Evitar duplicados / ruido en el subscriber.
-    if (before.status !== after.status) {
-      return entries;
-    }
-
+    /*
+     * La TRANSICIÓN de estado la registra SituationsService (actor, comentario,
+     * metadata); aquí nunca se emite un evento de estado. Pero un cambio de
+     * estado ya no corta el resto: antes, un PATCH que cambiaba estado + otro
+     * campo perdía ese otro cambio del timeline.
+     *
+     * SEVERITY_CHANGED queda como rastro defensivo: ningún flujo cambia hoy la
+     * severidad con `save()` (el PATCH ya no la acepta y el escalamiento
+     * escribe sin listeners con su propio SEVERITY_ESCALATED).
+     */
     if (before.severity !== after.severity) {
       entries.push({
         ...base,

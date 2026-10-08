@@ -54,6 +54,9 @@ import {
   OperationalKpiResponseDto,
 } from './dto/operational-kpi.dto';
 import { OPERATIONAL_KPI_QUERY_BUDGET } from './operational-kpi.constants';
+import { OperationalKpiAgingRepository } from './operational-kpi-aging.repository';
+import { OperationalKpiSnapshotRepository } from './operational-kpi-snapshot.repository';
+import { OperationalKpiResolutionRepository } from './operational-kpi-resolution.repository';
 import { OperationalKpiBreakdownRepository } from './operational-kpi-breakdown.repository';
 import { OperationalKpiPeriodRepository } from './operational-kpi-period.repository';
 import { OperationalKpiRelationsRepository } from './operational-kpi-relations.repository';
@@ -70,22 +73,25 @@ import { OperationalKpiPeriodQueryDto } from './dto/operational-kpi-period-query
 import { OperationalKpiPeriodResponseDto } from './dto/operational-kpi-period.dto';
 import { OperationalKpiRelationsQueryDto } from './dto/operational-kpi-relations-query.dto';
 import { OperationalKpiRelationsResponseDto } from './dto/operational-kpi-relations.dto';
-import { OperationalKpiHistoryResponseDto } from './dto/operational-kpi-history.dto';
+import {
+  OperationalKpiHistoryPeriodDto,
+  OperationalKpiHistoryResponseDto,
+} from './dto/operational-kpi-history.dto';
 import {
   OperationalKpiBreakdownDimension,
   OperationalKpiBreakdownQueryDto,
 } from './dto/operational-kpi-breakdown-query.dto';
 import { OperationalKpiBreakdownResponseDto } from './dto/operational-kpi-breakdown.dto';
-import {
-  OperationalKpiEstadoPeriodKind,
-  OperationalKpiStateQueryDto,
-} from './dto/operational-kpi-state-query.dto';
+import { OperationalKpiStateQueryDto } from './dto/operational-kpi-state-query.dto';
 import { OperationalKpiStateResponseDto } from './dto/operational-kpi-state.dto';
 import { buildCurrentAnalysisPeriod } from './domain/kpi-analysis-period';
 import {
+  assertEstadoPeriodShape,
   bogotaDayEndExclusiveIso,
   bogotaDayStartIso,
   buildEstadoEvolutionBuckets,
+  buildEstadoFlowSlots,
+  ESTADO_EVOLUTION_BUCKET,
   resolveEstadoDataWindow,
   type EstadoPeriodKind,
 } from './domain/kpi-estado-evolution-buckets';
@@ -93,8 +99,12 @@ import {
   buildKpiHistoryBuckets,
   KPI_HISTORY_TIMEZONE,
   parseYmd,
+  type KpiHistoryBucket,
 } from './domain/kpi-history-buckets';
 import { isUncategorizedCategoryId } from './domain/kpi-uncategorized-category';
+import { buildEstadoAging } from './domain/kpi-estado-aging';
+import { buildEstadoSnapshot } from './domain/kpi-estado-snapshot';
+import { buildEstadoResolution } from './domain/kpi-estado-resolution';
 
 export { OPERATIONAL_KPI_QUERY_BUDGET };
 
@@ -120,6 +130,9 @@ export class OperationalKpiService {
     private readonly relationsRepository: OperationalKpiRelationsRepository,
     @InjectRepository(IncidentCategory)
     private readonly categoriesRepository: Repository<IncidentCategory>,
+    private readonly agingRepository: OperationalKpiAgingRepository,
+    private readonly snapshotRepository: OperationalKpiSnapshotRepository,
+    private readonly resolutionRepository: OperationalKpiResolutionRepository,
   ) {}
 
   async getSnapshot(
@@ -210,9 +223,7 @@ export class OperationalKpiService {
       );
     }
     if (!query.coordinationId) {
-      throw new BadRequestException(
-        'scope=coordination exige coordinationId.',
-      );
+      throw new BadRequestException('scope=coordination exige coordinationId.');
     }
 
     const coordination = await this.coordinationsRepository.findActiveById(
@@ -229,11 +240,8 @@ export class OperationalKpiService {
       coordination.id,
     );
 
-    const buckets = buildKpiHistoryBuckets(
-      query.granularity,
-      query.from,
-      query.to,
-    );
+    const temporal = this.resolveHistoryBuckets(query);
+    const buckets = temporal.buckets;
 
     const counts =
       query.metric === OperationalKpiHistoryMetric.BACKLOG
@@ -255,8 +263,10 @@ export class OperationalKpiService {
         coordinationId: coordination.id,
       },
       metric: query.metric,
-      granularity: query.granularity,
-      range: { from: query.from, to: query.to },
+      ...(temporal.period
+        ? { period: temporal.period }
+        : { granularity: query.granularity }),
+      range: { from: query.from, to: temporal.period?.dataTo ?? query.to },
       timezone: KPI_HISTORY_TIMEZONE,
       ...(query.categoryId ? { categoryId: query.categoryId } : {}),
       series: buckets.map((bucket) => ({
@@ -285,9 +295,7 @@ export class OperationalKpiService {
       );
     }
     if (!query.coordinationId) {
-      throw new BadRequestException(
-        'scope=coordination exige coordinationId.',
-      );
+      throw new BadRequestException('scope=coordination exige coordinationId.');
     }
     if (query.dimension !== OperationalKpiBreakdownDimension.CATEGORY) {
       throw new BadRequestException(
@@ -457,17 +465,15 @@ export class OperationalKpiService {
       'state',
     );
 
-    parseYmd(query.from);
-    parseYmd(query.to);
-    if (query.from > query.to) {
-      throw new BadRequestException('from no puede ser posterior a to.');
-    }
-    if (query.calendarEnd) {
-      parseYmd(query.calendarEnd);
-    }
-
     const today = this.bogotaTodayYmd();
     const calendarEnd = query.calendarEnd ?? query.to;
+    assertEstadoPeriodShape(
+      query.kind,
+      query.from,
+      query.to,
+      calendarEnd,
+      today,
+    );
     const window = resolveEstadoDataWindow(
       query.from,
       query.to,
@@ -479,44 +485,112 @@ export class OperationalKpiService {
     const kind = query.kind as EstadoPeriodKind;
 
     const buckets = buildEstadoEvolutionBuckets(kind, dataFrom, dataTo);
-    const evolutionBucket =
-      kind === OperationalKpiEstadoPeriodKind.WEEK
-        ? 'day'
-        : kind === OperationalKpiEstadoPeriodKind.MONTH
-          ? 'week'
-          : 'month';
+    const flowSlots = buildEstadoFlowSlots(
+      kind,
+      dataFrom,
+      calendarEnd,
+      dataTo,
+      today,
+    );
+    const evolutionBucket = ESTADO_EVOLUTION_BUCKET[kind];
 
-    const [composition, commitments, dependencies, backlog, created, closed] =
-      await Promise.all([
-        this.periodRepository.aggregateComposition(
-          coordination.id,
-          bogotaDayStartIso(dataFrom),
-          bogotaDayEndExclusiveIso(dataTo),
-        ),
-        this.relationsRepository.aggregateCommitments(
-          coordination.id,
-          OperationalKpiHistoryMetric.CREATED,
-          dataFrom,
-          dataTo,
-        ),
-        this.relationsRepository.aggregateDependencies(
-          coordination.id,
-          OperationalKpiHistoryMetric.CREATED,
-          dataFrom,
-          dataTo,
-        ),
-        this.historyRepository.aggregateBacklog(coordination.id, buckets),
-        this.historyRepository.aggregateEventMetric(
-          coordination.id,
-          OperationalKpiHistoryMetric.CREATED,
-          buckets,
-        ),
-        this.historyRepository.aggregateEventMetric(
-          coordination.id,
-          OperationalKpiHistoryMetric.CLOSED,
-          buckets,
-        ),
-      ]);
+    const [
+      commitments,
+      dependencies,
+      backlog,
+      created,
+      closed,
+      activeByKind,
+      activeByCategory,
+      activeByCoordination,
+      agingSummary,
+      agingOldest,
+      snapshotComposition,
+      resolutionByBucket,
+      resolutionSummary,
+    ] = await Promise.all([
+      this.relationsRepository.aggregateCommitments(
+        coordination.id,
+        OperationalKpiHistoryMetric.CREATED,
+        dataFrom,
+        dataTo,
+      ),
+      this.relationsRepository.aggregateDependencies(
+        coordination.id,
+        OperationalKpiHistoryMetric.CREATED,
+        dataFrom,
+        dataTo,
+      ),
+      this.historyRepository.aggregateBacklog(coordination.id, buckets),
+      this.historyRepository.aggregateEventMetric(
+        coordination.id,
+        OperationalKpiHistoryMetric.CREATED,
+        buckets,
+      ),
+      this.historyRepository.aggregateEventMetric(
+        coordination.id,
+        OperationalKpiHistoryMetric.CLOSED,
+        buckets,
+      ),
+      // Carga activa (stock): 3 agregaciones para todos los buckets.
+      this.historyRepository.aggregateActiveByKind(coordination.id, buckets),
+      this.historyRepository.aggregateActiveInternalByCategory(
+        coordination.id,
+        buckets,
+      ),
+      this.historyRepository.aggregateActiveExternalByCoordination(
+        coordination.id,
+        buckets,
+      ),
+      // Antigüedad: mismo corte que activeAtPeriodEnd (fin exclusivo de dataTo).
+      // Antigüedad, Severidad y Atención: misma población ACTIVE_AT_CUT y mismo corte.
+      this.agingRepository.aggregateSummary(coordination.id, dataTo),
+      this.agingRepository.findOldest(coordination.id, dataTo),
+      this.snapshotRepository.aggregateComposition(coordination.id, dataTo),
+      // Resolución: mismo universo y mismos buckets que «Solucionados» (closed).
+      this.resolutionRepository.aggregateByBucket(coordination.id, buckets),
+      this.resolutionRepository.aggregateSummary(
+        coordination.id,
+        dataFrom,
+        dataTo,
+      ),
+    ]);
+
+    const byName = (
+      a: { count: number; name: string },
+      b: { count: number; name: string },
+    ) => b.count - a.count || a.name.localeCompare(b.name, 'es');
+    const categoriesAt = (key: string) =>
+      activeByCategory
+        .filter((row) => row.key === key)
+        .map((row) => ({
+          categoryId: row.categoryId,
+          categoryCode: row.categoryCode,
+          categoryName: row.categoryName,
+          selectable: row.selectable,
+          count: row.count,
+        }))
+        .sort((a, b) =>
+          byName(
+            { count: a.count, name: a.categoryName },
+            { count: b.count, name: b.categoryName },
+          ),
+        );
+    const coordinationsAt = (key: string) =>
+      activeByCoordination
+        .filter((row) => row.key === key)
+        .map((row) => ({
+          coordinationId: row.coordinationId,
+          coordinationCode: row.coordinationCode,
+          coordinationName: row.coordinationName,
+          count: row.count,
+        }))
+        .sort((a, b) =>
+          byName(
+            { count: a.count, name: a.coordinationName },
+            { count: b.count, name: b.coordinationName },
+          ),
+        );
 
     const sum = (rows: Array<{ value: number }>) =>
       rows.reduce((acc, row) => acc + row.value, 0);
@@ -545,20 +619,70 @@ export class OperationalKpiService {
         isPartial: window.isPartial,
         dataTo,
       },
-      severity: composition.severity,
-      attention: composition.attention,
       relations: {
         dependencies: sum(dependencies),
         commitments: sum(commitments),
       },
-      registeredCount: composition.registeredCount,
-      severitySemantics: 'current-severity-of-period-registrations',
       evolution: {
         bucket: evolutionBucket,
         backlog: toSeries(backlog),
         created: toSeries(created),
         closed: toSeries(closed),
+        buckets: flowSlots.map((slot) => ({
+          start: slot.bucket.start,
+          end: slot.bucket.end,
+          dataEnd: slot.dataEnd,
+          calendarStart: slot.bucket.calendarStart ?? slot.bucket.start,
+          calendarEnd: slot.bucket.calendarEnd ?? slot.bucket.end,
+          label: slot.bucket.label,
+          current: slot.current,
+          future: slot.future,
+          created: slot.dataEnd ? (created.get(slot.dataEnd) ?? 0) : null,
+          closed: slot.dataEnd ? (closed.get(slot.dataEnd) ?? 0) : null,
+          backlog: slot.dataEnd ? (backlog.get(slot.dataEnd) ?? 0) : null,
+          active: slot.dataEnd
+            ? (() => {
+                const kinds = activeByKind.get(slot.dataEnd) ?? {
+                  internal: 0,
+                  external: 0,
+                };
+                return {
+                  total: kinds.internal + kinds.external,
+                  internal: kinds.internal,
+                  external: kinds.external,
+                  internalBreakdown: categoriesAt(slot.dataEnd),
+                  externalBreakdown: coordinationsAt(slot.dataEnd),
+                };
+              })()
+            : null,
+          // Mismo universo que closed: coordination_id = X, cualquier tipo.
+          solved: slot.dataEnd
+            ? { total: closed.get(slot.dataEnd) ?? 0 }
+            : null,
+        })),
       },
+      // Mismo corte que el último bucket de backlog (fin de dataTo): sin query extra.
+      activeAtPeriodEnd: {
+        count: backlog.get(dataTo) ?? 0,
+        at: dataTo,
+        isNow: window.isCurrent,
+      },
+      aging: buildEstadoAging({
+        at: dataTo,
+        isNow: window.isCurrent,
+        summary: agingSummary,
+        oldest: agingOldest,
+      }),
+      snapshot: buildEstadoSnapshot({
+        at: dataTo,
+        isNow: window.isCurrent,
+        composition: snapshotComposition,
+      }),
+      resolution: buildEstadoResolution({
+        slots: flowSlots,
+        byBucket: resolutionByBucket,
+        summary: resolutionSummary,
+      }),
     };
   }
 
@@ -573,9 +697,7 @@ export class OperationalKpiService {
       );
     }
     if (!coordinationId) {
-      throw new BadRequestException(
-        'scope=coordination exige coordinationId.',
-      );
+      throw new BadRequestException('scope=coordination exige coordinationId.');
     }
     const coordination =
       await this.coordinationsRepository.findActiveById(coordinationId);
@@ -612,9 +734,7 @@ export class OperationalKpiService {
       );
     }
     if (!query.coordinationId) {
-      throw new BadRequestException(
-        'scope=coordination exige coordinationId.',
-      );
+      throw new BadRequestException('scope=coordination exige coordinationId.');
     }
     parseYmd(query.from);
     parseYmd(query.to);
@@ -675,6 +795,57 @@ export class OperationalKpiService {
     };
   }
 
+  /**
+   * Buckets de /history. Con `kind` reutiliza exactamente el contrato
+   * temporal de /state (validación de geometría + buckets automáticos).
+   */
+  private resolveHistoryBuckets(query: OperationalKpiHistoryQueryDto): {
+    buckets: KpiHistoryBucket[];
+    period?: OperationalKpiHistoryPeriodDto;
+  } {
+    if (query.kind && query.granularity) {
+      throw new BadRequestException(
+        'Usa kind (periodo de análisis) o granularity (legacy), no ambos.',
+      );
+    }
+    if (query.kind) {
+      const today = this.bogotaTodayYmd();
+      const calendarEnd = query.calendarEnd ?? query.to;
+      assertEstadoPeriodShape(
+        query.kind,
+        query.from,
+        query.to,
+        calendarEnd,
+        today,
+      );
+      const { dataTo } = resolveEstadoDataWindow(
+        query.from,
+        query.to,
+        calendarEnd,
+        today,
+      );
+      return {
+        buckets: buildEstadoEvolutionBuckets(query.kind, query.from, dataTo),
+        period: {
+          kind: query.kind,
+          from: query.from,
+          dataTo,
+          calendarEnd,
+          bucket: ESTADO_EVOLUTION_BUCKET[query.kind],
+        },
+      };
+    }
+    if (!query.granularity) {
+      throw new BadRequestException('Exige kind o granularity.');
+    }
+    if (query.calendarEnd) {
+      throw new BadRequestException('calendarEnd solo aplica con kind.');
+    }
+    return {
+      buckets: buildKpiHistoryBuckets(query.granularity, query.from, query.to),
+    };
+  }
+
   private async resolveHistorySeriesFilter(
     query: OperationalKpiHistoryQueryDto,
     ownerCoordinationId: string,
@@ -728,7 +899,9 @@ export class OperationalKpiService {
       where: { id: query.categoryId },
     });
     if (!category) {
-      throw new NotFoundException(`Categoría no encontrada: ${query.categoryId}`);
+      throw new NotFoundException(
+        `Categoría no encontrada: ${query.categoryId}`,
+      );
     }
     return {
       reportKind: SituationReportKind.INTERNAL,

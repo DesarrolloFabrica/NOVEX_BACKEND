@@ -98,12 +98,44 @@ export class Situation extends BaseEntity {
   @Column({ type: 'uuid', name: 'category_id', nullable: true })
   categoryId!: string | null;
 
+  /**
+   * Severidad EFECTIVA: el nivel operacional actual. Es la caché de la última
+   * fila de `situation_severity_changes` y la leen listas, overview, integridad
+   * y KPI. Solo la cambia el escalamiento del sistema; el PATCH ya no la acepta.
+   */
   @Index()
   @Column({
     type: 'enum',
     enum: SituationSeverity,
   })
   severity!: SituationSeverity;
+
+  /**
+   * Severidad REPORTADA: la evaluación de quien registró el problema.
+   * Inmutable. Es la ÚNICA entrada del SLA (`due_at`, ventana de aviso,
+   * `slaHealth`, `closedOnTime`): el plazo es la promesa original y no se
+   * reescribe cuando la urgencia cambia.
+   */
+  @Column({
+    type: 'enum',
+    enum: SituationSeverity,
+    enumName: 'situations_severity_enum',
+    name: 'reported_severity',
+  })
+  reportedSeverity!: SituationSeverity;
+
+  /**
+   * Política de escalamiento temporal congelada al crear el caso. NULO = el
+   * caso no escala automáticamente. Hoy siempre es nulo: no hay política
+   * aprobada (solo fixtures de test usan una).
+   */
+  @Column({
+    type: 'varchar',
+    length: 40,
+    name: 'severity_escalation_policy_code',
+    nullable: true,
+  })
+  severityEscalationPolicyCode!: string | null;
 
   @Index()
   @Column({

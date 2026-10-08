@@ -63,6 +63,9 @@ describe('SituationsService · resolver con aprendizaje', () => {
       categoryId: 'cat-1',
       category: { code: 'TECH', name: 'Técnica', icon: 'x' },
       severity: SituationSeverity.HIGH,
+      reportedSeverity: SituationSeverity.HIGH,
+      severityEscalationPolicyCode: null,
+      reportKind: 'INTERNAL',
       status: SituationStatus.OPEN,
       lastStatusComment: null,
       resolvedAt: null,
@@ -169,6 +172,21 @@ describe('SituationsService · resolver con aprendizaje', () => {
       }),
     };
 
+    const escalationService = {
+      materializeDueEscalations: jest.fn(
+        (input: { situation: Situation; now: Date }) => {
+          // Se invoca ANTES del cierre: el estado todavía es el activo.
+          escalationCalls.push({
+            status: input.situation.status,
+            now: input.now,
+          });
+          return Promise.resolve([]);
+        },
+      ),
+      recordAudit: jest.fn().mockResolvedValue(undefined),
+    };
+    const escalationCalls: Array<{ status: SituationStatus; now: Date }> = [];
+
     const service = new SituationsService(
       situationsRepository as never,
       coordinationsRepository as never,
@@ -176,10 +194,13 @@ describe('SituationsService · resolver con aprendizaje', () => {
       { findOne: jest.fn() } as never,
       { create: jest.fn() } as never,
       { create: jest.fn() } as never,
+      { find: jest.fn().mockResolvedValue([]) } as never,
+      { find: jest.fn().mockResolvedValue([]) } as never,
       timelineService as never,
       // POLÍTICA REAL.
       new OperationalScopeService() as never,
       auditLogService as never,
+      escalationService as never,
     );
 
     return {
@@ -187,6 +208,8 @@ describe('SituationsService · resolver con aprendizaje', () => {
       db,
       timelineService,
       auditLogService,
+      escalationService,
+      escalationCalls,
       failNextInsert: () => {
         insertFails = true;
       },
@@ -210,6 +233,20 @@ describe('SituationsService · resolver con aprendizaje', () => {
       expect(h.db.resolution?.learning).toBe('Faltó un plan de reversión.');
       expect(h.db.resolution?.resolvedByUserId).toBe('user-coord-a');
       expect(response.status).toBe(SituationStatus.CLOSED);
+    });
+
+    it('materializa los escalamientos pendientes ANTES de cerrar, con el instante del cierre', async () => {
+      const h = createHarness();
+
+      await h.service.resolve(SIT_ID, { learning: 'Aprendizaje' }, coordinadorA);
+
+      expect(h.escalationCalls).toHaveLength(1);
+      expect(h.escalationCalls[0].status).toBe(SituationStatus.OPEN);
+      // Horizonte = closed_at: ningún escalamiento puede regir después.
+      expect(h.escalationCalls[0].now.getTime()).toBe(
+        (h.db.situation.closedAt as Date).getTime(),
+      );
+      expect(h.escalationService.recordAudit).toHaveBeenCalledWith([]);
     });
 
     it('también resuelve desde IN_PROGRESS, sin una segunda petición', async () => {

@@ -2,7 +2,15 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { UserStatus } from '../common/enums/identity.enums';
 import { SituationStatus } from '../common/enums/situation.enums';
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
+import { Situation } from './entities/situation.entity';
+import { SituationRelatedCoordination } from './entities/situation-related-coordination.entity';
 import { SituationsService } from './situations.service';
+import {
+  createManagerMock,
+  emptyDetailRepositories,
+  inertEscalationService,
+  transactionalManager,
+} from './testing/situations-service.test-kit-spec';
 
 describe('SituationsService status transitions', () => {
   const analystActor: AuthPayload = {
@@ -50,6 +58,7 @@ describe('SituationsService status transitions', () => {
       canUpdateSituation: jest.fn().mockReturnValue(true),
       canAdvanceSituationToInProgress: jest.fn().mockReturnValue(true),
       assertCanAdvanceSituationToInProgress: jest.fn(),
+      canAddConsequence: jest.fn().mockReturnValue(false),
       // `getById` lee con la regla ampliada (alcance O reporte propio).
       assertSituationReadable: jest.fn(),
     };
@@ -57,6 +66,7 @@ describe('SituationsService status transitions', () => {
     const auditLogService = {
       record: jest.fn().mockResolvedValue(null),
     };
+    const detail = emptyDetailRepositories();
 
     const service = new SituationsService(
       situationsRepository as never,
@@ -67,9 +77,12 @@ describe('SituationsService status transitions', () => {
       // Repositorio de resoluciones: inerte. Estos casos cubren las
       // transiciones del PATCH, no la operación de resolución.
       {} as never,
+      detail.severityChangesRepository as never,
+      detail.consequencesRepository as never,
       timelineService as never,
       scopeService as never,
       auditLogService as never,
+      inertEscalationService() as never,
     );
 
     return {
@@ -241,6 +254,56 @@ describe('SituationsService status transitions', () => {
     expect(situationsRepository.save).toHaveBeenCalled();
   });
 
+  it('PATCH MIXTO: estado + título auditan las dos cosas', async () => {
+    const { service, situationsRepository, auditLogService } = createService();
+    situationsRepository.findByIdWithRelations
+      .mockResolvedValueOnce({ ...baseSituation })
+      .mockResolvedValueOnce({
+        ...baseSituation,
+        status: SituationStatus.IN_PROGRESS,
+        title: 'Título corregido',
+      });
+
+    await service.update(
+      'sit-1',
+      { status: SituationStatus.IN_PROGRESS, title: 'Título corregido' },
+      analystActor,
+    );
+
+    const actions = auditLogService.record.mock.calls.map(
+      ([input]: [{ action: string; metadata: unknown }]) => input,
+    );
+    expect(actions.map((a) => a.action)).toEqual([
+      'SITUATION_STATUS_CHANGED',
+      'SITUATION_UPDATED',
+    ]);
+    expect(actions[1].metadata).toEqual({ changedFields: ['title'] });
+  });
+
+  it('reasignar la coordinación de un INTERNAL reasigna también la afectada', async () => {
+    const { service, situationsRepository } = createService();
+    const other = { id: 'c2', code: 'coord-2', name: 'Otra', isActive: true };
+    (
+      service as unknown as {
+        coordinationsRepository: { findOne: jest.Mock };
+      }
+    ).coordinationsRepository.findOne.mockResolvedValue(other);
+    situationsRepository.findByIdWithRelations.mockResolvedValue({
+      ...baseSituation,
+      reportKind: 'INTERNAL',
+      affectedCoordinationId: 'c1',
+    });
+
+    await service.update('sit-1', { coordinationId: 'c2' }, analystActor);
+
+    const saved = situationsRepository.save.mock.calls[0][0] as {
+      coordinationId: string;
+      affectedCoordinationId: string;
+    };
+    expect(saved.coordinationId).toBe('c2');
+    expect(saved.affectedCoordinationId).toBe('c2');
+  });
+
   it('rechaza saltos de estado y retrocesos', async () => {
     // El ejemplo histórico de este caso era OPEN -> CLOSED. Ese salto ahora se
     // detiene ANTES, al bloquearse el destino CLOSED en el PATCH, así que se
@@ -327,13 +390,10 @@ describe('SituationsService related coordinations', () => {
   };
 
   it('persiste relacionadas válidas y excluye la coordinación origen', async () => {
+    const manager = createManagerMock();
     const situationsRepository = {
       findByIdWithRelations: jest.fn(),
-      save: jest.fn((entity: { id?: string }) => ({
-        ...entity,
-        id: 'sit-new',
-      })),
-      create: jest.fn((input: unknown) => input),
+      manager: transactionalManager(manager),
       search: jest.fn(),
     };
     const relatedRepo = {
@@ -360,17 +420,20 @@ describe('SituationsService related coordinations', () => {
         id: 'cat',
         code: 'TECH',
         name: 'Tech',
+        isSelectable: true,
       }),
     };
     const scopeService = {
-      resolveCreateCoordinationId: jest.fn(
+      resolveInternalCreateCoordinationId: jest.fn(
         (_actor: AuthPayload, requested: string) => requested,
       ),
       canResolveSituation: jest.fn().mockReturnValue(false),
       canUpdateSituation: jest.fn().mockReturnValue(false),
       canAdvanceSituationToInProgress: jest.fn().mockReturnValue(false),
       assertCanAdvanceSituationToInProgress: jest.fn(),
+      canAddConsequence: jest.fn().mockReturnValue(false),
     };
+    const detail = emptyDetailRepositories();
 
     const service = new SituationsService(
       situationsRepository as never,
@@ -380,9 +443,12 @@ describe('SituationsService related coordinations', () => {
       relatedRepo as never,
       // Repositorio de resoluciones: inerte, este caso solo crea.
       {} as never,
+      detail.severityChangesRepository as never,
+      detail.consequencesRepository as never,
       { createEntry: jest.fn() } as never,
       scopeService as never,
       { record: jest.fn().mockResolvedValue(null) } as never,
+      inertEscalationService() as never,
     );
 
     situationsRepository.findByIdWithRelations.mockResolvedValue({
@@ -423,6 +489,7 @@ describe('SituationsService related coordinations', () => {
       {
         title: 'Incidente',
         description: 'Desc',
+        reportKind: 'INTERNAL' as never,
         coordinationId: 'c1',
         categoryId: 'cat',
         severity: 'MEDIUM' as never,
@@ -433,7 +500,12 @@ describe('SituationsService related coordinations', () => {
     );
 
     expect(coordinationsRepository.find).toHaveBeenCalled();
-    expect(situationsRepository.create).toHaveBeenCalledWith(
+    expect(manager.create).toHaveBeenCalledWith(
+      SituationRelatedCoordination,
+      expect.objectContaining({ coordinationId: 'c2', displayOrder: 0 }),
+    );
+    expect(manager.create).toHaveBeenCalledWith(
+      Situation,
       expect.objectContaining({
         relatedCoordinations: [
           expect.objectContaining({ coordinationId: 'c2', displayOrder: 0 }),

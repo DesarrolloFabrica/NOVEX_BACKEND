@@ -39,6 +39,19 @@ const configuration = () => {
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID ?? '',
     },
+    /**
+     * Barrido de situaciones (SLA + escalamiento).
+     *   cronEnabled  respaldo `@Cron` en proceso (por defecto activo).
+     *   oidc*        identidad que Cloud Scheduler debe presentar al llamar a
+     *                `POST /internal/jobs/situation-sweep`. Vacíos = el
+     *                endpoint rechaza toda llamada.
+     */
+    situationSweep: {
+      cronEnabled: (process.env.SITUATION_SWEEP_CRON_ENABLED ?? 'true') === 'true',
+      oidcAudience: process.env.SCHEDULER_OIDC_AUDIENCE ?? '',
+      oidcServiceAccountEmail:
+        process.env.SCHEDULER_OIDC_SERVICE_ACCOUNT_EMAIL ?? '',
+    },
     /** Solo desarrollo local: login por correo sin OAuth. En deploy debe ser false. */
     enableEmailLogin: (process.env.ENABLE_EMAIL_LOGIN ?? 'false') === 'true',
     /**

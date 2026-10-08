@@ -113,6 +113,24 @@ export class EnvironmentVariables {
   @IsBoolean()
   @IsOptional()
   ENABLE_EMAIL_LOGIN: boolean = false;
+
+  /** Respaldo `@Cron` del barrido de situaciones. Omitido = activo. */
+  @Transform(({ value }) => (value === undefined ? true : toBoolean(value)))
+  @IsBoolean()
+  @IsOptional()
+  SITUATION_SWEEP_CRON_ENABLED: boolean = true;
+
+  /**
+   * Identidad OIDC de Cloud Scheduler para `POST /internal/jobs/situation-sweep`.
+   * Vacías = el endpoint rechaza toda llamada (no queda abierto por omisión).
+   */
+  @IsString()
+  @IsOptional()
+  SCHEDULER_OIDC_AUDIENCE?: string;
+
+  @IsString()
+  @IsOptional()
+  SCHEDULER_OIDC_SERVICE_ACCOUNT_EMAIL?: string;
 }
 
 export function validateEnvironment(config: Record<string, unknown>) {

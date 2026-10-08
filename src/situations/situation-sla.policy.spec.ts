@@ -5,7 +5,6 @@ import {
 import {
   computeDueAt,
   computeSlaHealth,
-  resolveDueAtOnSeverityChange,
   wasClosedOnTime,
 } from './situation-sla.policy';
 
@@ -50,33 +49,42 @@ describe('situation-sla.policy', () => {
     );
   });
 
-  it('no relaja un dueAt ya vencido al bajar severidad', () => {
-    const currentDueAt = computeDueAt(SituationSeverity.CRITICAL, base);
-    const now = new Date('2026-08-03T12:00:00.000Z');
-    const next = resolveDueAtOnSeverityChange({
-      previousSeverity: SituationSeverity.CRITICAL,
-      nextSeverity: SituationSeverity.LOW,
-      status: SituationStatus.OPEN,
-      createdAt: base,
-      currentDueAt,
-      now,
-    });
-    expect(next?.toISOString()).toBe(currentDueAt.toISOString());
+  it('la ventana de aviso sale de la severidad REPORTADA, no de la efectiva', () => {
+    // Reportado MEDIUM (aviso 48 h) aunque hoy sea HIGH (aviso 24 h).
+    const dueAt = computeDueAt(SituationSeverity.MEDIUM, base);
+    const thirtyHoursBefore = new Date(dueAt.getTime() - 30 * 60 * 60 * 1000);
+
+    expect(
+      computeSlaHealth(
+        dueAt,
+        SituationStatus.OPEN,
+        thirtyHoursBefore,
+        SituationSeverity.MEDIUM,
+      ),
+    ).toBe('at_risk');
+    // Con la ventana de HIGH el mismo instante seguiría on_track: ese es el
+    // resultado que el diseño evita al pasar siempre la reportada.
+    expect(
+      computeSlaHealth(
+        dueAt,
+        SituationStatus.OPEN,
+        thirtyHoursBefore,
+        SituationSeverity.HIGH,
+      ),
+    ).toBe('on_track');
   });
 
-  it('recalcula dueAt al subir severidad en un caso activo', () => {
-    const currentDueAt = computeDueAt(SituationSeverity.LOW, base);
-    const next = resolveDueAtOnSeverityChange({
-      previousSeverity: SituationSeverity.LOW,
-      nextSeverity: SituationSeverity.CRITICAL,
-      status: SituationStatus.OPEN,
-      createdAt: base,
-      currentDueAt,
-      now: new Date('2026-08-01T13:00:00.000Z'),
-    });
-    expect(next?.toISOString()).toBe(
-      computeDueAt(SituationSeverity.CRITICAL, base).toISOString(),
-    );
+  it('due_at − created_at es exactamente la ventana de la severidad reportada', () => {
+    for (const [severity, hours] of [
+      [SituationSeverity.CRITICAL, 24],
+      [SituationSeverity.HIGH, 72],
+      [SituationSeverity.MEDIUM, 7 * 24],
+      [SituationSeverity.LOW, 14 * 24],
+    ] as const) {
+      expect(computeDueAt(severity, base).getTime() - base.getTime()).toBe(
+        hours * 60 * 60 * 1000,
+      );
+    }
   });
 
   it('detecta cierre a tiempo', () => {

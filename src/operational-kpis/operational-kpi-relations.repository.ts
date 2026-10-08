@@ -5,7 +5,6 @@ import { SituationReportKind } from '../common/enums/situation.enums';
 import { Situation } from '../situations/entities/situation.entity';
 import {
   bogotaDayEndExclusiveIso,
-  bogotaDayEndInclusiveIso,
   bogotaDayStartIso,
   parseYmd,
 } from './domain/kpi-history-buckets';
@@ -76,7 +75,9 @@ export class OperationalKpiRelationsRepository {
     parseYmd(args.toYmd);
 
     if (args.metric === OperationalKpiHistoryMetric.BACKLOG) {
-      const endInclusive = bogotaDayEndInclusiveIso(args.toYmd);
+      // Corte semiabierto: stock al instante 00:00 del día siguiente (Bogotá),
+      // misma semántica que el backlog de /history y /state.
+      const endExclusive = bogotaDayEndExclusiveIso(args.toYmd);
       const sql = `
         SELECT
           ${args.partnerColumn} AS "coordinationId",
@@ -90,8 +91,8 @@ export class OperationalKpiRelationsRepository {
           AND s.report_kind = $2
           AND ${args.partnerColumn} IS NOT NULL
           AND ${args.partnerColumn} IS DISTINCT FROM $1
-          AND s.created_at <= $3
-          AND (s.closed_at IS NULL OR s.closed_at > $3)
+          AND s.created_at < $3
+          AND (s.closed_at IS NULL OR s.closed_at >= $3)
         GROUP BY ${args.partnerColumn}, c.code, c.name, c.short_name
         ORDER BY value DESC, c.short_name ASC
       `;
@@ -99,7 +100,7 @@ export class OperationalKpiRelationsRepository {
         await this.situationsRepository.manager.query(sql, [
           args.coordinationId,
           SituationReportKind.INTER_COORDINATION,
-          endInclusive,
+          endExclusive,
         ]),
       );
     }

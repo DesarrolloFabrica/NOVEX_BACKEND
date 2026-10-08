@@ -23,10 +23,23 @@ export class OperationalKpiHistoryPointDto {
   value!: number;
 }
 
+/** Presente en modo `kind`: el periodo efectivamente leído. */
+export class OperationalKpiHistoryPeriodDto {
+  kind!: 'week' | 'month' | 'cycle';
+  from!: string;
+  /** Fin de datos (recortado a hoy si el periodo está en curso). */
+  dataTo!: string;
+  calendarEnd!: string;
+  bucket!: 'day' | 'week' | 'month';
+}
+
 export class OperationalKpiHistoryResponseDto {
   scope!: OperationalKpiHistoryScopeDto;
   metric!: OperationalKpiHistoryMetric;
-  granularity!: OperationalKpiHistoryGranularity;
+  /** Solo en modo legacy `granularity`. */
+  granularity?: OperationalKpiHistoryGranularity;
+  /** Solo en modo `kind`. */
+  period?: OperationalKpiHistoryPeriodDto;
   range!: OperationalKpiHistoryRangeDto;
   timezone!: 'America/Bogota';
   /** Presente cuando la serie filtra por categoría INTERNAL. */

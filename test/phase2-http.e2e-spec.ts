@@ -159,6 +159,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
       .send({
         title: `Reporte de ${email}`,
         description: 'Descripción de prueba suficientemente larga.',
+        reportKind: 'INTERNAL',
         coordinationId: coordinationId ?? undefined,
         categoryId: ids.categoria,
         severity: 'HIGH',
@@ -171,7 +172,6 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     it.each([
       ['admin@t.co', 'ADMIN'],
       ['analista@t.co', 'ANALISTA'],
-      ['coord.b@t.co', 'COORDINADOR de otra área'],
     ])('%s registra en un área ajena (%s)', async (email) => {
       const res = await reportar(email, ids.areaA);
       expect(res.status).toBe(201);
@@ -181,6 +181,13 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
       expect(res.body.situation.createdByUserName).toBe(email);
     });
 
+    it('un COORDINADOR no registra un INTERNAL en un área ajena (403)', async () => {
+      // Decisión INTERNAL vivo: el INTERNAL de un coordinador es de SU área;
+      // para otra área existe la dependencia INTER.
+      const res = await reportar('coord.b@t.co', ids.areaA);
+      expect(res.status).toBe(403);
+    });
+
     it('rechaza una coordinación inexistente', async () => {
       const res = await request(app.getHttpServer())
         .post('/api/v1/situations/register-with-analysis')
@@ -188,6 +195,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
         .send({
           title: 'Coordinación fantasma',
           description: 'Descripción de prueba.',
+          reportKind: 'INTERNAL',
           coordinationId: '00000000-0000-4000-8000-000000000999',
           categoryId: ids.categoria,
           severity: 'LOW',
@@ -273,7 +281,24 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     let idPropioEnAreaAjena = '';
 
     beforeAll(async () => {
-      const res = await reportar('coord.b@t.co', ids.areaA);
+      // Desde INTERNAL vivo, un coordinador ya no registra INTERNAL en otra
+      // área: su reporte propio en un área ajena nace como DEPENDENCIA (INTER),
+      // con el área ajena como responsable.
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/situations/register-with-analysis')
+        .set(auth('coord.b@t.co'))
+        .send({
+          title: 'Dependencia de coord.b hacia A',
+          description: 'Descripción de prueba suficientemente larga.',
+          reportKind: 'INTER_COORDINATION',
+          coordinationId: ids.areaA,
+          affectedCoordinationId: ids.areaB,
+          affectedProcess: 'Proceso de B que se retrasa',
+          pendingDelivery: 'Entrega pendiente de A',
+          severity: 'HIGH',
+          occurredAt: new Date(Date.now() - 3600_000).toISOString(),
+        })
+        .expect(201);
       idPropioEnAreaAjena = res.body.situation.id;
     });
 

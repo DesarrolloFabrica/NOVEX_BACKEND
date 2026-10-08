@@ -43,23 +43,41 @@ export const SLA_WINDOWS_BY_SEVERITY: Readonly<
   },
 };
 
+/*
+ * EL SLA ES LA PROMESA ORIGINAL.
+ *
+ * Todas las funciones de este archivo reciben la severidad REPORTADA
+ * (`situations.reported_severity`), nunca la efectiva:
+ *
+ *   due_at = created_at + ventana(reported_severity)
+ *
+ * se calcula una sola vez, en el alta, y nada lo vuelve a escribir. Un
+ * escalamiento AUTO_TIME cambia la urgencia actual (`severity`) pero no
+ * reescribe el plazo, la ventana de aviso, `slaHealth` ni `closedOnTime`.
+ * Usar la efectiva aquí reintroduciría el bucle severidad → due_at → severidad.
+ */
+
 export function computeDueAt(
-  severity: SituationSeverity,
-  fromDate: Date,
+  reportedSeverity: SituationSeverity,
+  createdAt: Date,
 ): Date {
-  const window = SLA_WINDOWS_BY_SEVERITY[severity];
-  return new Date(fromDate.getTime() + window.dueMs);
+  const window = SLA_WINDOWS_BY_SEVERITY[reportedSeverity];
+  return new Date(createdAt.getTime() + window.dueMs);
 }
 
-export function getWarningLeadMs(severity: SituationSeverity): number {
-  return SLA_WINDOWS_BY_SEVERITY[severity].warningMs;
+export function getWarningLeadMs(reportedSeverity: SituationSeverity): number {
+  return SLA_WINDOWS_BY_SEVERITY[reportedSeverity].warningMs;
 }
 
+/**
+ * `reportedSeverity` solo afecta a la ventana de aviso (`at_risk`); `overdue`
+ * depende únicamente de `dueAt`.
+ */
 export function computeSlaHealth(
   dueAt: Date | string | null | undefined,
   status: SituationStatus,
   now: Date = new Date(),
-  severity: SituationSeverity = SituationSeverity.MEDIUM,
+  reportedSeverity: SituationSeverity = SituationSeverity.MEDIUM,
 ): SituationSlaHealth {
   if (status === SituationStatus.CLOSED) {
     return 'closed';
@@ -79,7 +97,7 @@ export function computeSlaHealth(
     return 'overdue';
   }
 
-  const warningLead = getWarningLeadMs(severity);
+  const warningLead = getWarningLeadMs(reportedSeverity);
   if (nowMs >= dueMs - warningLead) {
     return 'at_risk';
   }
@@ -93,42 +111,6 @@ export function isActiveSituationStatus(status: SituationStatus): boolean {
     status === SituationStatus.IN_PROGRESS ||
     status === SituationStatus.RESOLVED
   );
-}
-
-/**
- * Recalcula dueAt al cambiar severidad:
- * - Solo si la situación sigue activa.
- * - El nuevo plazo no puede ser más holgado que uno ya vencido
- *   (si ya está overdue con el due actual, se conserva).
- */
-export function resolveDueAtOnSeverityChange(input: {
-  previousSeverity: SituationSeverity;
-  nextSeverity: SituationSeverity;
-  status: SituationStatus;
-  createdAt: Date;
-  currentDueAt: Date | null;
-  now?: Date;
-}): Date | null {
-  if (!isActiveSituationStatus(input.status)) {
-    return input.currentDueAt;
-  }
-
-  const now = input.now ?? new Date();
-  const nextDueAt = computeDueAt(input.nextSeverity, input.createdAt);
-
-  if (!input.currentDueAt) {
-    return nextDueAt;
-  }
-
-  const currentDueMs = input.currentDueAt.getTime();
-  const alreadyOverdue = now.getTime() > currentDueMs;
-  const nextIsMoreLenient = nextDueAt.getTime() > currentDueMs;
-
-  if (alreadyOverdue && nextIsMoreLenient) {
-    return input.currentDueAt;
-  }
-
-  return nextDueAt;
 }
 
 export function wasClosedOnTime(

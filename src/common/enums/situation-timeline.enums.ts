@@ -17,4 +17,11 @@ export enum TimelineEventType {
   REOPENED = 'REOPENED',
   SLA_WARNING = 'SLA_WARNING',
   SLA_BREACHED = 'SLA_BREACHED',
+  /** Afectación registrada. Metadata: `{ consequenceId, occurredAt }`. */
+  CONSEQUENCE_ADDED = 'CONSEQUENCE_ADDED',
+  /**
+   * Escalamiento automático de severidad (`AUTO_TIME`). Distinto de
+   * `SEVERITY_CHANGED`, que era la edición por PATCH y ya no se emite.
+   */
+  SEVERITY_ESCALATED = 'SEVERITY_ESCALATED',
 }

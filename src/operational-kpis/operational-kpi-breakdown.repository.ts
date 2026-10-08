@@ -5,7 +5,6 @@ import { SituationReportKind } from '../common/enums/situation.enums';
 import { Situation } from '../situations/entities/situation.entity';
 import {
   bogotaDayEndExclusiveIso,
-  bogotaDayEndInclusiveIso,
   bogotaDayStartIso,
   parseYmd,
 } from './domain/kpi-history-buckets';
@@ -97,7 +96,9 @@ export class OperationalKpiBreakdownRepository {
     coordinationId: string,
     atYmd: string,
   ): Promise<KpiBreakdownCategoryRow[]> {
-    const endInclusive = bogotaDayEndInclusiveIso(atYmd);
+    // Corte semiabierto: stock al instante 00:00 del día siguiente (Bogotá),
+    // misma semántica que el backlog de /history y /state.
+    const endExclusive = bogotaDayEndExclusiveIso(atYmd);
     const sql = `
       SELECT
         s.category_id AS "categoryId",
@@ -109,8 +110,8 @@ export class OperationalKpiBreakdownRepository {
       LEFT JOIN incident_categories c ON c.id = s.category_id
       WHERE s.coordination_id = $1
         AND s.report_kind = $2
-        AND s.created_at <= $3
-        AND (s.closed_at IS NULL OR s.closed_at > $3)
+        AND s.created_at < $3
+        AND (s.closed_at IS NULL OR s.closed_at >= $3)
       GROUP BY s.category_id, c.code, c.name, c.is_selectable
       ORDER BY value DESC, COALESCE(c.name, $4) ASC
     `;
@@ -118,7 +119,7 @@ export class OperationalKpiBreakdownRepository {
     const rows = (await this.situationsRepository.manager.query(sql, [
       coordinationId,
       SituationReportKind.INTERNAL,
-      endInclusive,
+      endExclusive,
       KPI_UNCATEGORIZED_CATEGORY_NAME,
     ])) as Array<{
       categoryId: string | null;

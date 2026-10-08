@@ -26,6 +26,7 @@ import { RecommendedActionsModule } from '../../src/recommended-actions/recommen
 import { RecommendedActionsController } from '../../src/recommended-actions/recommended-actions.controller';
 import { SituationsController } from '../../src/situations/situations.controller';
 import { SituationsService } from '../../src/situations/situations.service';
+import { SituationConsequencesService } from '../../src/situations/situation-consequences.service';
 
 const API_PREFIX = 'api/v1';
 const TEST_JWT_SECRET = 'p0-test-secret-with-minimum-length';
@@ -119,6 +120,7 @@ describe('P0 authorization closure', () => {
           JwtStrategy,
           { provide: APP_GUARD, useClass: JwtAuthGuard },
           PermissionsGuard,
+          { provide: SituationConsequencesService, useValue: { addConsequence: jest.fn() } },
           {
             provide: SituationsService,
             useValue: {
@@ -216,6 +218,7 @@ describe('P0 authorization closure', () => {
           JwtStrategy,
           { provide: APP_GUARD, useClass: JwtAuthGuard },
           PermissionsGuard,
+          { provide: SituationConsequencesService, useValue: { addConsequence: jest.fn() } },
           {
             provide: SituationsService,
             useValue: {

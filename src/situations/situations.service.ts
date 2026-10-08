@@ -18,12 +18,12 @@ import { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { TimelineEventType } from '../common/enums/situation-timeline.enums';
 import {
   SituationReportKind,
+  SituationSeverityChangeSource,
   SituationStatus,
 } from '../common/enums/situation.enums';
 import {
   computeDueAt,
   computeSlaHealth,
-  resolveDueAtOnSeverityChange,
   SLA_POLICY_CODE,
   wasClosedOnTime,
 } from './situation-sla.policy';
@@ -37,14 +37,27 @@ import {
   ListSituationsQueryDto,
   RelatedCoordinationResponseDto,
   ResolveSituationDto,
+  SituationDetailResponseDto,
   SituationResolutionResponseDto,
   SituationResponseDto,
   SituationsListResponseDto,
   UpdateSituationDto,
 } from './dto/situation.dto';
 import { Situation } from './entities/situation.entity';
+import { SituationConsequence } from './entities/situation-consequence.entity';
 import { SituationRelatedCoordination } from './entities/situation-related-coordination.entity';
 import { SituationResolution } from './entities/situation-resolution.entity';
+import { SituationSeverityChange } from './entities/situation-severity-change.entity';
+import {
+  sortConsequences,
+  toConsequenceResponse,
+  toSeverityHistoryItems,
+} from './situation-detail.mappers';
+import { ACTIVE_SEVERITY_ESCALATION_POLICY_CODE } from './severity-escalation/severity-escalation.policy';
+import {
+  SeverityEscalationService,
+  type MaterializedEscalation,
+} from './severity-escalation/severity-escalation.service';
 import {
   SituationsRepository,
   type SituationSearchFilters,
@@ -87,9 +100,14 @@ export class SituationsService implements OnModuleInit {
     private readonly relatedCoordinationsRepository: Repository<SituationRelatedCoordination>,
     @InjectRepository(SituationResolution)
     private readonly resolutionsRepository: Repository<SituationResolution>,
+    @InjectRepository(SituationSeverityChange)
+    private readonly severityChangesRepository: Repository<SituationSeverityChange>,
+    @InjectRepository(SituationConsequence)
+    private readonly consequencesRepository: Repository<SituationConsequence>,
     private readonly timelineService: SituationTimelineService,
     private readonly scopeService: OperationalScopeService,
     private readonly auditLogService: AuditLogService,
+    private readonly severityEscalationService: SeverityEscalationService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -129,69 +147,69 @@ export class SituationsService implements OnModuleInit {
   async create(
     dto: CreateSituationDto,
     actor: AuthPayload,
-  ): Promise<SituationResponseDto> {
-    const reportKind = dto.reportKind ?? SituationReportKind.INTERNAL;
-
-    if (reportKind === SituationReportKind.INTER_COORDINATION) {
+  ): Promise<SituationDetailResponseDto> {
+    // `reportKind` es obligatorio en el DTO; el servicio no da por hecho que su
+    // única entrada sea el controlador y tampoco aplica un default.
+    if (dto.reportKind === SituationReportKind.INTER_COORDINATION) {
       return this.createInterCoordination(dto, actor);
     }
-
-    return this.createInternal(dto, actor);
+    if (dto.reportKind === SituationReportKind.INTERNAL) {
+      return this.createInternal(dto, actor);
+    }
+    throw new BadRequestException('Indique el tipo de registro (reportKind).');
   }
 
   /**
    * Problema INTERNAL: ocurre en la coordinación responsable (carta).
-   * Conserva el contrato histórico (categoría obligatoria; sin área = registro
-   * de analista).
+   *
+   * Única semántica de alta interna: coordinación obligatoria (la propia para
+   * un COORDINADOR), categoría obligatoria y vigente en el catálogo, severidad
+   * reportada explícita y, opcionalmente, una afectación inicial.
    */
   private async createInternal(
     dto: CreateSituationDto,
     actor: AuthPayload,
-  ): Promise<SituationResponseDto> {
+  ): Promise<SituationDetailResponseDto> {
     if (!dto.categoryId) {
       throw new BadRequestException(
         'La categoría es obligatoria para un problema interno.',
       );
     }
 
-    const coordinationId = this.scopeService.resolveCreateCoordinationId(
+    const coordinationId = this.scopeService.resolveInternalCreateCoordinationId(
       actor,
       dto.coordinationId,
     );
 
-    const affectedId = dto.affectedCoordinationId ?? coordinationId;
-
     if (
-      coordinationId &&
-      affectedId &&
-      coordinationId !== affectedId
+      dto.affectedCoordinationId &&
+      dto.affectedCoordinationId !== coordinationId
     ) {
       throw new BadRequestException(
         'En un problema interno la coordinación afectada debe coincidir con la responsable.',
       );
     }
 
-    const [coordination, affectedCoordination, category, relatedCoordinations] =
-      await Promise.all([
-        coordinationId ? this.ensureCoordination(coordinationId) : null,
-        affectedId ? this.ensureCoordination(affectedId) : null,
-        this.ensureCategory(dto.categoryId),
-        this.resolveRelatedCoordinations(
-          dto.relatedCoordinationIds ?? [],
-          coordinationId,
-        ),
-      ]);
+    const [coordination, category, relatedCoordinations] = await Promise.all([
+      this.ensureCoordination(coordinationId),
+      this.ensureSelectableCategory(dto.categoryId),
+      this.resolveRelatedCoordinations(
+        dto.relatedCoordinationIds ?? [],
+        coordinationId,
+      ),
+    ]);
 
     return this.persistNewSituation({
       dto,
       actor,
       reportKind: SituationReportKind.INTERNAL,
       coordination,
-      affectedCoordination,
+      affectedCoordination: coordination,
       category,
       relatedCoordinations,
       affectedProcess: null,
       pendingDelivery: null,
+      initialConsequence: dto.initialConsequence?.description?.trim() || null,
     });
   }
 
@@ -202,7 +220,12 @@ export class SituationsService implements OnModuleInit {
   private async createInterCoordination(
     dto: CreateSituationDto,
     actor: AuthPayload,
-  ): Promise<SituationResponseDto> {
+  ): Promise<SituationDetailResponseDto> {
+    if (dto.initialConsequence) {
+      throw new BadRequestException(
+        'Las afectaciones solo aplican a problemas internos.',
+      );
+    }
     if (!dto.coordinationId) {
       throw new BadRequestException(
         'Indique la coordinación responsable de atender la dependencia.',
@@ -255,9 +278,29 @@ export class SituationsService implements OnModuleInit {
       relatedCoordinations,
       affectedProcess,
       pendingDelivery,
+      initialConsequence: null,
     });
   }
 
+  /**
+   * ALTA TRANSACCIONAL. En una sola transacción:
+   *
+   *   situación  →  SITUATION_CREATED (subscriber, mismo `manager`)
+   *              →  fila REPORTED del historial de severidad
+   *              →  afectación inicial + CONSEQUENCE_ADDED (si viene)
+   *
+   * Si cualquiera falla, ROLLBACK completo: no queda un problema a medio crear.
+   * La auditoría va DESPUÉS del commit, como en el resto del dominio.
+   *
+   * UN SOLO INSTANTE. `createdAt` se captura una vez y se persiste explícito en
+   * `created_at`, en `due_at = created_at + ventana(reported_severity)` y en
+   * el `effective_at` de la fila REPORTED. Antes `created_at` lo ponía el
+   * DEFAULT de PostgreSQL y `due_at` salía de un `new Date()` de JS: diferían
+   * en milisegundos.
+   *
+   * `severity_escalation_policy_code` toma la política activa, que hoy es NULL:
+   * el caso nace sin escalamiento automático.
+   */
   private async persistNewSituation(input: {
     dto: CreateSituationDto;
     actor: AuthPayload;
@@ -268,7 +311,8 @@ export class SituationsService implements OnModuleInit {
     relatedCoordinations: Coordination[];
     affectedProcess: string | null;
     pendingDelivery: string | null;
-  }): Promise<SituationResponseDto> {
+    initialConsequence: string | null;
+  }): Promise<SituationDetailResponseDto> {
     const occurredAt = new Date(input.dto.occurredAt);
     if (Number.isNaN(occurredAt.getTime())) {
       throw new BadRequestException('La fecha de ocurrencia no es válida.');
@@ -280,43 +324,98 @@ export class SituationsService implements OnModuleInit {
     }
 
     const createdAt = new Date();
-    const situation = this.situationsRepository.create({
-      title: input.dto.title.trim(),
-      description: input.dto.description.trim(),
-      reportKind: input.reportKind,
-      coordinationId: input.coordination?.id ?? null,
-      coordination: input.coordination,
-      affectedCoordinationId: input.affectedCoordination?.id ?? null,
-      affectedCoordination: input.affectedCoordination,
-      affectedProcess: input.affectedProcess,
-      pendingDelivery: input.pendingDelivery,
-      createdByUserId: input.actor.sub,
-      categoryId: input.category?.id ?? null,
-      category: input.category,
-      severity: input.dto.severity,
-      status: SituationStatus.OPEN,
-      assignedUserId: null,
-      lastStatusComment: null,
-      resolvedAt: null,
-      closedAt: null,
-      dueAt: computeDueAt(input.dto.severity, createdAt),
-      slaPolicyCode: SLA_POLICY_CODE,
-      slaBreachedAt: null,
-      lastSlaReminderAt: null,
-      occurredAt,
-      relatedCoordinations: input.relatedCoordinations.map((item, index) =>
-        this.relatedCoordinationsRepository.create({
-          coordinationId: item.id,
-          coordination: item,
-          displayOrder: index,
-        }),
-      ),
-    });
+    const reportedSeverity = input.dto.severity;
 
-    const saved = await this.situationsRepository.save(situation);
-    const withRelations = await this.situationsRepository.findByIdWithRelations(
-      saved.id,
-    );
+    const { situationId, consequenceId } =
+      await this.situationsRepository.manager.transaction(
+        async (manager: EntityManager) => {
+          const situation = manager.create(Situation, {
+            title: input.dto.title.trim(),
+            description: input.dto.description.trim(),
+            reportKind: input.reportKind,
+            coordinationId: input.coordination?.id ?? null,
+            coordination: input.coordination,
+            affectedCoordinationId: input.affectedCoordination?.id ?? null,
+            affectedCoordination: input.affectedCoordination,
+            affectedProcess: input.affectedProcess,
+            pendingDelivery: input.pendingDelivery,
+            createdByUserId: input.actor.sub,
+            categoryId: input.category?.id ?? null,
+            category: input.category,
+            severity: reportedSeverity,
+            reportedSeverity,
+            severityEscalationPolicyCode: ACTIVE_SEVERITY_ESCALATION_POLICY_CODE,
+            status: SituationStatus.OPEN,
+            assignedUserId: null,
+            lastStatusComment: null,
+            resolvedAt: null,
+            closedAt: null,
+            createdAt,
+            dueAt: computeDueAt(reportedSeverity, createdAt),
+            slaPolicyCode: SLA_POLICY_CODE,
+            slaBreachedAt: null,
+            lastSlaReminderAt: null,
+            occurredAt,
+            relatedCoordinations: input.relatedCoordinations.map(
+              (item, index) =>
+                manager.create(SituationRelatedCoordination, {
+                  coordinationId: item.id,
+                  coordination: item,
+                  displayOrder: index,
+                }),
+            ),
+          });
+
+          const saved = await manager.save(Situation, situation);
+
+          await manager.insert(SituationSeverityChange, {
+            situationId: saved.id,
+            previousSeverity: null,
+            newSeverity: reportedSeverity,
+            source: SituationSeverityChangeSource.REPORTED,
+            effectiveAt: createdAt,
+            actorUserId: input.actor.sub,
+            policyCode: null,
+            ruleKey: null,
+          });
+
+          let createdConsequenceId: string | null = null;
+          if (input.initialConsequence) {
+            const consequence = await manager.save(
+              SituationConsequence,
+              manager.create(SituationConsequence, {
+                situationId: saved.id,
+                description: input.initialConsequence,
+                // Sin fecha propia: ocurre cuando ocurrió el problema.
+                occurredAt,
+                createdAt,
+                createdByUserId: input.actor.sub,
+              }),
+            );
+            createdConsequenceId = consequence.id;
+
+            await this.timelineService.createEntry(
+              {
+                situationId: saved.id,
+                userId: input.actor.sub,
+                eventType: TimelineEventType.CONSEQUENCE_ADDED,
+                title: 'Afectación registrada',
+                description: 'Se registró la afectación inicial del problema.',
+                metadata: {
+                  consequenceId: consequence.id,
+                  occurredAt: consequence.occurredAt.toISOString(),
+                },
+              },
+              manager,
+            );
+          }
+
+          return { situationId: saved.id, consequenceId: createdConsequenceId };
+        },
+      );
+
+    const withRelations =
+      await this.situationsRepository.findByIdWithRelations(situationId);
     if (!withRelations) {
       throw new NotFoundException('No fue posible cargar la situación creada.');
     }
@@ -329,17 +428,36 @@ export class SituationsService implements OnModuleInit {
       metadata: {
         status: withRelations.status,
         severity: withRelations.severity,
+        reportedSeverity: withRelations.reportedSeverity,
         reportKind: withRelations.reportKind,
         categoryId: withRelations.categoryId,
         affectedCoordinationId: withRelations.affectedCoordinationId,
         dueAt: withRelations.dueAt,
         slaPolicyCode: withRelations.slaPolicyCode,
+        severityEscalationPolicyCode:
+          withRelations.severityEscalationPolicyCode,
+        initialConsequenceId: consequenceId,
       },
     });
 
+    if (consequenceId && input.initialConsequence) {
+      await this.auditLogService.record({
+        actor: input.actor,
+        action: AuditAction.SITUATION_CONSEQUENCE_ADDED,
+        resourceType: AuditResourceType.SITUATION,
+        resourceId: withRelations.id,
+        metadata: {
+          consequenceId,
+          occurredAt: withRelations.occurredAt,
+          descriptionLength: input.initialConsequence.length,
+          initial: true,
+        },
+      });
+    }
+
     await this.ensureGeneralCoordinationId();
 
-    return this.toResponse(withRelations, input.actor);
+    return this.toDetailResponse(withRelations, input.actor);
   }
 
   async list(
@@ -435,7 +553,10 @@ export class SituationsService implements OnModuleInit {
     };
   }
 
-  async getById(id: string, actor: AuthPayload): Promise<SituationResponseDto> {
+  async getById(
+    id: string,
+    actor: AuthPayload,
+  ): Promise<SituationDetailResponseDto> {
     const situation = await this.situationsRepository.findByIdWithRelations(id);
     if (!situation) {
       throw new NotFoundException(`Situación no encontrada: ${id}`);
@@ -446,14 +567,43 @@ export class SituationsService implements OnModuleInit {
     // `assertCanUpdateSituation` y `assertCanResolveSituation`.
     this.scopeService.assertSituationReadable(actor, situation);
     await this.ensureGeneralCoordinationId();
-    return this.toResponse(situation, actor);
+    return this.toDetailResponse(situation, actor);
+  }
+
+  /**
+   * Detalle: el ítem de listado + historial de severidad + afectaciones.
+   * Dos consultas acotadas a la situación; `severityAtOccurrence` se deriva del
+   * historial ya cargado.
+   */
+  private async toDetailResponse(
+    situation: Situation,
+    actor: AuthPayload,
+  ): Promise<SituationDetailResponseDto> {
+    const [history, consequences] = await Promise.all([
+      this.severityChangesRepository.find({
+        where: { situationId: situation.id },
+      }),
+      this.consequencesRepository.find({
+        where: { situationId: situation.id },
+        relations: { createdByUser: true },
+      }),
+    ]);
+
+    const ordered = sortConsequences(consequences);
+
+    return {
+      ...this.toResponse(situation, actor),
+      severityHistory: toSeverityHistoryItems(history),
+      consequences: ordered.map((item) => toConsequenceResponse(item, history)),
+      consequenceCount: ordered.length,
+    };
   }
 
   async update(
     id: string,
     dto: UpdateSituationDto,
     actor: AuthPayload,
-  ): Promise<SituationResponseDto> {
+  ): Promise<SituationDetailResponseDto> {
     const situation = await this.situationsRepository.findByIdWithRelations(id);
     if (!situation) {
       throw new NotFoundException(`Situación no encontrada: ${id}`);
@@ -516,33 +666,23 @@ export class SituationsService implements OnModuleInit {
       const coordination = await this.ensureCoordination(dto.coordinationId);
       situation.coordinationId = coordination.id;
       situation.coordination = coordination;
+      // En INTERNAL la afectada ES la responsable: si se reasigna una, se
+      // reasigna la otra. Antes quedaban desincronizadas en silencio.
+      if (situation.reportKind === SituationReportKind.INTERNAL) {
+        situation.affectedCoordinationId = coordination.id;
+        situation.affectedCoordination = coordination;
+      }
     }
 
-    if (dto.categoryId !== undefined) {
-      const category = await this.ensureCategory(dto.categoryId);
-      situation.categoryId = category.id;
-      situation.category = category;
-    }
+    // `categoryId` y `severity` ya no llegan por aquí: el DTO no los declara y
+    // la validación global los rechaza. La categoría es inmutable y la
+    // severidad solo la cambia el sistema, con historial.
 
     if (dto.title !== undefined) {
       situation.title = dto.title.trim();
     }
     if (dto.description !== undefined) {
       situation.description = dto.description.trim();
-    }
-    if (dto.severity !== undefined) {
-      const previousSeverity = situation.severity;
-      situation.severity = dto.severity;
-      if (dto.severity !== previousSeverity) {
-        situation.dueAt = resolveDueAtOnSeverityChange({
-          previousSeverity,
-          nextSeverity: dto.severity,
-          status: situation.status,
-          createdAt: situation.createdAt,
-          currentDueAt: situation.dueAt,
-        });
-        situation.slaPolicyCode = SLA_POLICY_CODE;
-      }
     }
     if (dto.occurredAt !== undefined) {
       const occurredAt = new Date(dto.occurredAt);
@@ -612,13 +752,25 @@ export class SituationsService implements OnModuleInit {
               : null,
         },
       });
-    } else if (changedFields.length > 0) {
+    }
+
+    /*
+     * PATCH MIXTO. Antes, si la petición cambiaba el estado Y otros campos, solo
+     * se auditaba el cambio de estado (un `else if`) y el subscriber descartaba
+     * los campos: ese cambio se perdía en ambos registros. Ahora los campos se
+     * auditan siempre que los haya; el comentario de estado ya viaja en el
+     * evento de transición y no se repite.
+     */
+    const fieldChanges = statusTransitionApplied
+      ? changedFields.filter((field) => field !== 'statusComment')
+      : changedFields;
+    if (fieldChanges.length > 0) {
       await this.auditLogService.record({
         actor,
         action: AuditAction.SITUATION_UPDATED,
         resourceType: AuditResourceType.SITUATION,
         resourceId: situation.id,
-        metadata: { changedFields },
+        metadata: { changedFields: fieldChanges },
       });
     }
 
@@ -658,7 +810,7 @@ export class SituationsService implements OnModuleInit {
     id: string,
     dto: ResolveSituationDto,
     actor: AuthPayload,
-  ): Promise<SituationResponseDto> {
+  ): Promise<SituationDetailResponseDto> {
     // Segunda barrera del aprendizaje vacío: el DTO ya recorta y valida, pero
     // el servicio no da por hecho que su única entrada sea el controlador.
     const learning = dto.learning?.trim() ?? '';
@@ -666,6 +818,7 @@ export class SituationsService implements OnModuleInit {
       throw new BadRequestException('El aprendizaje no puede estar vacío.');
     }
 
+    let escalations: MaterializedEscalation[] = [];
     const previousStatus = await this.situationsRepository.manager.transaction(
       async (manager: EntityManager) => {
         /*
@@ -705,6 +858,20 @@ export class SituationsService implements OnModuleInit {
 
         const statusBefore = situation.status;
         const now = new Date();
+
+        /*
+         * Antes de congelar el caso, se registran los escalamientos que ya
+         * deberían regir (con política nula, no-op). El horizonte es este mismo
+         * instante de cierre: ninguno puede quedar con `effective_at` posterior
+         * a `closed_at`. Actualiza `situation.severity` en memoria, así que el
+         * `save` de abajo no la revierte.
+         */
+        escalations =
+          await this.severityEscalationService.materializeDueEscalations({
+            manager,
+            situation,
+            now,
+          });
 
         situation.status = SituationStatus.CLOSED;
         situation.closedAt = now;
@@ -787,6 +954,7 @@ export class SituationsService implements OnModuleInit {
         learningLength: learning.length,
       },
     });
+    await this.severityEscalationService.recordAudit(escalations);
 
     return this.getById(id, actor);
   }
@@ -795,8 +963,6 @@ export class SituationsService implements OnModuleInit {
     const fields: string[] = [];
     if (dto.title !== undefined) fields.push('title');
     if (dto.description !== undefined) fields.push('description');
-    if (dto.severity !== undefined) fields.push('severity');
-    if (dto.categoryId !== undefined) fields.push('categoryId');
     if (dto.coordinationId !== undefined) fields.push('coordinationId');
     if (dto.occurredAt !== undefined) fields.push('occurredAt');
     if (dto.statusComment !== undefined) fields.push('statusComment');
@@ -935,12 +1101,22 @@ export class SituationsService implements OnModuleInit {
     return coordination;
   }
 
-  private async ensureCategory(id: string): Promise<IncidentCategory> {
+  /**
+   * Categoría para un ALTA: debe existir y estar vigente en el catálogo. Las
+   * categorías legacy (`is_selectable = false`) siguen legibles en los casos
+   * que ya las tienen, pero no se asignan a casos nuevos.
+   */
+  private async ensureSelectableCategory(id: string): Promise<IncidentCategory> {
     const category = await this.categoriesRepository.findOne({
       where: { id },
     });
     if (!category) {
       throw new NotFoundException(`Categoría no encontrada: ${id}`);
+    }
+    if (!category.isSelectable) {
+      throw new BadRequestException(
+        'La categoría ya no está vigente en el catálogo y no puede asignarse a un problema nuevo.',
+      );
     }
     return category;
   }
@@ -1040,7 +1216,9 @@ export class SituationsService implements OnModuleInit {
       categoryCode: situation.category?.code ?? null,
       categoryName: situation.category?.name ?? null,
       categoryIcon: situation.category?.icon ?? null,
+      categorySelectable: situation.category?.isSelectable ?? null,
       severity: situation.severity,
+      reportedSeverity: situation.reportedSeverity,
       status: situation.status,
       lastStatusComment: situation.lastStatusComment ?? null,
       resolvedAt: situation.resolvedAt ?? null,
@@ -1048,11 +1226,12 @@ export class SituationsService implements OnModuleInit {
       dueAt: situation.dueAt ?? null,
       slaPolicyCode: situation.slaPolicyCode ?? null,
       slaBreachedAt: situation.slaBreachedAt ?? null,
+      // SLA = promesa original: la ventana de aviso sale de la REPORTADA.
       slaHealth: computeSlaHealth(
         situation.dueAt,
         situation.status,
         new Date(),
-        situation.severity,
+        situation.reportedSeverity,
       ),
       closedOnTime:
         situation.status === SituationStatus.CLOSED
@@ -1084,6 +1263,7 @@ export class SituationsService implements OnModuleInit {
           this.generalCoordinationId,
         ),
       canUpdate: this.scopeService.canUpdateSituation(actor, situation),
+      canAddConsequence: this.scopeService.canAddConsequence(actor, situation),
     };
   }
 }

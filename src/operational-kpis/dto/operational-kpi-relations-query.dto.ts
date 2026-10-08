@@ -1,9 +1,4 @@
-import {
-  IsEnum,
-  IsUUID,
-  Matches,
-  ValidateIf,
-} from 'class-validator';
+import { IsEnum, IsUUID, Matches, ValidateIf } from 'class-validator';
 import { OperationalKpiHistoryMetric } from './operational-kpi-history-query.dto';
 import { OperationalKpiScopeType } from './operational-kpi-query.dto';
 

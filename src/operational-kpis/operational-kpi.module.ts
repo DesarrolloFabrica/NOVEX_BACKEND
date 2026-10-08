@@ -8,8 +8,15 @@ import { SituationAffectedCoordination } from '../situation-impact/entities/situ
 import { SituationImpactAssessment } from '../situation-impact/entities/situation-impact-assessment.entity';
 import { IncidentCategory } from '../intelligence/entities/incident-category.entity';
 import { Situation } from '../situations/entities/situation.entity';
+import { OperationalKpiAgingRepository } from './operational-kpi-aging.repository';
+import { OperationalKpiSnapshotRepository } from './operational-kpi-snapshot.repository';
+import { OperationalKpiResolutionRepository } from './operational-kpi-resolution.repository';
 import { OperationalKpiBreakdownRepository } from './operational-kpi-breakdown.repository';
 import { OperationalKpiController } from './operational-kpi.controller';
+import { OperationalKpiInternalProblemsController } from './operational-kpi-internal-problems.controller';
+import { OperationalKpiInternalProblemsRepository } from './operational-kpi-internal-problems.repository';
+import { OperationalKpiInternalRecurrenceRepository } from './operational-kpi-internal-recurrence.repository';
+import { OperationalKpiInternalProblemsService } from './operational-kpi-internal-problems.service';
 import { OperationalKpiHistoryRepository } from './operational-kpi-history.repository';
 import { OperationalKpiPeriodRepository } from './operational-kpi-period.repository';
 import { OperationalKpiRelationsRepository } from './operational-kpi-relations.repository';
@@ -27,7 +34,10 @@ import { OperationalKpiService } from './operational-kpi.service';
     AuthModule,
     CoordinationsModule,
   ],
-  controllers: [OperationalKpiController],
+  controllers: [
+    OperationalKpiController,
+    OperationalKpiInternalProblemsController,
+  ],
   providers: [
     OperationalKpiService,
     OperationalOverviewRepository,
@@ -35,6 +45,12 @@ import { OperationalKpiService } from './operational-kpi.service';
     OperationalKpiBreakdownRepository,
     OperationalKpiPeriodRepository,
     OperationalKpiRelationsRepository,
+    OperationalKpiAgingRepository,
+    OperationalKpiSnapshotRepository,
+    OperationalKpiResolutionRepository,
+    OperationalKpiInternalProblemsRepository,
+    OperationalKpiInternalRecurrenceRepository,
+    OperationalKpiInternalProblemsService,
   ],
   exports: [OperationalKpiService],
 })

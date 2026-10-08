@@ -1,4 +1,4 @@
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
@@ -11,10 +11,12 @@ import {
   MaxLength,
   MinLength,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 import {
   SituationReportKind,
   SituationSeverity,
+  SituationSeverityChangeSource,
   SituationStatus,
 } from '../../common/enums/situation.enums';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
@@ -25,6 +27,38 @@ import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
  * texto del mismo orden, no un campo corto de formulario.
  */
 export const SITUATION_LEARNING_MAX_LENGTH = 4000;
+
+/** Longitud máxima de una afectación (también la exige la base). */
+export const SITUATION_CONSEQUENCE_MAX_LENGTH = 2000;
+
+const trimString = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim() : value;
+
+/**
+ * Afectación inicial del alta. Sin fecha propia: ocurre cuando ocurrió el
+ * problema (`situation.occurred_at`).
+ */
+export class InitialConsequenceDto {
+  @IsString()
+  @Transform(trimString)
+  @MinLength(1, { message: 'La afectación no puede estar vacía.' })
+  @MaxLength(SITUATION_CONSEQUENCE_MAX_LENGTH)
+  description!: string;
+}
+
+/** Afectación posterior (`POST /situations/:id/consequences`). */
+export class CreateSituationConsequenceDto {
+  @IsString()
+  @Transform(trimString)
+  @MinLength(1, { message: 'La afectación no puede estar vacía.' })
+  @MaxLength(SITUATION_CONSEQUENCE_MAX_LENGTH)
+  description!: string;
+
+  /** Cuándo ocurrió. Por defecto, ahora. No futura ni anterior al problema. */
+  @IsOptional()
+  @IsDateString()
+  occurredAt?: string;
+}
 
 export class CreateSituationDto {
   @IsString()
@@ -38,25 +72,19 @@ export class CreateSituationDto {
   description!: string;
 
   /**
-   * Tipo de registro. Ausente o INTERNAL = problema interno (contrato histórico).
-   * INTER_COORDINATION = dependencia entre coordinaciones.
+   * Tipo de registro. OBLIGATORIO: ya no hay default silencioso a INTERNAL,
+   * para que ningún cliente cree un problema interno sin decirlo.
    */
-  @IsOptional()
   @IsEnum(SituationReportKind)
-  reportKind?: SituationReportKind;
+  reportKind!: SituationReportKind;
 
   /**
-   * Coordinación RESPONSABLE. En INTERNAL es la carta seleccionada; en INTER
-   * es la externa que debe atender. Ausente solo en el contrato histórico del
-   * analista (INTERNAL sin área).
+   * Coordinación RESPONSABLE. Obligatoria en los dos tipos. En INTERNAL es la
+   * carta seleccionada (y, para un COORDINADOR, siempre la suya); en INTER es
+   * la externa que debe atender.
    */
-  @ValidateIf(
-    (dto: CreateSituationDto) =>
-      dto.reportKind === SituationReportKind.INTER_COORDINATION ||
-      dto.coordinationId !== undefined,
-  )
   @IsUUID()
-  coordinationId?: string;
+  coordinationId!: string;
 
   /**
    * Coordinación AFECTADA. Obligatoria en INTER (carta seleccionada). En
@@ -113,6 +141,12 @@ export class CreateSituationDto {
   @ArrayMaxSize(64)
   @IsUUID('4', { each: true })
   relatedCoordinationIds?: string[];
+
+  /** Solo INTERNAL. Opcional: un problema puede nacer sin afectaciones. */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => InitialConsequenceDto)
+  initialConsequence?: InitialConsequenceDto;
 }
 
 export class RelatedCoordinationResponseDto {
@@ -124,6 +158,13 @@ export class RelatedCoordinationResponseDto {
   displayOrder!: number;
 }
 
+/**
+ * PATCH de una situación.
+ *
+ * `categoryId` y `severity` NO existen aquí, a propósito: la categoría es
+ * inmutable tras el alta y la severidad solo la cambia el sistema (historial
+ * append-only). Con `forbidNonWhitelisted`, enviarlas devuelve 400.
+ */
 export class UpdateSituationDto {
   @IsOptional()
   @IsString()
@@ -139,14 +180,6 @@ export class UpdateSituationDto {
   @IsOptional()
   @IsUUID()
   coordinationId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  categoryId?: string;
-
-  @IsOptional()
-  @IsEnum(SituationSeverity)
-  severity?: SituationSeverity;
 
   @IsOptional()
   @IsEnum(SituationStatus)
@@ -280,7 +313,12 @@ export class SituationResponseDto {
   categoryCode!: string | null;
   categoryName!: string | null;
   categoryIcon!: string | null;
+  /** Categoría vigente en el catálogo (false = legacy, solo lectura). */
+  categorySelectable!: boolean | null;
+  /** Severidad EFECTIVA: el nivel operacional actual. */
   severity!: SituationSeverity;
+  /** Severidad REPORTADA al registrar. Inmutable; es la base del SLA. */
+  reportedSeverity!: SituationSeverity;
   status!: SituationStatus;
   lastStatusComment!: string | null;
   resolvedAt!: Date | null;
@@ -322,6 +360,53 @@ export class SituationResponseDto {
    * `canAdvanceToInProgress` para el botón «En atención».
    */
   canUpdate!: boolean;
+  /**
+   * Si puede registrar una afectación. Misma política que autoriza
+   * `POST /situations/:id/consequences` (`canAddConsequence`); la interfaz no
+   * la reconstruye.
+   */
+  canAddConsequence!: boolean;
+}
+
+/** Un nivel del historial de severidad. */
+export class SituationSeverityHistoryItemDto {
+  id!: string;
+  /** Nivel anterior; nulo en la fila `REPORTED`. */
+  from!: SituationSeverity | null;
+  to!: SituationSeverity;
+  source!: SituationSeverityChangeSource;
+  /** Desde cuándo rige el nivel. */
+  effectiveAt!: Date;
+  /** Cuándo lo registró el sistema. */
+  recordedAt!: Date;
+  policyCode!: string | null;
+  ruleKey!: string | null;
+}
+
+/** Una afectación, con la severidad que regía cuando ocurrió (derivada). */
+export class SituationConsequenceResponseDto {
+  id!: string;
+  situationId!: string;
+  description!: string;
+  occurredAt!: Date;
+  createdAt!: Date;
+  createdByUserId!: string;
+  createdByUserName!: string;
+  createdByRoleName!: string | null;
+  /** Derivada de `situation_severity_changes`; no se persiste. */
+  severityAtOccurrence!: SituationSeverity | null;
+}
+
+/**
+ * Detalle de una situación (`GET /situations/:id` y respuestas de escritura).
+ * Extiende el ítem de listado con lo que solo tiene sentido al abrir un caso.
+ */
+export class SituationDetailResponseDto extends SituationResponseDto {
+  /** Orden por `effectiveAt` ascendente; la primera fila es `REPORTED`. */
+  severityHistory!: SituationSeverityHistoryItemDto[];
+  /** Orden por `occurredAt` ascendente, desempate por `createdAt` e `id`. */
+  consequences!: SituationConsequenceResponseDto[];
+  consequenceCount!: number;
 }
 
 /**

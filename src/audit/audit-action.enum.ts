@@ -4,6 +4,10 @@ export enum AuditAction {
   SITUATION_STATUS_CHANGED = 'SITUATION_STATUS_CHANGED',
   /** Cierre con aprendizaje. Distinto de un cambio de estado cualquiera. */
   SITUATION_RESOLVED = 'SITUATION_RESOLVED',
+  /** Afectación registrada. Metadata sin el texto (vive en su tabla). */
+  SITUATION_CONSEQUENCE_ADDED = 'SITUATION_CONSEQUENCE_ADDED',
+  /** Escalamiento automático de severidad. Actor nulo: lo hace el sistema. */
+  SITUATION_SEVERITY_ESCALATED = 'SITUATION_SEVERITY_ESCALATED',
   AI_ANALYSIS_COMPLETED = 'AI_ANALYSIS_COMPLETED',
   AI_REANALYZED = 'AI_REANALYZED',
   AI_ANALYSIS_FAILED = 'AI_ANALYSIS_FAILED',

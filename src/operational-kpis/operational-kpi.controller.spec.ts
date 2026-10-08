@@ -1,3 +1,5 @@
+import { OperationalKpiResolutionRepository } from './operational-kpi-resolution.repository';
+import { emptyResolutionRepository } from './testing/empty-resolution-repository';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { GUARDS_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { Test } from '@nestjs/testing';
@@ -10,11 +12,11 @@ import { UserStatus } from '../common/enums/identity.enums';
 import { CoordinationsRepository } from '../coordinations/repositories/coordinations.repository';
 import { OperationalOverviewRepository } from '../operational-overview/repositories/operational-overview.repository';
 import { OperationalKpiController } from './operational-kpi.controller';
-import {
-  OPERATIONAL_KPI_COMPARE_MAX,
-} from './operational-kpi.constants';
+import { OPERATIONAL_KPI_COMPARE_MAX } from './operational-kpi.constants';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { IncidentCategory } from '../intelligence/entities/incident-category.entity';
+import { OperationalKpiAgingRepository } from './operational-kpi-aging.repository';
+import { OperationalKpiSnapshotRepository } from './operational-kpi-snapshot.repository';
 import { OperationalKpiBreakdownRepository } from './operational-kpi-breakdown.repository';
 import { OperationalKpiHistoryRepository } from './operational-kpi-history.repository';
 import { OperationalKpiPeriodRepository } from './operational-kpi-period.repository';
@@ -164,6 +166,12 @@ describe('GET /operational-kpis', () => {
           provide: getRepositoryToken(IncidentCategory),
           useValue: categoriesRepository,
         },
+        { provide: OperationalKpiAgingRepository, useValue: {} },
+        { provide: OperationalKpiSnapshotRepository, useValue: {} },
+        {
+          provide: OperationalKpiResolutionRepository,
+          useValue: emptyResolutionRepository(),
+        },
       ],
     })
       .overrideGuard(PermissionsGuard)
@@ -252,9 +260,11 @@ describe('GET /operational-kpis', () => {
       .query({ coordinationIds: `${AREA_B},${AREA_A}` })
       .expect(200);
 
-    expect(response.body.items.map((item: { coordination: { id: string } }) => item.coordination.id)).toEqual(
-      [AREA_B, AREA_A],
-    );
+    expect(
+      response.body.items.map(
+        (item: { coordination: { id: string } }) => item.coordination.id,
+      ),
+    ).toEqual([AREA_B, AREA_A]);
     expect(response.body.metricVersions.integrity).toBe('integrity-mvp-v1');
     expect(response.body).not.toHaveProperty('winner');
     expect(response.body).not.toHaveProperty('bestCoordination');
