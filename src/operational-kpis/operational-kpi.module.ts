@@ -17,6 +17,9 @@ import { OperationalKpiInternalProblemsController } from './operational-kpi-inte
 import { OperationalKpiInternalProblemsRepository } from './operational-kpi-internal-problems.repository';
 import { OperationalKpiInternalRecurrenceRepository } from './operational-kpi-internal-recurrence.repository';
 import { OperationalKpiInternalProblemsService } from './operational-kpi-internal-problems.service';
+import { OperationalKpiLearningsController } from './operational-kpi-learnings.controller';
+import { OperationalKpiLearningsRepository } from './operational-kpi-learnings.repository';
+import { OperationalKpiLearningsService } from './operational-kpi-learnings.service';
 import { OperationalKpiHistoryRepository } from './operational-kpi-history.repository';
 import { OperationalKpiPeriodRepository } from './operational-kpi-period.repository';
 import { OperationalKpiRelationsRepository } from './operational-kpi-relations.repository';
@@ -37,6 +40,7 @@ import { OperationalKpiService } from './operational-kpi.service';
   controllers: [
     OperationalKpiController,
     OperationalKpiInternalProblemsController,
+    OperationalKpiLearningsController,
   ],
   providers: [
     OperationalKpiService,
@@ -51,6 +55,8 @@ import { OperationalKpiService } from './operational-kpi.service';
     OperationalKpiInternalProblemsRepository,
     OperationalKpiInternalRecurrenceRepository,
     OperationalKpiInternalProblemsService,
+    OperationalKpiLearningsRepository,
+    OperationalKpiLearningsService,
   ],
   exports: [OperationalKpiService],
 })
