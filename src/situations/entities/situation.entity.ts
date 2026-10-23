@@ -19,6 +19,11 @@ import { SituationRelatedCoordination } from './situation-related-coordination.e
 @Entity({ name: 'situations' })
 @Index('idx_situations_status_occurred_at', ['status', 'occurredAt'])
 @Index('idx_situations_coordination_status', ['coordinationId', 'status'])
+@Index(
+  'uq_situations_creator_client_request',
+  ['createdByUserId', 'clientRequestId'],
+  { unique: true, where: '"client_request_id" IS NOT NULL' },
+)
 export class Situation extends BaseEntity {
   @Column({ type: 'varchar', length: 200 })
   title!: string;
@@ -73,6 +78,34 @@ export class Situation extends BaseEntity {
     default: SituationStatus.OPEN,
   })
   status!: SituationStatus;
+
+  /** Clave de idempotencia del intento de registro (UUID v4 enviado por el cliente). */
+  @Column({ type: 'uuid', name: 'client_request_id', nullable: true })
+  clientRequestId!: string | null;
+
+  /** SHA-256 del contenido registrado; detecta reutilización de la clave con otro payload. */
+  @Column({
+    type: 'varchar',
+    length: 64,
+    name: 'request_fingerprint',
+    nullable: true,
+  })
+  requestFingerprint!: string | null;
+
+  /**
+   * Token del intento que tiene el reclamo de análisis IA. Solo ese intento puede
+   * confirmar el análisis o eliminar la fila. Ver AIOrchestrator.
+   */
+  @Column({ type: 'uuid', name: 'analysis_claim_token', nullable: true })
+  analysisClaimToken!: string | null;
+
+  /** Vencimiento del reclamo: permite a otro intento tomar el control si quedó interrumpido. */
+  @Column({
+    type: 'timestamptz',
+    name: 'analysis_claim_expires_at',
+    nullable: true,
+  })
+  analysisClaimExpiresAt!: Date | null;
 
   @Column({ type: 'text', name: 'last_status_comment', nullable: true })
   lastStatusComment!: string | null;

@@ -1,26 +1,30 @@
 import { ServiceUnavailableException } from '@nestjs/common';
 import { UserStatus } from '../common/enums/identity.enums';
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
+import { SituationAIAnalysisRecord } from './entities/situation-ai-analysis-record.entity';
+import { SituationAnalysisSession } from '../ai-analysis-sessions/entities/situation-analysis-session.entity';
+import { Situation } from '../situations/entities/situation.entity';
 import { AIOrchestrator } from './ai-orchestrator.service';
 
 describe('AIOrchestrator initial registration', () => {
-  it('elimina el expediente provisional cuando falla el análisis IA', async () => {
-    const situationsRepository = {
+  it('elimina el expediente provisional cuando falla el análisis IA, dentro de su reclamo', async () => {
+    const manager = {
+      query: jest.fn().mockResolvedValue([{ id: 'situation-id' }]),
       delete: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    const dataSource = {
+      query: jest.fn().mockResolvedValue([[{ id: 'situation-id' }], 1]),
+      transaction: jest.fn((work: (m: typeof manager) => unknown) =>
+        Promise.resolve(work(manager)),
+      ),
     };
     const situationsService = {
       create: jest.fn().mockResolvedValue({ id: 'situation-id' }),
     };
-    const analysisRecordRepository = {
-      delete: jest.fn().mockResolvedValue({ affected: 0 }),
-    };
-    const analysisSessionsService = {
-      deleteBySituationId: jest.fn().mockResolvedValue(undefined),
-    };
     const orchestrator = new AIOrchestrator(
       {} as never,
-      { transaction: jest.fn() } as never,
-      situationsRepository as never,
+      dataSource as never,
+      {} as never,
       situationsService as never,
       {} as never,
       {} as never,
@@ -28,12 +32,17 @@ describe('AIOrchestrator initial registration', () => {
       {} as never,
       {} as never,
       {} as never,
-      analysisRecordRepository as never,
-      analysisSessionsService as never,
+      {} as never,
+      {} as never,
       { record: jest.fn().mockResolvedValue(null) } as never,
     );
     jest
-      .spyOn(orchestrator, 'execute')
+      .spyOn(
+        orchestrator as unknown as {
+          runClaimedAnalysis: () => Promise<unknown>;
+        },
+        'runClaimedAnalysis',
+      )
       .mockRejectedValue(
         new ServiceUnavailableException('Gemini no respondió'),
       );
@@ -53,13 +62,13 @@ describe('AIOrchestrator initial registration', () => {
       'La situación no fue registrada porque el análisis IA no pudo completarse',
     );
 
-    expect(analysisRecordRepository.delete).toHaveBeenCalledWith({
+    expect(manager.delete).toHaveBeenCalledWith(SituationAIAnalysisRecord, {
       situationId: 'situation-id',
     });
-    expect(analysisSessionsService.deleteBySituationId).toHaveBeenCalledWith(
-      'situation-id',
-    );
-    expect(situationsRepository.delete).toHaveBeenCalledWith({
+    expect(manager.delete).toHaveBeenCalledWith(SituationAnalysisSession, {
+      situationId: 'situation-id',
+    });
+    expect(manager.delete).toHaveBeenCalledWith(Situation, {
       id: 'situation-id',
     });
   });

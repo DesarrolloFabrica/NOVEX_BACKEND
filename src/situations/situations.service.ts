@@ -74,9 +74,14 @@ export class SituationsService {
     }));
   }
 
+  /**
+   * `idempotency` nunca proviene del cuerpo HTTP: lo fija el orquestador de
+   * registro a partir de la cabecera `Idempotency-Key` validada.
+   */
   async create(
     dto: CreateSituationDto,
     actor: AuthPayload,
+    idempotency?: { clientRequestId: string; requestFingerprint: string },
   ): Promise<SituationResponseDto> {
     const coordinationId = this.scopeService.resolveCreateCoordinationId(
       actor,
@@ -113,6 +118,8 @@ export class SituationsService {
       category,
       severity: dto.severity,
       status: SituationStatus.OPEN,
+      clientRequestId: idempotency?.clientRequestId ?? null,
+      requestFingerprint: idempotency?.requestFingerprint ?? null,
       assignedUserId: null,
       lastStatusComment: null,
       resolvedAt: null,

@@ -2,7 +2,9 @@ import { Type } from 'class-transformer';
 import {
   IsEnum,
   IsInt,
+  IsOptional,
   IsString,
+  Matches,
   MaxLength,
   Min,
   MinLength,
@@ -13,6 +15,18 @@ import { EvidenceType } from '../../common/enums/situation-evidence.enums';
 export class CreateSituationEvidenceDto {
   @IsEnum(EvidenceType)
   type!: EvidenceType;
+
+  /**
+   * Identidad estable de la nota (p. ej. `capture:detection`). Si ya existe una
+   * evidencia con la misma clave en la situación, se devuelve esa y no se duplica.
+   * Opcional: sin clave, cada envío crea una evidencia nueva.
+   */
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(64)
+  @Matches(/^[A-Za-z0-9:_.-]+$/)
+  clientKey?: string;
 
   @IsString()
   @MinLength(1)

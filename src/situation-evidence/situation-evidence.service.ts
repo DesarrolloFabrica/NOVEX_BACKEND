@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EvidenceType } from '../common/enums/situation-evidence.enums';
 import { TimelineEventType } from '../common/enums/situation-timeline.enums';
+import { isUniqueViolation } from '../common/utils/database-errors';
 import { Situation } from '../situations/entities/situation.entity';
 import { SituationTimelineService } from '../situation-timeline/situation-timeline.service';
 import {
@@ -31,6 +32,13 @@ export class SituationEvidenceService {
   ): Promise<SituationEvidenceResponseDto> {
     await this.ensureSituationExists(situationId);
 
+    if (dto.clientKey) {
+      const existing = await this.findByClientKey(situationId, dto.clientKey);
+      if (existing) {
+        return this.toResponse(existing);
+      }
+    }
+
     const fileFields = this.resolveFileFields(situationId, dto);
 
     const evidence = this.evidenceRepository.create({
@@ -43,9 +51,24 @@ export class SituationEvidenceService {
       storagePath: fileFields.storagePath,
       mimeType: fileFields.mimeType,
       fileSize: fileFields.fileSize,
+      clientKey: dto.clientKey ?? null,
     });
 
-    const saved = await this.evidenceRepository.save(evidence);
+    let saved: SituationEvidence;
+    try {
+      saved = await this.evidenceRepository.save(evidence);
+    } catch (error) {
+      if (!dto.clientKey || !isUniqueViolation(error)) {
+        throw error;
+      }
+      // Otra solicitud con la misma clave insertó primero.
+      const concurrent = await this.findByClientKey(situationId, dto.clientKey);
+      if (!concurrent) {
+        throw error;
+      }
+      return this.toResponse(concurrent);
+    }
+
     const withUser = await this.evidenceRepository.findByIdAndSituationId(
       saved.id,
       situationId,
@@ -135,6 +158,15 @@ export class SituationEvidenceService {
     if (!exists) {
       throw new NotFoundException(`Situación no encontrada: ${situationId}`);
     }
+  }
+
+  private findByClientKey(
+    situationId: string,
+    clientKey: string,
+  ): Promise<SituationEvidence | null> {
+    return this.evidenceRepository.findOne({
+      where: { situationId, clientKey },
+    });
   }
 
   private async findEvidenceOrFail(

@@ -52,4 +52,7 @@ export class RegisterSituationWithAnalysisResponseDto {
   situation!: SituationResponseDto;
 
   analysis!: ExecuteAIAnalysisResponseDto;
+
+  /** true cuando la clave de idempotencia ya había completado un registro previo. */
+  replayed!: boolean;
 }

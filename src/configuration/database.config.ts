@@ -46,6 +46,8 @@ export const typeOrmAsyncConfig: TypeOrmModuleAsyncOptions = {
       migrations: [join(__dirname, '../database/migrations/*{.ts,.js}')],
       migrationsTableName: 'typeorm_migrations',
       migrationsRun: false,
+      // 'each' permite migraciones con transaction = false (índices CONCURRENTLY).
+      migrationsTransactionMode: 'each',
       // Mantener el peor caso por debajo de la ventana maxima del startup probe
       // de Cloud Run (240 s), sin renunciar a reintentos de cold start.
       retryAttempts: isProduction ? 6 : 5,

@@ -36,6 +36,9 @@ export function buildDataSourceOptions(
     migrations: [join(__dirname, './migrations/*{.ts,.js}')],
     migrationsTableName: 'typeorm_migrations',
     migrationsRun: false,
+    // 'each': cada migración en su propia transacción. Permite marcar migraciones
+    // concretas con transaction = false (CREATE INDEX CONCURRENTLY). 'all' lo prohíbe.
+    migrationsTransactionMode: 'each',
     ssl: postgresSslOption(resolved),
   };
 }

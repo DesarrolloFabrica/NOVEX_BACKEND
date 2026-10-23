@@ -12,7 +12,21 @@ export const THROTTLE_DEFAULT_LIMIT = 600;
 export const THROTTLE_AUTH_LIMIT = 15;
 
 /** Operaciones Gemini: costosas; límite más estricto por usuario/IP. */
-export const THROTTLE_GEMINI_LIMIT = 10;
+/**
+ * Límite de operaciones Gemini por ventana. Fuera de producción puede ajustarse
+ * con GEMINI_THROTTLE_LIMIT (pruebas E2E que registran varias situaciones).
+ * En producción el valor es siempre 10.
+ */
+export const THROTTLE_GEMINI_LIMIT = resolveGeminiThrottleLimit();
+
+function resolveGeminiThrottleLimit(): number {
+  const defaultLimit = 10;
+  if (process.env.NODE_ENV === 'production') return defaultLimit;
+  const configured = Number(process.env.GEMINI_THROTTLE_LIMIT);
+  return Number.isInteger(configured) && configured > 0
+    ? configured
+    : defaultLimit;
+}
 
 /**
  * Solo `default` debe vivir en ThrottlerModule.forRoot.

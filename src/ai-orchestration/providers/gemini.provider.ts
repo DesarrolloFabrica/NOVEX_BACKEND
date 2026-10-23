@@ -75,7 +75,11 @@ export class GeminiProvider implements AIProvider {
 
     const model = this.getModel();
     const timeoutMs = this.getTimeoutMs();
-    const client = new GoogleGenAI({ apiKey });
+    const baseUrl = this.configService.get<string>('gemini.baseUrl');
+    const client = new GoogleGenAI({
+      apiKey,
+      ...(baseUrl ? { httpOptions: { baseUrl } } : {}),
+    });
 
     this.logger.debug(
       `Invocando Gemini model=${model} situationId=${context.situationId} timeoutMs=${timeoutMs}`,
