@@ -46,118 +46,54 @@ Los dos respaldos están publicados en el remoto. Las ramas `release/*` todavía
 
 ## 2. Verificaciones previas (solo lectura, PowerShell)
 
-Ningún comando de esta sección escribe en producción ni muestra secretos.
+Ningún paso de esta sección escribe en producción ni muestra secretos. Los
+comandos están versionados y corrigen lo que no era fiable en la versión
+anterior de este documento:
 
-### 2.1 Cloud Run: qué se sirve hoy y con qué configuración
+- se consultan las revisiones que **reciben tráfico** (`status.traffic` con
+  porcentaje > 0) y no `spec.template`, que puede ser otra revisión;
+- banderas, instancia de Cloud SQL y `min-instances` se leen de esas
+  revisiones;
+- se distingue imagen por tag o por digest y se usa el digest servido
+  (`status.imageDigest`) para encontrar el tag del commit;
+- el nombre de la instancia sale de la anotación de la revisión servida;
+- el proxy lo inicia y lo cierra el propio script (`try/finally`), y las
+  variables `PG*` se restauran aunque falle la consulta.
 
 ```powershell
-# Autenticación interactiva (abre el navegador). El token no se comparte con nadie.
+# Paso interactivo previo (abre el navegador):
 gcloud auth login
-gcloud config set project it-fab-contenido-edu-5
-$Region = 'us-central1'
 
-# Tráfico (revisión y %) e imagen de cada servicio. No incluye variables.
-foreach ($svc in 'novex-backend', 'novex-frontend') {
-  gcloud run services describe $svc --region=$Region `
-    --format="yaml(status.traffic,spec.template.spec.containers[0].image)"
-}
-
-# Últimas revisiones del backend (para un rollback por tráfico)
-gcloud run revisions list --service=novex-backend --region=$Region --limit=5
-
-# Commit de la imagen servida: se despliega por digest y el workflow la etiqueta
-# con el SHA corto del commit.
-foreach ($svc in 'novex-backend', 'novex-frontend') {
-  $img = gcloud run services describe $svc --region=$Region `
-    --format="value(spec.template.spec.containers[0].image)"
-  $repo, $digest = $img -split '@'
-  "$svc -> etiquetas: " + (gcloud artifacts docker images list $repo --include-tags `
-    --filter="version=$digest" --format="value(tags)")
-}
-
-# Configuración del backend SIN secretos: nombres de todas las variables y valor
-# solo de las banderas no secretas que afectan a esta publicación.
-$svcJson = gcloud run services describe novex-backend --region=$Region --format=json | ConvertFrom-Json
-$vars = $svcJson.spec.template.spec.containers[0].env
-$vars | ForEach-Object { $_.name } | Sort-Object
-$flags = 'NODE_ENV', 'SITUATION_SWEEP_CRON_ENABLED', 'SEVERITY_ESCALATION_ENABLED',
-         'CATALOG_SEED_ON_BOOT', 'DEMO_SEED_ENABLED', 'ENABLE_EMAIL_LOGIN', 'DB_SYNCHRONIZE'
-$vars | Where-Object { $flags -contains $_.name } | Select-Object name, value
-'SCHEDULER_OIDC_AUDIENCE', 'SCHEDULER_OIDC_SERVICE_ACCOUNT_EMAIL' |
-  ForEach-Object { "$_ definida: " + [bool]($vars | Where-Object name -eq $_) }
-
-# min-instances: con 0, el @Cron de SLA solo corre mientras haya una instancia viva.
-$svcJson.spec.template.metadata.annotations.'autoscaling.knative.dev/minScale'
-
-# ¿Corre hoy el cron de SLA? Líneas de log de los últimos 30 días.
-gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="novex-backend" AND textPayload:"SLA sweep"' `
-  --freshness=30d --limit=20 --format="value(timestamp,textPayload)"
-
-# ¿Existe ya un job de Cloud Scheduler para el barrido?
-gcloud scheduler jobs list --location=$Region --format="table(name,schedule,state)"
-
-# Copias de Cloud SQL disponibles
-gcloud sql backups list --instance=novex-db --limit=5
-```
-
-Debe corresponder a `b20ffd3` (frontend) y `49a6483` (backend), que son los
-últimos despliegues correctos de GitHub Actions (23-oct). Con
-`SITUATION_SWEEP_CRON_ENABLED` ausente o `true` y `SEVERITY_ESCALATION_ENABLED`
-ausente, la publicación conserva los avisos de SLA y no escala.
-
-### 2.2 Datos de producción: migraciones y recuentos (solo lectura)
-
-`scripts/release-circo-preflight-readonly.sql` corre en una transacción
-`READ ONLY` que termina en `ROLLBACK` y solo devuelve recuentos.
-
-```powershell
 cd C:\dev\Novex\NOVEX_BACKEND
-# Datos de conexión NO secretos tomados de Cloud Run (§2.1 deja $svcJson y $vars).
-$conn = $svcJson.spec.template.metadata.annotations.'run.googleapis.com/cloudsql-instances'
-$db   = ($vars | Where-Object name -eq 'DB_DATABASE').value
-$user = ($vars | Where-Object name -eq 'DB_USERNAME').value
 
-# Proxy de Cloud SQL (v2) en un puerto que no usa nada de NOVEX.
-$proxy = Start-Process cloud-sql-proxy.exe -ArgumentList "$conn --port 55499" -PassThru -NoNewWindow
+# Cloud Run, Cloud SQL (copias y restores), logs del cron de SLA, Scheduler:
+.\scripts\release-circo-preflight.ps1
 
-# Sesión FORZADA a solo lectura. psql pide la contraseña sin mostrarla.
-$env:PGOPTIONS = '-c default_transaction_read_only=on'
-psql "host=127.0.0.1 port=55499 dbname=$db user=$user sslmode=disable" `
-  -v ON_ERROR_STOP=1 -f scripts\release-circo-preflight-readonly.sql
-Remove-Item Env:PGOPTIONS
-Stop-Process -Id $proxy.Id
+# Además, consultas de solo lectura a la base (proxy en contenedor + Node `pg`;
+# la contraseña se pide por teclado):
+.\scripts\release-circo-preflight.ps1 -RunDatabaseChecks -PasswordSource Prompt
 ```
 
-`migration:show` (opcional; la consulta 1 del script ya da la misma lista).
-El script real del repositorio es
-`npm run typeorm -- migration:show -d ./src/database/data-source.ts`.
-`data-source.ts` carga `.env` **sin sobrescribir** lo que ya está en la sesión
-y elige local o nube con `DB_CLOUD`; por eso se fija todo en la sesión y se
-confirma el destino antes de ejecutarlo:
+Herramientas: si `cloud-sql-proxy` no está instalado, el script usa la imagen
+oficial en Docker (`-ProxyMode Docker`, por defecto; descargarla es una
+instalación). `psql` no es necesario: `scripts/run-readonly-sql.mjs` usa el
+cliente `pg` del backend, abre la sesión con
+`default_transaction_read_only=on`, aborta si el servidor no lo confirma y
+contrasta las migraciones **por nombre** con `src/database/migrations`.
+
+`migration:show` es opcional (la consulta 01 da la misma información). El
+script real es `npm run typeorm -- migration:show -d ./src/database/data-source.ts`;
+`data-source.ts` carga `.env` sin sobrescribir las variables de la sesión y
+elige local o nube con `DB_CLOUD`. Para usarlo hay que fijar en la sesión
+`DB_CLOUD=false` y `DB_*_LOCAL` apuntando al proxy, y confirmar antes el
+destino con:
 
 ```powershell
-# Con el proxy de arriba en marcha:
-$env:DB_CLOUD = 'false'
-$env:DB_HOST_LOCAL = '127.0.0.1'; $env:DB_PORT_LOCAL = '55499'; $env:DB_SSL_LOCAL = 'false'
-$env:DB_DATABASE_LOCAL = $db; $env:DB_USERNAME_LOCAL = $user
-$sec = Read-Host 'Contraseña de la base' -AsSecureString
-$env:DB_PASSWORD_LOCAL = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-  [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
-
-# 1) Destino efectivo (solo perfil, host, puerto y base; nunca la contraseña).
-#    Debe decir: local 127.0.0.1 55499 <base de producción>
 npx ts-node -T -e "const r=require('./src/configuration/resolve-database-env').resolveDatabaseEnv(process.env);console.log(r.profile,r.host,r.port,r.database)"
-
-# 2) Solo si el destino es el correcto:
-npm run migration:show
-
-Remove-Item Env:DB_PASSWORD_LOCAL, Env:DB_USERNAME_LOCAL, Env:DB_DATABASE_LOCAL,
-  Env:DB_HOST_LOCAL, Env:DB_PORT_LOCAL, Env:DB_SSL_LOCAL, Env:DB_CLOUD
 ```
 
-Esperado antes de publicar: aplicadas todas hasta
-`CreateSituationEvidenceClientKeyIndex1787400000001` (las 5 de `main` del
-23-oct) y pendientes exactamente estas 11:
+Las migraciones pendientes se contrastan por nombre: no se presupone un número.
+Con el repositorio actual y una base en el estado de `main` (49a6483) son 11:
 
 ```
 AddSituationResolutions1787200000000
@@ -193,11 +129,11 @@ deshacer sin perder datos (§7).
 
 ```bash
 # Copia bajo demanda inmediatamente antes de migrar
-gcloud sql backups create --instance=novex-db --project=it-fab-contenido-edu-5 \
+gcloud sql backups create --instance=<INSTANCIA_DEL_PREFLIGHT> --project=it-fab-contenido-edu-5 \
   --description="pre-circo-$(date +%Y%m%d-%H%M)"
 
 # Confirmar que terminó (estado SUCCESSFUL) y anotar su ID
-gcloud sql backups list --instance=novex-db --project=it-fab-contenido-edu-5 --limit=3
+gcloud sql backups list --instance=<INSTANCIA_DEL_PREFLIGHT> --project=it-fab-contenido-edu-5 --limit=3
 ```
 
 ---
@@ -281,13 +217,63 @@ diferencias de **visualización** y lo que requiere decisión:
 
 | Caso | Efecto en cartas | Regla | Acción |
 |---|---|---|---|
-| Situación antigua de **analista sin coordinación** y activa | Aparece en «Mis reportes» del analista y en el registro de analista del Director, no en ninguna carta ni KPI de coordinación. **Nadie puede avanzarla ni resolverla** (403 para autor, Director y Admin) | el dominio de cartas exige coordinación; no se inventa | **Decisión pendiente** según la consulta 3 de §2.2: asignar a mano cada caso a su coordinación real o cerrarlos con la regla que se acuerde. No se automatiza |
+| Situación antigua de **analista sin coordinación** y activa | Aparece en «Mis reportes» del analista y en el registro de analista del Director, no en ninguna carta ni KPI de coordinación. **Nadie puede avanzarla ni resolverla** (403 para autor, Director y Admin) | el dominio de cartas exige coordinación; no se inventa | ver propuesta A (§7.2), según la consulta 05 |
 | `RESOLVED` legado sin `closed_at` | La carta y el KPI base no la cuentan (activas = OPEN + IN_PROGRESS); el KPI de estado sí («activo al corte»): para B2B se vio 4 frente a 5 | regla documentada en `coordination-integrity.ts` vs. corte temporal | Decidir solo si la consulta 4 da > 0; la versión anterior ya no producía ese estado |
 | Coordinación **inactiva** con situaciones | Desaparece de cartas, totales y KPIs (404); sus registros siguen en el listado | catálogo activo | Revisar solo si la consulta 5 da filas |
 | Categoría que dejó de ser seleccionable | Se sigue mostrando con su nombre | — | ninguna |
 | Situación cerrada antes de cartas | Sin aprendizaje: cuenta como «sin aprendizaje» y no aparece en la lista de aprendizajes | intencional (`1787200000000` no rellena) | ninguna |
 | Severidad editada en la versión anterior | `reported_severity` = la del alta; el historial muestra una sola fila REPORTED | backfill de `1787800000000` | ninguna; la consulta 7 da cuántas |
 | Permiso de alta de ADMIN y DIRECTOR | `1787300000000` lo concedía; `1788200000000` lo retira (estado actual de producción) | catálogo de permisos y frontend | commit separado; descartarlo si la concesión era intencionada |
+
+### 7.2 Propuestas de tratamiento de excepciones (no ejecutadas)
+
+Cada propuesta solo aplica si su consulta del preflight devuelve más de 0. No
+se reasigna ningún registro, no se inventan fechas de cierre ni aprendizajes y
+no se usan `created_at`/`updated_at` como fecha de cierre.
+
+**A. Situaciones activas sin coordinación** (consulta 05, estados OPEN, IN_PROGRESS o RESOLVED)
+
+- Hoy (49a6483): las ve todo rol con `SITUATIONS_VIEW`; quien las registró
+  (el analista) puede avanzarlas y cerrarlas (`ownsSituation`: autoría).
+- Con la release: siguen visibles (listado, «Mis reportes» del autor y
+  registro de analista del Director), pero **nadie** puede avanzarlas ni
+  resolverlas: las reglas nuevas exigen coordinación responsable y declaran
+  expresamente que la autoría no concede permiso. Siguen generando avisos SLA.
+- Propuesta mínima (requiere tu decisión, porque cambia una regla de la
+  release): conservar para estas filas antiguas la regla vigente hoy, es
+  decir, que solo su autor pueda avanzarlas y resolverlas con aprendizaje
+  escrito por él. Cambio acotado en `canResolveSituation` y
+  `canAdvanceSituationToInProgress`: la condición
+  `coordinationId === null && autor === actor && rol ANALISTA`. No se amplía
+  a ningún otro rol ni a filas con coordinación.
+- Alternativa sin código: que una persona autorizada revise cada caso y lo
+  asigne a su coordinación real con la regla de negocio que se acuerde.
+
+**B. RESOLVED sin `closed_at`** (consulta 06)
+
+- La carta y el KPI base cuentan como activos solo OPEN e IN_PROGRESS
+  ("problemas activos" del MVP, `coordination-integrity.ts`). El KPI de
+  estado cuenta como activo todo lo creado antes del corte y no cerrado a esa
+  fecha, sin mirar el estado ("activo al corte").
+- Contradice las reglas de NOVEX: en ambas versiones RESOLVED se rotula «En
+  atención», solo puede pasar a CLOSED, el SLA lo trata como activo y la
+  release permite resolverlo. Además las listas de cartas no piden RESOLVED,
+  así que **no se puede cerrar desde la interfaz**.
+- Propuesta mínima (código, sin decidir el significado del dato: ya lo fija
+  la etiqueta «En atención»): contar RESOLVED como «en atención» en el
+  overview y el KPI base, incluirlo en las listas de cartas y mostrarlo como
+  «En atención». El registro no se modifica; se cierra con el flujo normal de
+  resolución y su `closed_at` será el del cierre real.
+
+**C. Coordinaciones inactivas con situaciones** (consulta 07)
+
+- Hoy: sus situaciones aparecen en el listado general para los roles que lo
+  ven. Con la release: siguen en `GET /situations` y su detalle abre con las
+  mismas reglas, pero la coordinación no tiene carta y sus KPIs responden 404.
+- Propuesta mínima: si hay filas, dar una vía de consulta histórica de solo
+  lectura (filtro por coordinación que admita inactivas en el historial, para
+  los roles que ya tienen `SITUATIONS_VIEW`). No se reactivan coordinaciones
+  ni se mueven registros. Si solo hay cerradas, basta con documentarlo.
 
 Preferencia: corregir hacia delante dentro de la versión de cartas. El respaldo
 de código no basta para recuperar producción si las migraciones ya corrieron.
