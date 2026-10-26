@@ -246,3 +246,9 @@ Pruebas reales (base desechable, backend y navegador reales):
 - `e2e-real` (navegador): 9/9 en dos ejecuciones completas seguidas; en una
   primera ejecución en frío falló una vez «recarga tras respuesta perdida»
   porque el detalle no se abrió solo (sin duplicado: verificado en la base).
+- Suite e2e del frontend con mocks (31 specs que no regeneran capturas):
+  release 160 passed / 50 failed / 49 skipped; la candidata original
+  (`7559ce1`) da 161 / 49 / 49. Los 49 fallos son los mismos (geometría de
+  mesa, subbaraja y selección: deuda previa de la candidata). El único
+  distinto («detalle crece… 1920x1080») es inestable en ambas versiones
+  (aislado: release 2/2, candidata 1/2).
