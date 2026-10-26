@@ -12,6 +12,13 @@ Los dos respaldos están publicados en el remoto. Las ramas `release/*` todavía
 
 ---
 
+> **Actualización 2026-10-26 17:14 UTC.** Incidente corregido: aplicadas las 5
+> migraciones de `main` y tráfico de vuelta a `novex-backend-00085-tug`
+> (`docs/INCIDENTE-20261023-MIGRACIONES.md`). Producción tiene ahora 18
+> migraciones; a la release le quedan **9** (ensayado en base desechable con
+> ese estado). Recuentos reales: A = 0, B = 0, C = 0. ADMIN y DIRECTOR tienen hoy
+> `SITUATIONS_CREATE` (migración del 22-sep); la release lo retira.
+
 ## 0. Estado verificado de producción (2026-10-26, solo lectura)
 
 | | Backend | Frontend |
