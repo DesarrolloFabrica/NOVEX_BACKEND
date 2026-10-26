@@ -13,12 +13,16 @@ describe('AI-002 atomic persistence', () => {
     };
     const manager = {
       getRepository: jest.fn().mockReturnValue(recordRepository),
+      query: jest.fn().mockResolvedValue([{ id: 'situation-id' }]),
     };
     const transaction = jest.fn(
       (work: (entityManager: typeof manager) => unknown) =>
         Promise.resolve(work(manager)),
     );
-    const dataSource = { transaction } as unknown as DataSource;
+    const dataSource = {
+      transaction,
+      query: jest.fn().mockResolvedValue([[{ id: 'situation-id' }], 1]),
+    } as unknown as DataSource;
 
     const analysisService = {
       normalizeCoordinationReferences: jest.fn().mockResolvedValue({}),
@@ -100,7 +104,10 @@ describe('AI-002 atomic persistence', () => {
 
   it('no persiste análisis cuando Gemini falla', async () => {
     const transaction = jest.fn();
-    const dataSource = { transaction } as unknown as DataSource;
+    const dataSource = {
+      transaction,
+      query: jest.fn().mockResolvedValue([[{ id: 'situation-id' }], 1]),
+    } as unknown as DataSource;
 
     const analysisService = {
       normalizeCoordinationReferences: jest.fn(),

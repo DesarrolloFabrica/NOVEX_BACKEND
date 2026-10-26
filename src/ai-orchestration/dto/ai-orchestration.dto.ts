@@ -51,6 +51,13 @@ export class SituationAIAnalysisResponseDto {
 export class RegisterSituationWithAnalysisResponseDto {
   situation!: SituationResponseDto;
 
-  /** Nulo mientras el análisis en el registro esté desactivado. */
+  /**
+   * Nulo mientras el análisis en el registro esté desactivado (versión de
+   * cartas): el alta solo persiste la situación y el análisis se pide aparte
+   * con `POST :id/analyze`. En un replay se devuelve el análisis si ya existe.
+   */
   analysis!: ExecuteAIAnalysisResponseDto | null;
+
+  /** true cuando la clave de idempotencia ya había completado un registro previo. */
+  replayed!: boolean;
 }

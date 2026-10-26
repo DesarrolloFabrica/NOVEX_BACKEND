@@ -31,6 +31,11 @@ const configuration = () => {
       apiKey: process.env.GEMINI_API_KEY ?? '',
       model: process.env.GEMINI_MODEL ?? 'gemini-3-flash-preview',
       timeoutMs: parseInt(process.env.GEMINI_TIMEOUT_MS ?? '60000', 10),
+      /** Solo fuera de producción: permite apuntar a un servidor de pruebas. */
+      baseUrl:
+        process.env.NODE_ENV !== 'production'
+          ? (process.env.GEMINI_BASE_URL ?? '').trim() || undefined
+          : undefined,
     },
     jwt: {
       secret: process.env.JWT_SECRET ?? '',

@@ -24,6 +24,13 @@ export class SituationEvidence {
   @Column({ type: 'uuid', name: 'situation_id' })
   situationId!: string;
 
+  /**
+   * Identidad estable de notas generadas por la captura (no es el título).
+   * Con índice único parcial por situación: un reintento no duplica la nota.
+   */
+  @Column({ type: 'varchar', length: 64, name: 'client_key', nullable: true })
+  clientKey!: string | null;
+
   @ManyToOne(() => User, { nullable: false, eager: true })
   @JoinColumn({ name: 'uploaded_by_user_id' })
   uploadedByUser!: User;

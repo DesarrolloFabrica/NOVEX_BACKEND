@@ -1,13 +1,16 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
+  Headers,
   Param,
   ParseUUIDPipe,
   Post,
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { isUUID } from 'class-validator';
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
@@ -55,8 +58,14 @@ export class AIOrchestrationController {
   registerWithAnalysis(
     @Body() dto: CreateSituationDto,
     @CurrentUser() user: AuthPayload,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ) {
-    return this.orchestrator.registerAndExecute(dto, user);
+    if (idempotencyKey !== undefined && !isUUID(idempotencyKey, 4)) {
+      throw new BadRequestException(
+        'La cabecera Idempotency-Key debe ser un UUID v4.',
+      );
+    }
+    return this.orchestrator.registerAndExecute(dto, user, idempotencyKey);
   }
 
   @Post(':id/analyze')

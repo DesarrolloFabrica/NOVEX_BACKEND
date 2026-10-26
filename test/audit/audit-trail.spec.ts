@@ -338,6 +338,7 @@ describe('Institutional audit trail', () => {
               create: jest.fn((value: unknown) => value),
               save: jest.fn(),
             }),
+            query: jest.fn().mockResolvedValue([{ id: 'situation-id' }]),
           }),
         ),
     );
@@ -353,7 +354,10 @@ describe('Institutional audit trail', () => {
 
     const orchestrator = new AIOrchestrator(
       { get: jest.fn().mockReturnValue('gemini-test') } as never,
-      { transaction } as never,
+      {
+        transaction,
+        query: jest.fn().mockResolvedValue([[{ id: 'situation-id' }], 1]),
+      } as never,
       { exist: jest.fn().mockResolvedValue(true) } as never,
       {} as never,
       {
@@ -406,7 +410,10 @@ describe('Institutional audit trail', () => {
 
     const failingOrchestrator = new AIOrchestrator(
       { get: jest.fn() } as never,
-      { transaction: jest.fn() } as never,
+      {
+        transaction: jest.fn(),
+        query: jest.fn().mockResolvedValue([[{ id: 'situation-id' }], 1]),
+      } as never,
       { exist: jest.fn().mockResolvedValue(true) } as never,
       {} as never,
       {

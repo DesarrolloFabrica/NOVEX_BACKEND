@@ -83,6 +83,12 @@ const RESOLVABLE_STATUSES: readonly SituationStatus[] = [
   SituationStatus.RESOLVED,
 ];
 
+/** Clave e huella del intento de registro; la fija el orquestador, nunca el cuerpo HTTP. */
+export interface RegistrationIdempotency {
+  clientRequestId: string;
+  requestFingerprint: string;
+}
+
 @Injectable()
 export class SituationsService implements OnModuleInit {
   /** UUID de `coord-general`; sin él el ANALISTA no puede resolver. */
@@ -144,17 +150,22 @@ export class SituationsService implements OnModuleInit {
     }));
   }
 
+  /**
+   * `idempotency` nunca proviene del cuerpo HTTP: lo fija el orquestador de
+   * registro a partir de la cabecera `Idempotency-Key` validada.
+   */
   async create(
     dto: CreateSituationDto,
     actor: AuthPayload,
+    idempotency?: RegistrationIdempotency,
   ): Promise<SituationDetailResponseDto> {
     // `reportKind` es obligatorio en el DTO; el servicio no da por hecho que su
     // única entrada sea el controlador y tampoco aplica un default.
     if (dto.reportKind === SituationReportKind.INTER_COORDINATION) {
-      return this.createInterCoordination(dto, actor);
+      return this.createInterCoordination(dto, actor, idempotency);
     }
     if (dto.reportKind === SituationReportKind.INTERNAL) {
-      return this.createInternal(dto, actor);
+      return this.createInternal(dto, actor, idempotency);
     }
     throw new BadRequestException('Indique el tipo de registro (reportKind).');
   }
@@ -169,6 +180,7 @@ export class SituationsService implements OnModuleInit {
   private async createInternal(
     dto: CreateSituationDto,
     actor: AuthPayload,
+    idempotency?: RegistrationIdempotency,
   ): Promise<SituationDetailResponseDto> {
     if (!dto.categoryId) {
       throw new BadRequestException(
@@ -210,6 +222,7 @@ export class SituationsService implements OnModuleInit {
       affectedProcess: null,
       pendingDelivery: null,
       initialConsequence: dto.initialConsequence?.description?.trim() || null,
+      idempotency,
     });
   }
 
@@ -220,6 +233,7 @@ export class SituationsService implements OnModuleInit {
   private async createInterCoordination(
     dto: CreateSituationDto,
     actor: AuthPayload,
+    idempotency?: RegistrationIdempotency,
   ): Promise<SituationDetailResponseDto> {
     if (dto.initialConsequence) {
       throw new BadRequestException(
@@ -279,6 +293,7 @@ export class SituationsService implements OnModuleInit {
       affectedProcess,
       pendingDelivery,
       initialConsequence: null,
+      idempotency,
     });
   }
 
@@ -312,6 +327,7 @@ export class SituationsService implements OnModuleInit {
     affectedProcess: string | null;
     pendingDelivery: string | null;
     initialConsequence: string | null;
+    idempotency?: RegistrationIdempotency;
   }): Promise<SituationDetailResponseDto> {
     const occurredAt = new Date(input.dto.occurredAt);
     if (Number.isNaN(occurredAt.getTime())) {
@@ -346,6 +362,12 @@ export class SituationsService implements OnModuleInit {
             reportedSeverity,
             severityEscalationPolicyCode: ACTIVE_SEVERITY_ESCALATION_POLICY_CODE,
             status: SituationStatus.OPEN,
+            // Idempotencia del alta: el índice parcial
+            // `uq_situations_creator_client_request` hace que un segundo
+            // intento con la misma clave aborte toda la transacción (también la
+            // fila REPORTED y la afectación inicial), así que no se duplican.
+            clientRequestId: input.idempotency?.clientRequestId ?? null,
+            requestFingerprint: input.idempotency?.requestFingerprint ?? null,
             assignedUserId: null,
             lastStatusComment: null,
             resolvedAt: null,

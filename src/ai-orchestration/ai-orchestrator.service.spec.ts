@@ -3,22 +3,20 @@ import { UserStatus } from '../common/enums/identity.enums';
 import { AIOrchestrator } from './ai-orchestrator.service';
 
 describe('AIOrchestrator initial registration', () => {
-  it('persiste el expediente sin exigir análisis IA', async () => {
+  it('persiste el expediente sin exigir análisis IA ni tocar el reclamo', async () => {
     const situationsRepository = {
       delete: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    const dataSource = {
+      query: jest.fn(),
+      transaction: jest.fn(),
     };
     const situationsService = {
       create: jest.fn().mockResolvedValue({ id: 'situation-id' }),
     };
-    const analysisRecordRepository = {
-      delete: jest.fn().mockResolvedValue({ affected: 0 }),
-    };
-    const analysisSessionsService = {
-      deleteBySituationId: jest.fn().mockResolvedValue(undefined),
-    };
     const orchestrator = new AIOrchestrator(
       {} as never,
-      { transaction: jest.fn() } as never,
+      dataSource as never,
       situationsRepository as never,
       situationsService as never,
       {} as never,
@@ -27,8 +25,8 @@ describe('AIOrchestrator initial registration', () => {
       {} as never,
       {} as never,
       {} as never,
-      analysisRecordRepository as never,
-      analysisSessionsService as never,
+      {} as never,
+      {} as never,
       { record: jest.fn().mockResolvedValue(null) } as never,
     );
     const executeSpy = jest.spyOn(orchestrator, 'execute');
@@ -47,10 +45,14 @@ describe('AIOrchestrator initial registration', () => {
     ).resolves.toEqual({
       situation: { id: 'situation-id' },
       analysis: null,
+      replayed: false,
     });
 
     expect(situationsService.create).toHaveBeenCalled();
     expect(executeSpy).not.toHaveBeenCalled();
+    // Sin análisis no hay reclamo que tomar ni registro que revertir.
+    expect(dataSource.query).not.toHaveBeenCalled();
+    expect(dataSource.transaction).not.toHaveBeenCalled();
     expect(situationsRepository.delete).not.toHaveBeenCalled();
   });
 });
