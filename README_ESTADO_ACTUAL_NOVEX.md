@@ -246,9 +246,17 @@ El cierre técnico formal (fases 1–4 de hardening) dictaminó **`READY FOR CON
 
 ## 9. Despliegue
 
-Proyecto GCP `it-fab-contenido-edu-5`, región `us-central1`. Dos servicios de Cloud Run: `novex-backend` y `novex-frontend`, construidos desde la rama de trabajo `feat/admin-operational-cards-mvp`.
+Proyecto GCP `it-fab-contenido-edu-5`, región `us-central1`. Dos servicios de Cloud Run: `novex-backend` y `novex-frontend`. **Los despliegues los hace GitHub Actions al hacer push a `main`** (`deploy-backend.yml`, `deploy-frontend.yml`; también `workflow_dispatch`). Hasta la integración de cartas, `main` era la versión anterior a cartas; el trabajo de cartas vivía en `feat/admin-operational-cards-mvp` y no se desplegaba desde ahí.
 
-`migrationsRun` está en `false`: las migraciones **no** corren solas al arrancar, se ejecutan de forma deliberada. El esquema es compatible hacia atrás, de modo que revertir una revisión de Cloud Run basta como rollback, sin deshacer la base de datos.
+`migrationsRun` está en `false` y los workflows **no** ejecutan migraciones: se aplican de forma deliberada y manual, antes de desplegar el backend.
+
+**Retrocompatibilidad (corregido).** Las migraciones de cartas no son reversibles sin pérdida de datos y el código anterior a cartas no es compatible con todo el esquema nuevo:
+
+- Revertir una revisión de Cloud Run **dentro de la versión de cartas** es seguro.
+- Volver al backend **anterior a cartas** solo es viable con la migración `1788100000000-LegacySituationInsertCompatibility` aplicada (sin ella sus altas fallan por `reported_severity NOT NULL`), y aun así su listado global falla (500) en cuanto existe un problema INTER, porque espera categoría en todas las situaciones.
+- `migration:revert` de las migraciones de cartas borra afectaciones, historial de severidad y permisos, y se bloquea en cuanto hay problemas INTER.
+
+Procedimiento completo de publicación y recuperación: `NOVEX_BACKEND/docs/RELEASE_CIRCO.md`.
 
 ---
 
@@ -259,4 +267,4 @@ Proyecto GCP `it-fab-contenido-edu-5`, región `us-central1`. Dos servicios de C
 | Restore de Cloud SQL nunca probado | Ejecutar el checklist de restore sobre una instancia temporal antes del cierre |
 | Sin pentest externo | Agendar dentro de la ventana de QA |
 | Red de impacto sobre datos simulados | Puede confundirse con información real; etiquetar o conectar antes de exponerla a dirección |
-| Trabajo fuera de `main` | Ambos repositorios operan en `feat/admin-operational-cards-mvp`; planificar la integración |
+| Integración de cartas en `main` | Preparada en `release/circo-20261026`; respaldo de la versión anterior en `backup/main-pre-circo-20261026`. Ver `NOVEX_BACKEND/docs/RELEASE_CIRCO.md` |

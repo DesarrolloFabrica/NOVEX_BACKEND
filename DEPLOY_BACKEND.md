@@ -275,6 +275,9 @@ npm run migration:show
 
 **No ejecute synchronize ni seeds automáticos contra producción.**
 
+- Los workflows de GitHub Actions **no** ejecutan migraciones: se aplican a mano, revisando antes el lote completo con `migration:show`, y siempre después de una copia de Cloud SQL.
+- Las migraciones de la versión de cartas no se pueden revertir sin pérdida de datos. Procedimiento de publicación, orden y recuperación: `docs/RELEASE_CIRCO.md`.
+
 ## 18. Health check
 
 | Endpoint                  | Propósito                               |
