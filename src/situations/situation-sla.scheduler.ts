@@ -11,8 +11,11 @@ import { SituationSweepService } from './sweep/situation-sweep.service';
  * no garantiza que este cron llegue a ejecutarse, y con varias instancias
  * correría en paralelo. Se conserva detrás de `situationSweep.cronEnabled`
  * (env `SITUATION_SWEEP_CRON_ENABLED`, activo por defecto para no cambiar el
- * comportamiento local). Coincidir con el disparador externo es inocuo: el
- * barrido toma un lock advisory y todas sus escrituras son idempotentes.
+ * comportamiento de SLA de la versión anterior). El ESCALAMIENTO de severidad
+ * solo corre con `SEVERITY_ESCALATION_ENABLED=true`, apagado por defecto;
+ * antes compartía este interruptor. Coincidir con el disparador externo es
+ * inocuo: el barrido toma un lock advisory y todas sus escrituras son
+ * idempotentes.
  */
 @Injectable()
 export class SituationSlaScheduler {
@@ -31,7 +34,9 @@ export class SituationSlaScheduler {
     }
     this.running = true;
     try {
-      await this.sweepService.run(new Date());
+      await this.sweepService.run(new Date(), {
+        escalate: this.escalationEnabled(),
+      });
     } catch (error) {
       this.logger.error(
         'Situation sweep (cron) failed',
@@ -40,6 +45,14 @@ export class SituationSlaScheduler {
     } finally {
       this.running = false;
     }
+  }
+
+  /** El escalamiento tiene su propia bandera (apagada por defecto). */
+  private escalationEnabled(): boolean {
+    return (
+      this.configService.get<boolean>('situationSweep.escalationEnabled') ===
+      true
+    );
   }
 
   private isEnabled(): boolean {

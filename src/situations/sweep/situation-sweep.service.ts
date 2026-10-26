@@ -41,6 +41,12 @@ export interface SituationSweepResult {
 export interface SituationSweepOptions {
   pageSize?: number;
   maxPages?: number;
+  /**
+   * Ejecutar la fase de ESCALAMIENTO de severidad. Por defecto NO: vencimientos
+   * y avisos de SLA son independientes del escalamiento, y este solo corre si
+   * quien llama lo pide expresamente (`SEVERITY_ESCALATION_ENABLED`).
+   */
+  escalate?: boolean;
 }
 
 /**
@@ -94,6 +100,7 @@ export class SituationSweepService {
   ): Promise<SituationSweepResult> {
     const pageSize = options.pageSize ?? 100;
     const maxPages = options.maxPages ?? 50;
+    const escalate = options.escalate === true;
     const result: SituationSweepResult = {
       acquired: true,
       breached: 0,
@@ -110,10 +117,15 @@ export class SituationSweepService {
     }> = [
       { key: 'breached', page: (m) => this.breachPage(m, now, pageSize) },
       { key: 'warned', page: (m) => this.warningPage(m, now, pageSize) },
-      {
-        key: 'escalated',
-        page: (m, c) => this.escalationPage(m, now, pageSize, c),
-      },
+      ...(escalate
+        ? [
+            {
+              key: 'escalated' as const,
+              page: (m: EntityManager, c: string | null) =>
+                this.escalationPage(m, now, pageSize, c),
+            },
+          ]
+        : []),
     ];
 
     for (const phase of phases) {

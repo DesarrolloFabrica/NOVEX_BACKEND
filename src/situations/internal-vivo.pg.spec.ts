@@ -375,8 +375,9 @@ suite('INTERNAL vivo · Postgres real', () => {
         reported: SituationSeverity.MEDIUM,
       });
 
-      await sweep.run(now);
-      await sweep.run(now);
+      // El escalamiento tiene su propio interruptor: se pide expresamente.
+      await sweep.run(now, { escalate: true });
+      await sweep.run(now, { escalate: true });
 
       const [escalated] = await ds.query<Array<Record<string, unknown>>>(
         `SELECT severity, reported_severity, due_at, closed_at FROM situations WHERE id = $1`,
@@ -408,6 +409,34 @@ suite('INTERNAL vivo · Postgres real', () => {
         [withoutPolicy],
       );
       expect(plain).toEqual({ severity: SituationSeverity.MEDIUM, n: 1 });
+    });
+
+    it('sin el interruptor de escalamiento: avisa y vence por SLA, pero NO cambia la severidad aunque haya política', async () => {
+      const now = new Date();
+      const createdAt = new Date(now.getTime() - 7 * DAY);
+      // Vencida hace un día: el barrido debe marcar el SLA.
+      const dueAt = new Date(now.getTime() - DAY);
+      const withPolicy = await insertSituation({
+        createdAt,
+        dueAt,
+        reported: SituationSeverity.MEDIUM,
+        policy: QA_POLICY.code,
+      });
+
+      const result = await sweep.run(now);
+
+      expect(result.escalated).toBe(0);
+      const [row] = await ds.query<
+        Array<{ severity: string; sla_breached_at: Date | null; n: number }>
+      >(
+        `SELECT severity, sla_breached_at,
+                (SELECT count(*)::int FROM situation_severity_changes WHERE situation_id = $1) AS n
+         FROM situations WHERE id = $1`,
+        [withPolicy],
+      );
+      expect(row.severity).toBe(SituationSeverity.MEDIUM);
+      expect(row.n).toBe(1);
+      expect(row.sla_breached_at).not.toBeNull();
     });
 
     it('lock advisory: si otra instancia barre, esta llamada no hace nada', async () => {

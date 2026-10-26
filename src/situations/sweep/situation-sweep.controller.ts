@@ -1,4 +1,5 @@
 import { Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../../auth/decorators/public.decorator';
 import { SchedulerOidcGuard } from './scheduler-oidc.guard';
@@ -25,12 +26,20 @@ import { SituationSweepService } from './situation-sweep.service';
 @Public()
 @SkipThrottle()
 export class SituationSweepController {
-  constructor(private readonly sweepService: SituationSweepService) {}
+  constructor(
+    private readonly sweepService: SituationSweepService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Post('situation-sweep')
   @HttpCode(200)
   @UseGuards(SchedulerOidcGuard)
   run() {
-    return this.sweepService.run(new Date());
+    // Mismo interruptor que el cron: sin él, solo vencimientos y avisos de SLA.
+    return this.sweepService.run(new Date(), {
+      escalate:
+        this.configService.get<boolean>('situationSweep.escalationEnabled') ===
+        true,
+    });
   }
 }

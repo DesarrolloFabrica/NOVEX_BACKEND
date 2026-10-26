@@ -46,7 +46,13 @@ const configuration = () => {
     },
     /**
      * Barrido de situaciones (SLA + escalamiento).
-     *   cronEnabled  respaldo `@Cron` en proceso (por defecto activo).
+     *   cronEnabled  respaldo `@Cron` en proceso (por defecto activo): marca
+     *                vencimientos y emite avisos de SLA, como el cron de SLA de
+     *                la versión anterior.
+     *   escalationEnabled  fase de ESCALAMIENTO automático de severidad.
+     *                Independiente del cron: por defecto APAGADA, para que
+     *                activar una política nunca cambie severidades sin una
+     *                decisión explícita de configuración.
      *   oidc*        identidad que Cloud Scheduler debe presentar al llamar a
      *                `POST /internal/jobs/situation-sweep`. Vacíos = el
      *                endpoint rechaza toda llamada.
@@ -54,6 +60,8 @@ const configuration = () => {
     situationSweep: {
       cronEnabled:
         (process.env.SITUATION_SWEEP_CRON_ENABLED ?? 'true') === 'true',
+      escalationEnabled:
+        (process.env.SEVERITY_ESCALATION_ENABLED ?? 'false') === 'true',
       oidcAudience: process.env.SCHEDULER_OIDC_AUDIENCE ?? '',
       oidcServiceAccountEmail:
         process.env.SCHEDULER_OIDC_SERVICE_ACCOUNT_EMAIL ?? '',

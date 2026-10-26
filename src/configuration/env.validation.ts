@@ -120,6 +120,12 @@ export class EnvironmentVariables {
   @IsOptional()
   SITUATION_SWEEP_CRON_ENABLED: boolean = true;
 
+  /** Escalamiento automático de severidad en el barrido. Omitido = apagado. */
+  @Transform(({ value }) => toBoolean(value))
+  @IsBoolean()
+  @IsOptional()
+  SEVERITY_ESCALATION_ENABLED: boolean = false;
+
   /**
    * Identidad OIDC de Cloud Scheduler para `POST /internal/jobs/situation-sweep`.
    * Vacías = el endpoint rechaza toda llamada (no queda abierto por omisión).
