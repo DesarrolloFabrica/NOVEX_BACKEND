@@ -76,9 +76,35 @@ describe('DTOs de situación · contrato INTERNAL vivo', () => {
       ).toEqual([]);
     });
 
-    it('reportKind es obligatorio (sin default silencioso)', async () => {
-      const rest = withoutKey(internal, 'reportKind');
-      expect(await errorsOf(CreateSituationDto, rest)).toContain('reportKind');
+    /*
+     * Sin `reportKind` el DTO ya no rechaza por sí solo: deja pasar la forma
+     * del CONTRATO ANTERIOR (frontend publicado antes de cartas) para que el
+     * servicio decida con sus reglas (situations.legacy-contract.spec.ts).
+     * Lo que sí sigue exigiendo es la forma de aquel contrato.
+     */
+    it('sin reportKind admite solo la forma del contrato anterior', async () => {
+      const legacy = withoutKey(internal, 'reportKind');
+      expect(await errorsOf(CreateSituationDto, legacy)).toEqual([]);
+      // Aquel contrato exigía categoría y severidad.
+      expect(
+        await errorsOf(CreateSituationDto, withoutKey(legacy, 'categoryId')),
+      ).toContain('categoryId');
+      expect(
+        await errorsOf(CreateSituationDto, withoutKey(legacy, 'severity')),
+      ).toContain('severity');
+      // Un tipo desconocido sigue sin pasar.
+      expect(
+        await errorsOf(CreateSituationDto, { ...internal, reportKind: 'OTRO' }),
+      ).toContain('reportKind');
+    });
+
+    it('sin reportKind, una coordinación enviada debe seguir siendo un UUID', async () => {
+      expect(
+        await errorsOf(CreateSituationDto, {
+          ...withoutKey(internal, 'reportKind'),
+          coordinationId: 'no-es-uuid',
+        }),
+      ).toContain('coordinationId');
     });
 
     it('coordinationId es obligatorio también en INTERNAL', async () => {

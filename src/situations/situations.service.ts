@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
@@ -91,6 +92,8 @@ export interface RegistrationIdempotency {
 
 @Injectable()
 export class SituationsService implements OnModuleInit {
+  private readonly logger = new Logger(SituationsService.name);
+
   /** UUID de `coord-general`; sin él el ANALISTA no puede resolver. */
   private generalCoordinationId: string | null = null;
 
@@ -159,15 +162,82 @@ export class SituationsService implements OnModuleInit {
     actor: AuthPayload,
     idempotency?: RegistrationIdempotency,
   ): Promise<SituationDetailResponseDto> {
-    // `reportKind` es obligatorio en el DTO; el servicio no da por hecho que su
-    // única entrada sea el controlador y tampoco aplica un default.
+    // El servicio no da por hecho que su única entrada sea el controlador y no
+    // aplica un default: sin `reportKind` solo cabe el contrato anterior.
     if (dto.reportKind === SituationReportKind.INTER_COORDINATION) {
       return this.createInterCoordination(dto, actor, idempotency);
     }
     if (dto.reportKind === SituationReportKind.INTERNAL) {
       return this.createInternal(dto, actor, idempotency);
     }
+    if (dto.reportKind === undefined) {
+      return this.createLegacyContract(dto, actor, idempotency);
+    }
     throw new BadRequestException('Indique el tipo de registro (reportKind).');
+  }
+
+  /**
+   * CONTRATO ANTERIOR (TRANSITORIO). El frontend publicado antes de cartas no
+   * envía `reportKind` y, para un coordinador, puede omitir la coordinación.
+   * Durante la ventana en que el backend nuevo convive con ese frontend, sus
+   * altas se siguen aceptando con las reglas que ese contrato tenía, sin
+   * inventar nada:
+   *
+   *   - Tipo INTERNAL. El contrato anterior solo creaba problemas internos:
+   *     exigía categoría y no tenía campos de dependencia (proceso afectado,
+   *     entrega pendiente). Es el mismo valor que la migración 1787400000000
+   *     asignó a todas las situaciones existentes.
+   *   - Coordinación: solo para un rol con coordinación, la enviada o la de su
+   *     sesión (regla de `resolveCreateCoordinationId` en main). Cualquier otro
+   *     rol (el analista registraba «a su nombre, sin coordinación») se
+   *     rechaza con LEGACY_REGISTRATION_REQUIRES_COORDINATION: el dominio de
+   *     cartas exige coordinación y no se inventa.
+   *   - Severidad reportada = `severity`, que el contrato anterior ya exigía.
+   *
+   * Si la petición trae cualquier campo propio de cartas sin `reportKind`, no
+   * es el contrato anterior y se rechaza. Retirar este método cuando ningún
+   * cliente use el formulario anterior (ver docs/RELEASE_CIRCO.md).
+   */
+  private async createLegacyContract(
+    dto: CreateSituationDto,
+    actor: AuthPayload,
+    idempotency?: RegistrationIdempotency,
+  ): Promise<SituationDetailResponseDto> {
+    const usesCardsFields =
+      dto.affectedCoordinationId !== undefined ||
+      dto.affectedProcess !== undefined ||
+      dto.pendingDelivery !== undefined ||
+      dto.initialConsequence !== undefined;
+    if (usesCardsFields || !dto.categoryId) {
+      throw new BadRequestException(
+        'Indique el tipo de registro (reportKind).',
+      );
+    }
+
+    // En el contrato anterior solo un rol con coordinación registraba en una
+    // coordinación (la suya); el analista lo hacía sin coordinación, que el
+    // dominio de cartas ya no admite. `createInternal` vuelve a comprobar que
+    // la coordinación enviada sea la propia.
+    const coordinationId = this.scopeService.isCoordinationScoped(actor)
+      ? (dto.coordinationId ?? actor.coordinationId ?? undefined)
+      : undefined;
+    if (!coordinationId) {
+      throw new BadRequestException({
+        code: 'LEGACY_REGISTRATION_REQUIRES_COORDINATION',
+        message:
+          'El registro sin coordinación ya no existe. Recargue la página para registrar el problema desde las cartas, eligiendo su coordinación.',
+      });
+    }
+
+    this.logger.warn(
+      `Alta con el contrato anterior (sin reportKind) actor=${actor.sub} coordinationId=${coordinationId}`,
+    );
+
+    return this.createInternal(
+      { ...dto, reportKind: SituationReportKind.INTERNAL, coordinationId },
+      actor,
+      idempotency,
+    );
   }
 
   /**

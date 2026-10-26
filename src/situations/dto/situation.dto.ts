@@ -72,19 +72,31 @@ export class CreateSituationDto {
   description!: string;
 
   /**
-   * Tipo de registro. OBLIGATORIO: ya no hay default silencioso a INTERNAL,
-   * para que ningún cliente cree un problema interno sin decirlo.
+   * Tipo de registro. Los clientes de cartas lo envían SIEMPRE: no hay default
+   * silencioso a INTERNAL.
+   *
+   * Su ausencia solo se acepta como CONTRATO ANTERIOR (el frontend publicado
+   * antes de cartas, durante la ventana de despliegue): el servicio exige que
+   * la petición tenga exactamente esa forma y la trata con la regla que aquel
+   * contrato tenía (ver SituationsService.createLegacyContract). TRANSITORIO:
+   * retirar cuando ningún cliente use el formulario anterior.
    */
+  @IsOptional()
   @IsEnum(SituationReportKind)
-  reportKind!: SituationReportKind;
+  reportKind?: SituationReportKind;
 
   /**
    * Coordinación RESPONSABLE. Obligatoria en los dos tipos. En INTERNAL es la
    * carta seleccionada (y, para un COORDINADOR, siempre la suya); en INTER es
-   * la externa que debe atender.
+   * la externa que debe atender. Solo en el contrato anterior puede faltar
+   * (el coordinador la tomaba de su sesión).
    */
+  @ValidateIf(
+    (dto: CreateSituationDto) =>
+      dto.reportKind !== undefined || dto.coordinationId !== undefined,
+  )
   @IsUUID()
-  coordinationId!: string;
+  coordinationId?: string;
 
   /**
    * Coordinación AFECTADA. Obligatoria en INTER (carta seleccionada). En
