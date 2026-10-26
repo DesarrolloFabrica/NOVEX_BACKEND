@@ -79,11 +79,17 @@ NOVEX.
 | Qué | Por qué | Cómo cerrarlo |
 |---|---|---|
 | Prueba manual de alta en producción tras la corrección del 26-oct (notas, doble clic, listado) | requiere un usuario real | `docs/INCIDENTE-20261023-MIGRACIONES.md` §«Prueba manual» |
-| Prueba de restauración de Cloud SQL (backup `1793034669505`) | riesgo abierto previo | `docs/RESTORE-TEST.md` |
 | Repetir §2.2 justo antes de migrar | el estado puede cambiar hasta la ventana | §2.2 |
 
 Ya cerrado el 26-oct (solo lectura, Cloud Shell): revisiones y configuración
 servidas, migraciones aplicadas por nombre y recuentos (A = B = C = 0).
+
+Prueba de restauración del backup `1793034669505` en una instancia aislada
+(26-oct, `docs/RESTORE-TEST.md`): restauración correcta (≈ 16 min), datos
+idénticos a producción salvo escrituras posteriores explicadas fila a fila, y
+sobre la copia las 5 de `main` (esquema = producción) y las 9 de la release
+(esquema = repositorio, datos conservados, `SITUATIONS_CREATE` solo en
+ANALISTA y COORDINADOR) en 8 s y 11 s. Instancia eliminada.
 | Flujos del frontend anterior distintos del alta (p. ej. cierres) contra el backend nuevo durante la ventana | solo se verificó el alta | ventana corta: FE se publica justo después del BE |
 
 ---
