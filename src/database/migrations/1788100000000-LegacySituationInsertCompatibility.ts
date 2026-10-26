@@ -24,12 +24,16 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *   fila REPORTED            := (NULL → reported_severity, created_at,
  *                               created_by_user_id)      (1787800000000)
  *
- * La fila REPORTED la crea un CONSTRAINT TRIGGER DIFERIDO al final de la
- * transacción y solo si no existe: el código de cartas inserta la suya dentro
- * de la misma transacción del alta, así que para él es un no-op y nunca choca
- * con `uq_situation_severity_changes_reported`.
+ * SOLO INSERCIONES CON FORMA ANTERIOR. Lo que distingue al código anterior es
+ * que no envía `reported_severity`. Cualquier otra inserción (el código de
+ * cartas, seeds o pruebas que ya traen el valor) queda exactamente como llega:
+ * ni se completa ni recibe fila REPORTED automática.
  *
- * Para el código de cartas nada cambia: siempre envía estos valores.
+ * La fila REPORTED la crea un CONSTRAINT TRIGGER DIFERIDO al final de la
+ * transacción, solo para las filas que el trigger previo marcó (marca local a
+ * la transacción con `set_config`) y solo si no existe. Así no choca con
+ * `uq_situation_severity_changes_reported` cuando otro código inserta la suya,
+ * ni siquiera en una transacción posterior.
  *
  * `down` solo retira triggers y funciones: no borra ni modifica datos.
  * Retirar (con una migración nueva) cuando ya no haga falta volver a la
@@ -43,14 +47,21 @@ export class LegacySituationInsertCompatibility1788100000000 implements Migratio
       CREATE OR REPLACE FUNCTION "novex_situations_legacy_insert_defaults"()
       RETURNS trigger LANGUAGE plpgsql AS $$
       BEGIN
-        IF NEW."reported_severity" IS NULL THEN
-          NEW."reported_severity" := NEW."severity";
+        -- Solo una inserción con forma ANTERIOR (sin reported_severity) se
+        -- completa; cualquier otra queda exactamente como llegó.
+        IF NEW."reported_severity" IS NOT NULL THEN
+          RETURN NEW;
         END IF;
+        NEW."reported_severity" := NEW."severity";
         IF NEW."report_kind" = 'INTERNAL'
            AND NEW."affected_coordination_id" IS NULL
            AND NEW."coordination_id" IS NOT NULL THEN
           NEW."affected_coordination_id" := NEW."coordination_id";
         END IF;
+        -- Marca de transacción para el trigger diferido: esta fila, y solo
+        -- esta, necesita su fila REPORTED.
+        PERFORM set_config(
+          'novex.legacy_' || replace(NEW."id"::text, '-', '_'), 'on', true);
         RETURN NEW;
       END;
       $$
@@ -70,6 +81,11 @@ export class LegacySituationInsertCompatibility1788100000000 implements Migratio
       CREATE OR REPLACE FUNCTION "novex_situations_ensure_reported_severity_change"()
       RETURNS trigger LANGUAGE plpgsql AS $$
       BEGIN
+        IF coalesce(current_setting(
+             'novex.legacy_' || replace(NEW."id"::text, '-', '_'), true), '')
+           <> 'on' THEN
+          RETURN NULL;
+        END IF;
         INSERT INTO "situation_severity_changes"
           ("situation_id", "previous_severity", "new_severity", "source",
            "effective_at", "actor_user_id")
