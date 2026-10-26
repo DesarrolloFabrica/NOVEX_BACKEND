@@ -8,7 +8,8 @@ su backend, integrada con la corrección de duplicados de producción del 23-oct
 | NOVEX_FRONTEND | `backup/main-pre-circo-20261026` → `b20ffd312336cf66278661f3cce5beadcf07f5e8` | `release/circo-20261026` |
 | NOVEX_BACKEND | `backup/main-pre-circo-20261026` → `49a64838face6ae131ad3c30dba7276f73f84a6f` | `release/circo-20261026` |
 
-Los dos respaldos están publicados en el remoto. Las ramas `release/*` todavía no.
+Los dos respaldos están publicados en el remoto. Las ramas `release/*` se
+publican el 26-oct con PR en borrador hacia `main` (sin fusionar).
 
 ---
 
@@ -36,18 +37,12 @@ Configuración del backend servido: `NODE_ENV=production`,
 min-instances 0. Instancia `novex-db` (PostgreSQL 16, Enterprise,
 `db-f1-micro`, zonal, 10 GB SSD, IP pública, CA `GOOGLE_MANAGED_INTERNAL_CA`).
 
-**Incidencia activa (no causada por esta release).** Desde el 23-oct 14:00
-UTC, cinco minutos después de desplegar `49a6483`, el backend registra
-`QueryFailedError: column Situation.client_request_id does not exist` (150
-veces en 3 días, el cron de SLA cada 30 min): las migraciones de la
-corrección del 23-oct **no se aplicaron** en la base. Cualquier consulta de
-situaciones del backend servido falla; no se observaron peticiones de
-usuarios en ese periodo (solo el smoke del despliegue). Sin acceso a la base
-no se sabe si faltan las cinco migraciones de ese commit o solo algunas.
+**Incidencia del 23-oct (corregida el 26-oct, no causada por esta release).**
+Las 5 migraciones de `49a6483` no se habían aplicado y toda consulta de
+situaciones fallaba. Detalle en `docs/INCIDENTE-20261023-MIGRACIONES.md`.
 
-**Acceso a la base desde la red de oficina:** el firewall FortiGate
-re-firma el TLS del conector de Cloud SQL (certificado emitido por
-«Fortinet … FG200FT923920221»); el proxy lo rechaza, como debe. Las consultas
+**Acceso a la base desde la red de oficina:** el firewall de la oficina
+re-firma el TLS del conector de Cloud SQL; el proxy lo rechaza, como debe. Las consultas
 de §2.2 deben ejecutarse desde una red sin inspección TLS (p. ej. Cloud Shell)
 o con una excepción de inspección para la instancia.
 
@@ -83,11 +78,12 @@ NOVEX.
 
 | Qué | Por qué | Cómo cerrarlo |
 |---|---|---|
-| Revisión, imagen y configuración que sirve hoy Cloud Run | `gcloud` exige reautenticación interactiva | §2.1 |
-| Migraciones aplicadas y recuentos de datos reales de producción | sin conexión autorizada de lectura | §2.2 |
-| Que el cron de SLA corre de verdad en producción | ídem (logs y eventos SLA) | §2.1 (logs) y consulta 8 de §2.2 |
-| Decisiones sobre datos existentes (§7.1) | dependen de los recuentos reales | §2.2 |
-| Prueba de restauración de Cloud SQL | riesgo abierto previo | `docs/BACKUP-DR.md` |
+| Prueba manual de alta en producción tras la corrección del 26-oct (notas, doble clic, listado) | requiere un usuario real | `docs/INCIDENTE-20261023-MIGRACIONES.md` §«Prueba manual» |
+| Prueba de restauración de Cloud SQL (backup `1793034669505`) | riesgo abierto previo | `docs/RESTORE-TEST.md` |
+| Repetir §2.2 justo antes de migrar | el estado puede cambiar hasta la ventana | §2.2 |
+
+Ya cerrado el 26-oct (solo lectura, Cloud Shell): revisiones y configuración
+servidas, migraciones aplicadas por nombre y recuentos (A = B = C = 0).
 | Flujos del frontend anterior distintos del alta (p. ej. cierres) contra el backend nuevo durante la ventana | solo se verificó el alta | ventana corta: FE se publica justo después del BE |
 
 ---
@@ -141,11 +137,14 @@ npx ts-node -T -e "const r=require('./src/configuration/resolve-database-env').r
 ```
 
 Las migraciones pendientes se contrastan por nombre: no se presupone un número.
-Con el repositorio actual y una base en el estado de `main` (49a6483) son 11:
+Producción (26-oct, tras la corrección) tiene 18 aplicadas, entre ellas las 2
+de cartas del despliegue manual del 22-sep (`AddSituationResolutions1787200000000`
+y `GrantReportingAndClosurePermissions1787300000000`). Esas dos no se repiten:
+su `name` coincide con las filas de `typeorm_migrations`, y su código es el de
+`4a8d936` (la segunda solo difiere en el salto de línea de la declaración de
+clase, por lint; idénticas ignorando espacios). Quedan **9**:
 
 ```
-AddSituationResolutions1787200000000
-GrantReportingAndClosurePermissions1787300000000
 AddSituationReportKindAndAffectedCoordination1787400000000
 GrantAnalystSituationsClose1787500000000
 GrantDirectorKpisView1787600000000
@@ -157,8 +156,10 @@ LegacySituationInsertCompatibility1788100000000
 RevokeAdminDirectorSituationsCreate1788200000000
 ```
 
-Si aparece otra combinación (p. ej. migraciones de cartas ya aplicadas por un
-despliegue manual, o las 5 de `main` sin aplicar), **detenerse** y revisar.
+Si aparece otra combinación, **detenerse** y revisar.
+`AllowAnalystUnassignedSituations1786500000000` figura en producción y no en el
+repositorio: no deja huella en el esquema (§ del informe del incidente) y no
+impide ejecutar las 9.
 
 Tres migraciones de cartas comparten timestamp con migraciones de `main`
 (`1787200000000`, `1787300000000`, `1787400000000`) con nombres distintos.
