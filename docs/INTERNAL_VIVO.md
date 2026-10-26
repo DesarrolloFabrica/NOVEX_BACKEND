@@ -44,7 +44,7 @@ due_at = created_at + ventana(reported_severity)
 - Endpoint: `POST /api/v1/internal/jobs/situation-sweep`, protegido por `SchedulerOidcGuard`: firma Google, `iss`, `aud` exacto, `email` de la cuenta de servicio y `email_verified`. Sin configuración rechaza todo.
 - Variables: `SCHEDULER_OIDC_AUDIENCE`, `SCHEDULER_OIDC_SERVICE_ACCOUNT_EMAIL`, `SITUATION_SWEEP_CRON_ENABLED` (respaldo `@Cron` cada 30 min; por defecto activo).
 - Qué hace hoy el barrido: marca vencimientos de SLA (`SLA_BREACHED`) y emite avisos (`SLA_WARNING`), lo mismo que el `@Cron` que la versión anterior a cartas ya ejecuta en producción cada 30 min. El escalamiento automático de severidad **no actúa** en esta versión: `ACTIVE_SEVERITY_ESCALATION_POLICY_CODE` es `NULL` y las situaciones existentes quedan sin política tras las migraciones. Por eso `SITUATION_SWEEP_CRON_ENABLED` sigue activo por defecto: desactivarlo dejaría de producir los eventos de SLA que hoy se generan.
-- Activar el escalamiento es una decisión de producto aparte: definir la política en `severity-escalation.policy.ts` (código y umbrales), desplegar, y solo entonces los casos NUEVOS la reciben.
+- Activar el escalamiento es una decisión de producto aparte y exige DOS cosas: una política aprobada en `severity-escalation.policy.ts` (código y umbrales; solo los casos NUEVOS la reciben) y `SEVERITY_ESCALATION_ENABLED=true` en el servicio. Sin ese interruptor (por defecto apagado) el cron y el endpoint solo hacen vencimientos y avisos de SLA.
 - Idempotencia y concurrencia: `pg_try_advisory_xact_lock` por página, `FOR UPDATE SKIP LOCKED`, `UPDATE` condicionales para vencimientos y avisos (enfriamiento 12 h), índice único para escalamientos.
 - Frecuencia recomendada: cada 15 minutos.
 
