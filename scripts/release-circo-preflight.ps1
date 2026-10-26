@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Preflight de producción para publicar cartas y circo. SOLO LECTURA.
 
@@ -30,7 +30,9 @@ param(
   [switch]$RunDatabaseChecks,
   [ValidateSet('Docker', 'Native')]
   [string]$ProxyMode = 'Docker',
-  [string]$ProxyImage = 'gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.1',
+  # Imagen oficial (github.com/GoogleCloudPlatform/cloud-sql-proxy), fijada por
+  # el digest del índice multiplataforma de la etiqueta 2.14.1.
+  [string]$ProxyImage = 'gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.1@sha256:5cf206e6b9609aaa666db20c6c6632521985a5412ebbe4835e83d39bc76501e9',
   [int]$ProxyPort = 55499,
   [ValidateSet('Prompt', 'SecretManager')]
   [string]$PasswordSource = 'Prompt'
@@ -48,10 +50,32 @@ $PublicFlags = @(
 # Variables de las que solo se informa si están definidas.
 $PresenceOnly = @('SCHEDULER_OIDC_AUDIENCE', 'SCHEDULER_OIDC_SERVICE_ACCOUNT_EMAIL', 'CORS_ORIGINS')
 
+# gcloud es un .ps1 que escribe avisos en stderr: con ErrorActionPreference=Stop
+# PowerShell 5.1 los convierte en errores terminantes. Se ejecuta con Continue y
+# se decide por el código de salida.
+function Invoke-Native {
+  param([Parameter(Mandatory)][scriptblock]$Command, [switch]$ShowErrors)
+  $previousPreference = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    if ($ShowErrors) { return (& $Command 2>&1) }
+    return (& $Command 2>$null)
+  }
+  finally { $ErrorActionPreference = $previousPreference }
+}
+
 function Invoke-GcloudJson {
-  param([Parameter(Mandatory)][string[]]$GcloudArgs)
-  $raw = & gcloud @GcloudArgs --project=$Project --format=json 2>$null
-  if ($LASTEXITCODE -ne 0) { throw "gcloud falló: gcloud $($GcloudArgs -join ' ')" }
+  param(
+    [Parameter(Mandatory)][string[]]$GcloudArgs,
+    # Consulta auxiliar: si falla (API no habilitada, sin permiso de lectura),
+    # avisa y devuelve $null en lugar de abortar el preflight.
+    [switch]$Optional
+  )
+  $raw = Invoke-Native { & gcloud @GcloudArgs --project=$Project --format=json }
+  if ($LASTEXITCODE -ne 0) {
+    if ($Optional) { Write-Warning "No disponible: gcloud $($GcloudArgs[0..2] -join ' ')"; return $null }
+    throw "gcloud falló: gcloud $($GcloudArgs -join ' ')"
+  }
   if (-not $raw) { return $null }
   return ($raw -join "`n") | ConvertFrom-Json
 }
@@ -93,7 +117,7 @@ foreach ($s in $serving) {
 
   $tags = $null
   if ($digest) {
-    $imgs = Invoke-GcloudJson @('artifacts', 'docker', 'images', 'list', $repoPath, '--include-tags', "--filter=version=$digest")
+    $imgs = Invoke-GcloudJson -Optional @('artifacts', 'docker', 'images', 'list', $repoPath, '--include-tags', "--filter=version=$digest")
     $tags = ($imgs | ForEach-Object { $_.tags }) -join ','
   }
 
@@ -131,7 +155,8 @@ foreach ($s in $serving) {
 if (-not $backendRevisionInfo -or -not $backendRevisionInfo.SqlInstance) {
   throw 'La revisión servida del backend no declara instancia de Cloud SQL.'
 }
-$connectionNames = $backendRevisionInfo.SqlInstance -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+# @(...) evita que una sola instancia se desenvuelva a cadena ([0] = primer carácter).
+$connectionNames = @($backendRevisionInfo.SqlInstance -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 $connectionName = $connectionNames[0]
 $instanceName = ($connectionName -split ':')[-1]
 Write-Host ""
@@ -160,7 +185,7 @@ Invoke-GcloudJson @('sql', 'backups', 'list', "--instance=$instanceName", '--lim
 Write-Host "--- Evidencia de restauraciones (operaciones RESTORE_VOLUME / CLONE en el proyecto)"
 $allInstances = Invoke-GcloudJson @('sql', 'instances', 'list')
 foreach ($i in $allInstances) {
-  $ops = Invoke-GcloudJson @('sql', 'operations', 'list', "--instance=$($i.name)", '--limit=200')
+  $ops = Invoke-GcloudJson -Optional @('sql', 'operations', 'list', "--instance=$($i.name)", '--limit=200')
   $ops | Where-Object { $_.operationType -in @('RESTORE_VOLUME', 'CLONE') } |
     Select-Object @{n = 'instancia'; e = { $i.name } }, operationType, status, startTime | Format-Table -AutoSize
 }
@@ -170,11 +195,11 @@ Write-Host ("    Instancias en el proyecto: {0}" -f (($allInstances | ForEach-Ob
 Write-Host ""
 Write-Host "=== Cron de SLA en producción (logs de 30 días)" -ForegroundColor Cyan
 $filter = 'resource.type="cloud_run_revision" AND resource.labels.service_name="novex-backend" AND textPayload:"SLA sweep"'
-$logs = Invoke-GcloudJson @('logging', 'read', $filter, '--freshness=30d', '--limit=20')
+$logs = Invoke-GcloudJson -Optional @('logging', 'read', $filter, '--freshness=30d', '--limit=20')
 if ($logs) { $logs | Select-Object timestamp, textPayload | Format-Table -AutoSize -Wrap } else { Write-Host '    (sin líneas "SLA sweep": el cron solo registra cuando marca o avisa algo)' }
 
 Write-Host "--- Jobs de Cloud Scheduler"
-$jobs = Invoke-GcloudJson @('scheduler', 'jobs', 'list', "--location=$Region")
+$jobs = Invoke-GcloudJson -Optional @('scheduler', 'jobs', 'list', "--location=$Region")
 if ($jobs) { $jobs | Select-Object name, schedule, state | Format-Table -AutoSize } else { Write-Host '    (ninguno)' }
 
 if (-not $RunDatabaseChecks) {
@@ -202,7 +227,7 @@ try {
     $secretRef = (Get-EnvValue -Container $container -Name 'DB_PASSWORD').valueFrom.secretKeyRef
     if (-not $secretRef) { throw 'DB_PASSWORD de la revisión servida no proviene de Secret Manager.' }
     $version = if ($secretRef.key) { $secretRef.key } else { 'latest' }
-    $plain = & gcloud secrets versions access $version --secret=$($secretRef.name) --project=$Project 2>$null
+    $plain = Invoke-Native { & gcloud secrets versions access $version --secret=$($secretRef.name) --project=$Project }
     if ($LASTEXITCODE -ne 0 -or -not $plain) { throw 'No se pudo leer el secreto (no se muestra nada).' }
     $env:PGPASSWORD = ($plain -join "`n")
     Remove-Variable plain
@@ -215,10 +240,10 @@ try {
 
   if ($ProxyMode -eq 'Docker') {
     # Token de acceso solo como variable de entorno del contenedor (no en argumentos).
-    $env:CSQL_PROXY_TOKEN = (& gcloud auth print-access-token 2>$null)
+    $env:CSQL_PROXY_TOKEN = Invoke-Native { & gcloud auth print-access-token }
     $proxyContainer = "novex-preflight-proxy-$PID"
-    & docker run -d --rm --name $proxyContainer -e CSQL_PROXY_TOKEN `
-      -p "127.0.0.1:${ProxyPort}:5432" $ProxyImage --address 0.0.0.0 --port 5432 $connectionName | Out-Null
+    Invoke-Native { & docker run -d --rm --name $proxyContainer -e CSQL_PROXY_TOKEN `
+      -p "127.0.0.1:${ProxyPort}:5432" $ProxyImage --address 0.0.0.0 --port 5432 $connectionName } | Out-Null
     if ($LASTEXITCODE -ne 0) { $proxyContainer = $null; throw 'No arrancó el contenedor del proxy.' }
   } else {
     $proxyExe = (Get-Command cloud-sql-proxy -ErrorAction Stop).Source
@@ -240,13 +265,13 @@ try {
   $env:PGOPTIONS = '-c default_transaction_read_only=on'
 
   Push-Location $BackendRoot
-  try { & node scripts/run-readonly-sql.mjs scripts/release-circo-preflight-readonly.sql }
+  try { Invoke-Native -ShowErrors { & node scripts/run-readonly-sql.mjs scripts/release-circo-preflight-readonly.sql } | Out-Host }
   finally { Pop-Location }
   if ($LASTEXITCODE -ne 0) { throw 'Las consultas de solo lectura fallaron.' }
 }
 finally {
   # Cierra SOLO el proxy que inició este script.
-  if ($proxyContainer) { & docker rm -f $proxyContainer 2>$null | Out-Null }
+  if ($proxyContainer) { Invoke-Native { & docker rm -f $proxyContainer } | Out-Null }
   if ($proxyProcess -and -not $proxyProcess.HasExited) { Stop-Process -Id $proxyProcess.Id -Confirm:$false }
   # Restaura las variables tal como estaban (o las elimina si no existían).
   foreach ($v in $previous.Keys) {

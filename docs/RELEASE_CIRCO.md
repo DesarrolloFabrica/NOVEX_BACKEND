@@ -12,6 +12,47 @@ Los dos respaldos están publicados en el remoto. Las ramas `release/*` todavía
 
 ---
 
+## 0. Estado verificado de producción (2026-10-26, solo lectura)
+
+| | Backend | Frontend |
+|---|---|---|
+| Revisión con el 100 % del tráfico | `novex-backend-00085-tug` | `novex-frontend-00073-duy` |
+| Imagen (por digest) | `…/novex-backend@sha256:55cabdcb…5df` | `…/novex-frontend@sha256:8a9bcc5d…1a5` |
+| Tag del digest = commit | `49a6483` | `b20ffd3` |
+| Respaldo `backup/main-pre-circo-20261026` | coincide | coincide |
+
+Configuración del backend servido: `NODE_ENV=production`,
+`CATALOG_SEED_ON_BOOT=false`, `DEMO_SEED_ENABLED=false`,
+`ENABLE_EMAIL_LOGIN=false`, `DB_SYNCHRONIZE=false`;
+`SITUATION_SWEEP_CRON_ENABLED` y `SEVERITY_ESCALATION_ENABLED` no definidas
+(valores por defecto del código); `SCHEDULER_OIDC_*` no definidas;
+min-instances 0. Instancia `novex-db` (PostgreSQL 16, Enterprise,
+`db-f1-micro`, zonal, 10 GB SSD, IP pública, CA `GOOGLE_MANAGED_INTERNAL_CA`).
+
+**Incidencia activa (no causada por esta release).** Desde el 23-oct 14:00
+UTC, cinco minutos después de desplegar `49a6483`, el backend registra
+`QueryFailedError: column Situation.client_request_id does not exist` (150
+veces en 3 días, el cron de SLA cada 30 min): las migraciones de la
+corrección del 23-oct **no se aplicaron** en la base. Cualquier consulta de
+situaciones del backend servido falla; no se observaron peticiones de
+usuarios en ese periodo (solo el smoke del despliegue). Sin acceso a la base
+no se sabe si faltan las cinco migraciones de ese commit o solo algunas.
+
+**Acceso a la base desde la red de oficina:** el firewall FortiGate
+re-firma el TLS del conector de Cloud SQL (certificado emitido por
+«Fortinet … FG200FT923920221»); el proxy lo rechaza, como debe. Las consultas
+de §2.2 deben ejecutarse desde una red sin inspección TLS (p. ej. Cloud Shell)
+o con una excepción de inspección para la instancia.
+
+**Copias:** 7 automáticas diarias (`SUCCESSFUL`, la última el 26-oct) más 2
+bajo demanda (04-ago y 22-sep); PITR habilitado, 7 días de logs. El historial
+de operaciones de `novex-db` llega a su creación (30-jul) y no contiene
+ninguna restauración ni clon: **no hay evidencia de un restore probado**.
+
+**Cloud Scheduler:** los 5 jobs del proyecto encienden y apagan otras
+instancias (`producto-backend-db`, `carga-lms-desarrollo`); ninguno afecta a
+NOVEX.
+
 ## 1. Qué está comprobado y qué sigue pendiente
 
 ### Comprobado
@@ -249,21 +290,21 @@ no se usan `created_at`/`updated_at` como fecha de cierre.
 - Alternativa sin código: que una persona autorizada revise cada caso y lo
   asigne a su coordinación real con la regla de negocio que se acuerde.
 
-**B. RESOLVED sin `closed_at`** (consulta 06)
+**B. RESOLVED sin `closed_at`** (consulta 06) — decisión pendiente, sin cambios
 
-- La carta y el KPI base cuentan como activos solo OPEN e IN_PROGRESS
-  ("problemas activos" del MVP, `coordination-integrity.ts`). El KPI de
-  estado cuenta como activo todo lo creado antes del corte y no cerrado a esa
-  fecha, sin mirar el estado ("activo al corte").
-- Contradice las reglas de NOVEX: en ambas versiones RESOLVED se rotula «En
-  atención», solo puede pasar a CLOSED, el SLA lo trata como activo y la
-  release permite resolverlo. Además las listas de cartas no piden RESOLVED,
-  así que **no se puede cerrar desde la interfaz**.
-- Propuesta mínima (código, sin decidir el significado del dato: ya lo fija
-  la etiqueta «En atención»): contar RESOLVED como «en atención» en el
-  overview y el KPI base, incluirlo en las listas de cartas y mostrarlo como
-  «En atención». El registro no se modifica; se cierra con el flujo normal de
-  resolución y su `closed_at` será el del cierre real.
+- Regla de NOVEX: activos = OPEN e IN_PROGRESS; un RESOLVED sin `closed_at`
+  no cuenta como cierre histórico.
+- Cumplen esa regla: cartas, vidas y overview (`coordination-integrity.ts`,
+  pruebas `coordination-integrity.spec.ts`, `coordination-life-points.spec.ts`,
+  `operational-overview.service.spec.ts`) y los KPIs de cierres y tiempo de
+  resolución (exigen `closed_at`).
+- NO la cumplen los KPIs «al corte» (snapshot, antigüedad y backlog del
+  historial, añadidos en 3f53b42): cuentan como activo todo lo no cerrado
+  antes del corte y presentan RESOLVED como IN_PROGRESS; lo fijan
+  `operational-kpi-aging.spec.ts` y `operational-kpi-snapshot.repository.spec.ts`.
+- La corrección coherente estaría en esos KPIs, no en las cartas, pero exige
+  decidir qué estado tenía una fila RESOLVED en cortes pasados (no hay
+  historial de estados). No se toca hasta conocer el recuento real y decidir.
 
 **C. Coordinaciones inactivas con situaciones** (consulta 07)
 
