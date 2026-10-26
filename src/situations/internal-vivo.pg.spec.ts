@@ -196,24 +196,24 @@ suite('INTERNAL vivo · Postgres real', () => {
 
   it('alta: mismo instante en created_at, due_at y REPORTED; afectación inicial en la transacción', async () => {
     const created = await createInternal('Retraso de entregas');
-    const [row] = (await ds.query(
+    const [row] = await ds.query<Array<Record<string, Date>>>(
       `SELECT s.created_at, s.due_at, c.effective_at, q.created_at AS q_created
        FROM situations s
        JOIN situation_severity_changes c ON c.situation_id = s.id
        JOIN situation_consequences q ON q.situation_id = s.id
        WHERE s.id = $1`,
       [created.id],
-    )) as Array<Record<string, Date>>;
+    );
 
     expect(row.created_at.getTime()).toBe(row.effective_at.getTime());
     expect(row.q_created.getTime()).toBe(row.created_at.getTime());
     expect(row.due_at.getTime() - row.created_at.getTime()).toBe(
       SLA_WINDOWS_BY_SEVERITY[SituationSeverity.MEDIUM].dueMs,
     );
-    const events = (await ds.query(
+    const events = await ds.query<Array<{ event_type: string }>>(
       `SELECT event_type FROM situation_timeline_entries WHERE situation_id = $1 ORDER BY created_at`,
       [created.id],
-    )) as Array<{ event_type: string }>;
+    );
     expect(events.map((e) => e.event_type)).toEqual([
       'SITUATION_CREATED',
       'CONSEQUENCE_ADDED',
@@ -221,16 +221,16 @@ suite('INTERNAL vivo · Postgres real', () => {
   });
 
   it('ATOMICIDAD: una afectación inválida para la base revierte la situación entera', async () => {
-    const before = (await ds.query(
+    const before = await ds.query<Array<{ n: number }>>(
       `SELECT count(*)::int AS n FROM situations WHERE coordination_id = $1`,
       [COORD],
-    )) as Array<{ n: number }>;
+    );
     // 2001 caracteres: el DTO lo frena antes, aquí se fuerza el CHECK de la base.
     await expect(createInternal('x'.repeat(2001))).rejects.toBeDefined();
-    const after = (await ds.query(
+    const after = await ds.query<Array<{ n: number }>>(
       `SELECT count(*)::int AS n FROM situations WHERE coordination_id = $1`,
       [COORD],
-    )) as Array<{ n: number }>;
+    );
     expect(after[0].n).toBe(before[0].n);
   });
 
@@ -253,13 +253,13 @@ suite('INTERNAL vivo · Postgres real', () => {
       if (add.status === 'rejected') {
         expect(add.reason).toBeInstanceOf(ConflictException);
       }
-      const [check] = (await ds.query(
+      const [check] = await ds.query<Array<{ late: number; total: number }>>(
         `SELECT count(*) FILTER (WHERE q.created_at > s.closed_at)::int AS late,
                 count(q.id)::int AS total
          FROM situations s LEFT JOIN situation_consequences q ON q.situation_id = s.id
          WHERE s.id = $1`,
         [created.id],
-      )) as Array<{ late: number; total: number }>;
+      );
       expect(check.late).toBe(0);
       expect(check.total).toBe(add.status === 'fulfilled' ? 1 : 0);
     }
@@ -283,7 +283,7 @@ suite('INTERNAL vivo · Postgres real', () => {
       severity?: SituationSeverity;
       policy?: string | null;
     }): Promise<string> {
-      const [row] = (await ds.query(
+      const [row] = await ds.query<Array<{ id: string }>>(
         `INSERT INTO situations (title, description, coordination_id, affected_coordination_id,
            created_by_user_id, category_id, severity, reported_severity, status, occurred_at,
            created_at, due_at, sla_policy_code, report_kind, severity_escalation_policy_code)
@@ -300,7 +300,7 @@ suite('INTERNAL vivo · Postgres real', () => {
           input.dueAt,
           input.policy ?? null,
         ],
-      )) as Array<{ id: string }>;
+      );
       await ds.query(
         `INSERT INTO situation_severity_changes (situation_id, new_severity, source, effective_at, actor_user_id)
          VALUES ($1, $2, 'REPORTED', $3, $4)`,
@@ -329,24 +329,28 @@ suite('INTERNAL vivo · Postgres real', () => {
       await sweep.run(now);
       await sweep.run(now); // repetir no duplica
 
-      const rows = (await ds.query(
+      const rows = await ds.query<
+        Array<{
+          id: string;
+          sla_breached_at: Date | null;
+          last_sla_reminder_at: Date | null;
+          due_at: Date;
+        }>
+      >(
         `SELECT id, sla_breached_at, last_sla_reminder_at, due_at FROM situations WHERE id = ANY($1)`,
         [[warn, breach]],
-      )) as Array<{
-        id: string;
-        sla_breached_at: Date | null;
-        last_sla_reminder_at: Date | null;
-        due_at: Date;
-      }>;
+      );
       const byId = new Map(rows.map((r) => [r.id, r]));
       expect(byId.get(warn)!.last_sla_reminder_at).not.toBeNull();
       expect(byId.get(breach)!.sla_breached_at!.getTime()).toBe(due.getTime());
 
-      const events = (await ds.query(
+      const events = await ds.query<
+        Array<{ situation_id: string; event_type: string; n: number }>
+      >(
         `SELECT situation_id, event_type, count(*)::int AS n FROM situation_timeline_entries
          WHERE situation_id = ANY($1) GROUP BY 1, 2`,
         [[warn, breach]],
-      )) as Array<{ situation_id: string; event_type: string; n: number }>;
+      );
       expect(events).toEqual(
         expect.arrayContaining([
           { situation_id: warn, event_type: 'SLA_WARNING', n: 1 },
@@ -374,20 +378,20 @@ suite('INTERNAL vivo · Postgres real', () => {
       await sweep.run(now);
       await sweep.run(now);
 
-      const [escalated] = (await ds.query(
+      const [escalated] = await ds.query<Array<Record<string, unknown>>>(
         `SELECT severity, reported_severity, due_at, closed_at FROM situations WHERE id = $1`,
         [withPolicy],
-      )) as Array<Record<string, unknown>>;
+      );
       expect(escalated.severity).toBe(SituationSeverity.CRITICAL);
       expect(escalated.reported_severity).toBe(SituationSeverity.MEDIUM);
       expect((escalated.due_at as Date).getTime()).toBe(dueAt.getTime());
 
-      const history = (await ds.query(
+      const history = await ds.query<never[]>(
         `SELECT id, previous_severity AS "previousSeverity", new_severity AS "newSeverity",
                 source, effective_at AS "effectiveAt", created_at AS "createdAt"
          FROM situation_severity_changes WHERE situation_id = $1`,
         [withPolicy],
-      )) as never[];
+      );
       expect(history).toHaveLength(3);
       expect(
         checkSeverityHistoryInvariants({
@@ -398,11 +402,11 @@ suite('INTERNAL vivo · Postgres real', () => {
         }),
       ).toEqual([]);
 
-      const [plain] = (await ds.query(
+      const [plain] = await ds.query<Array<{ severity: string; n: number }>>(
         `SELECT severity, (SELECT count(*)::int FROM situation_severity_changes WHERE situation_id = $1) AS n
          FROM situations WHERE id = $1`,
         [withoutPolicy],
-      )) as Array<{ severity: string; n: number }>;
+      );
       expect(plain).toEqual({ severity: SituationSeverity.MEDIUM, n: 1 });
     });
 

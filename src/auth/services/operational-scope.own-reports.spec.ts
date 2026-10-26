@@ -82,9 +82,9 @@ describe('OperationalScopeService · reportes propios', () => {
 
     it('leer mi reporte en otra área no me deja RESOLVERLO', () => {
       // Resolver exige coordinar el área RESPONSABLE, que aquí no es la mía.
-      expect(service.canResolveSituation(coordinador, miReporteEnOtraArea)).toBe(
-        false,
-      );
+      expect(
+        service.canResolveSituation(coordinador, miReporteEnOtraArea),
+      ).toBe(false);
       expect(() =>
         service.assertCanResolveSituation(coordinador, miReporteEnOtraArea),
       ).toThrow(ForbiddenException);

@@ -3,6 +3,7 @@ import {
   SituationSeverity,
   SituationStatus,
 } from '../../common/enums/situation.enums';
+import type { CreateTimelineEntryInput } from '../dto/situation-timeline.dto';
 import { SituationTimelineSubscriber } from './situation-timeline.subscriber';
 
 describe('SituationTimelineSubscriber · PATCH mixto', () => {
@@ -18,7 +19,11 @@ describe('SituationTimelineSubscriber · PATCH mixto', () => {
   };
 
   function build() {
-    const timelineService = { createEntry: jest.fn().mockResolvedValue({}) };
+    const timelineService = {
+      createEntry: jest
+        .fn<Promise<unknown>, [CreateTimelineEntryInput, unknown?]>()
+        .mockResolvedValue({}),
+    };
     const dataSource = { subscribers: [] as unknown[] };
     const subscriber = new SituationTimelineSubscriber(
       dataSource as never,
@@ -42,7 +47,7 @@ describe('SituationTimelineSubscriber · PATCH mixto', () => {
     expect(timelineService.createEntry).toHaveBeenCalledTimes(1);
     const [entry] = timelineService.createEntry.mock.calls[0];
     expect(entry.eventType).toBe(TimelineEventType.UPDATED);
-    expect(entry.metadata.fields).toEqual([
+    expect(entry.metadata?.fields).toEqual([
       { field: 'title', previousValue: 'Título', newValue: 'Título corregido' },
     ]);
   });

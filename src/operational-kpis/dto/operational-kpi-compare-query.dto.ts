@@ -11,13 +11,26 @@ import {
   OPERATIONAL_KPI_COMPARE_MIN,
 } from '../operational-kpi.constants';
 
+/**
+ * Un valor que no es texto (p. ej. un objeto por `coordinationIds[x]=…`) no se
+ * descarta en silencio: se conserva como un id inválido para que `@IsUUID`
+ * rechace la petición, igual que cuando se convertía en '[object Object]'.
+ */
+const NON_TEXT_COORDINATION_ID = '[invalid]';
+
+function toIdText(part: unknown): string {
+  if (typeof part === 'string') return part;
+  if (typeof part === 'number') return String(part);
+  return NON_TEXT_COORDINATION_ID;
+}
+
 function parseCoordinationIds(value: unknown): string[] {
   if (value === undefined || value === null || value === '') {
     return [];
   }
-  const parts = Array.isArray(value) ? value : String(value).split(',');
+  const parts: unknown[] = Array.isArray(value) ? value : [value];
   return parts
-    .flatMap((part) => String(part).split(','))
+    .flatMap((part) => toIdText(part).split(','))
     .map((part) => part.trim())
     .filter((part) => part.length > 0);
 }

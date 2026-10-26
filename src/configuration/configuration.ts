@@ -52,7 +52,8 @@ const configuration = () => {
      *                endpoint rechaza toda llamada.
      */
     situationSweep: {
-      cronEnabled: (process.env.SITUATION_SWEEP_CRON_ENABLED ?? 'true') === 'true',
+      cronEnabled:
+        (process.env.SITUATION_SWEEP_CRON_ENABLED ?? 'true') === 'true',
       oidcAudience: process.env.SCHEDULER_OIDC_AUDIENCE ?? '',
       oidcServiceAccountEmail:
         process.env.SCHEDULER_OIDC_SERVICE_ACCOUNT_EMAIL ?? '',

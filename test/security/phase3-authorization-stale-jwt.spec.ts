@@ -57,7 +57,10 @@ describe('SEC-006 stale JWT authorization', () => {
             resolveActiveAuthorization,
           },
         },
-        { provide: SituationConsequencesService, useValue: { addConsequence: jest.fn() } },
+        {
+          provide: SituationConsequencesService,
+          useValue: { addConsequence: jest.fn() },
+        },
         {
           provide: SituationsService,
           useValue: {

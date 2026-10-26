@@ -1,6 +1,4 @@
-import {
-  ROLE_PERMISSION_CODES,
-} from './permissions.catalog.seed';
+import { ROLE_PERMISSION_CODES } from './permissions.catalog.seed';
 
 describe('ROLE_PERMISSION_CODES · operación de situaciones', () => {
   it('DIRECTOR no tiene SITUATIONS_CREATE ni ciclo de vida', () => {

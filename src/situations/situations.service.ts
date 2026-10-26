@@ -188,10 +188,11 @@ export class SituationsService implements OnModuleInit {
       );
     }
 
-    const coordinationId = this.scopeService.resolveInternalCreateCoordinationId(
-      actor,
-      dto.coordinationId,
-    );
+    const coordinationId =
+      this.scopeService.resolveInternalCreateCoordinationId(
+        actor,
+        dto.coordinationId,
+      );
 
     if (
       dto.affectedCoordinationId &&
@@ -360,7 +361,8 @@ export class SituationsService implements OnModuleInit {
             category: input.category,
             severity: reportedSeverity,
             reportedSeverity,
-            severityEscalationPolicyCode: ACTIVE_SEVERITY_ESCALATION_POLICY_CODE,
+            severityEscalationPolicyCode:
+              ACTIVE_SEVERITY_ESCALATION_POLICY_CODE,
             status: SituationStatus.OPEN,
             // Idempotencia del alta: el índice parcial
             // `uq_situations_creator_client_request` hace que un segundo
@@ -951,7 +953,10 @@ export class SituationsService implements OnModuleInit {
               statusComment: null,
               resolvedByUserId: actor.sub,
               dueAt: situation.dueAt,
-              closedOnTime: wasClosedOnTime(situation.dueAt, situation.closedAt),
+              closedOnTime: wasClosedOnTime(
+                situation.dueAt,
+                situation.closedAt,
+              ),
               slaBreachedAt: situation.slaBreachedAt,
             },
           },
@@ -1128,7 +1133,9 @@ export class SituationsService implements OnModuleInit {
    * categorías legacy (`is_selectable = false`) siguen legibles en los casos
    * que ya las tienen, pero no se asignan a casos nuevos.
    */
-  private async ensureSelectableCategory(id: string): Promise<IncidentCategory> {
+  private async ensureSelectableCategory(
+    id: string,
+  ): Promise<IncidentCategory> {
     const category = await this.categoriesRepository.findOne({
       where: { id },
     });

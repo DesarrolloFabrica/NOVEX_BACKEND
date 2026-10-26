@@ -120,7 +120,10 @@ describe('P0 authorization closure', () => {
           JwtStrategy,
           { provide: APP_GUARD, useClass: JwtAuthGuard },
           PermissionsGuard,
-          { provide: SituationConsequencesService, useValue: { addConsequence: jest.fn() } },
+          {
+            provide: SituationConsequencesService,
+            useValue: { addConsequence: jest.fn() },
+          },
           {
             provide: SituationsService,
             useValue: {
@@ -218,7 +221,10 @@ describe('P0 authorization closure', () => {
           JwtStrategy,
           { provide: APP_GUARD, useClass: JwtAuthGuard },
           PermissionsGuard,
-          { provide: SituationConsequencesService, useValue: { addConsequence: jest.fn() } },
+          {
+            provide: SituationConsequencesService,
+            useValue: { addConsequence: jest.fn() },
+          },
           {
             provide: SituationsService,
             useValue: {

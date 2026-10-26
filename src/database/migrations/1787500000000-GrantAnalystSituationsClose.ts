@@ -10,9 +10,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *
  * Misma forma idempotente que `GrantReportingAndClosurePermissions`.
  */
-export class GrantAnalystSituationsClose1787500000000
-  implements MigrationInterface
-{
+export class GrantAnalystSituationsClose1787500000000 implements MigrationInterface {
   name = 'GrantAnalystSituationsClose1787500000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

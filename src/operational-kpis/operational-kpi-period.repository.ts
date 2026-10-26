@@ -48,15 +48,13 @@ export class OperationalKpiPeriodRepository {
         AND s.created_at < $3
       GROUP BY s.severity, s.status
     `;
-    const rows = (await this.situationsRepository.manager.query(sql, [
-      coordinationId,
-      fromInclusiveIso,
-      toExclusiveIso,
-    ])) as Array<{
-      severity: SituationSeverity;
-      status: SituationStatus;
-      total: number;
-    }>;
+    const rows = await this.situationsRepository.manager.query<
+      Array<{
+        severity: SituationSeverity;
+        status: SituationStatus;
+        total: number;
+      }>
+    >(sql, [coordinationId, fromInclusiveIso, toExclusiveIso]);
 
     const severity = { low: 0, medium: 0, high: 0, critical: 0 };
     const attention = { open: 0, inProgress: 0 };

@@ -75,19 +75,21 @@ export class OperationalKpiBreakdownRepository {
       ORDER BY value DESC, COALESCE(c.name, $5) ASC
     `;
 
-    const rows = (await this.situationsRepository.manager.query(sql, [
+    const rows = await this.situationsRepository.manager.query<
+      Array<{
+        categoryId: string | null;
+        code: string | null;
+        name: string | null;
+        selectable: boolean | null;
+        value: string | number;
+      }>
+    >(sql, [
       coordinationId,
       SituationReportKind.INTERNAL,
       startIso,
       endExclusive,
       KPI_UNCATEGORIZED_CATEGORY_NAME,
-    ])) as Array<{
-      categoryId: string | null;
-      code: string | null;
-      name: string | null;
-      selectable: boolean | null;
-      value: string | number;
-    }>;
+    ]);
 
     return rows.map((row) => this.mapRow(row));
   }
@@ -116,18 +118,20 @@ export class OperationalKpiBreakdownRepository {
       ORDER BY value DESC, COALESCE(c.name, $4) ASC
     `;
 
-    const rows = (await this.situationsRepository.manager.query(sql, [
+    const rows = await this.situationsRepository.manager.query<
+      Array<{
+        categoryId: string | null;
+        code: string | null;
+        name: string | null;
+        selectable: boolean | null;
+        value: string | number;
+      }>
+    >(sql, [
       coordinationId,
       SituationReportKind.INTERNAL,
       endExclusive,
       KPI_UNCATEGORIZED_CATEGORY_NAME,
-    ])) as Array<{
-      categoryId: string | null;
-      code: string | null;
-      name: string | null;
-      selectable: boolean | null;
-      value: string | number;
-    }>;
+    ]);
 
     return rows.map((row) => this.mapRow(row));
   }

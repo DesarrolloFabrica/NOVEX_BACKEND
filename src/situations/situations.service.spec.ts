@@ -155,7 +155,9 @@ describe('SituationsService status transitions', () => {
     expect(result.canAdvanceToInProgress).toBe(false);
     expect(result.canResolve).toBe(false);
     expect(result.assignedUserName).toBe('Juan Pérez');
-    expect(scopeService.assertCanAdvanceSituationToInProgress).toHaveBeenCalled();
+    expect(
+      scopeService.assertCanAdvanceSituationToInProgress,
+    ).toHaveBeenCalled();
     expect(scopeService.assertCanUpdateSituation).not.toHaveBeenCalled();
   });
 
@@ -165,9 +167,11 @@ describe('SituationsService status transitions', () => {
     situationsRepository.findByIdWithRelations.mockResolvedValue({
       ...baseSituation,
     });
-    scopeService.assertCanAdvanceSituationToInProgress.mockImplementation(() => {
-      throw new ForbiddenException('Solo puede pasar a «En atención»…');
-    });
+    scopeService.assertCanAdvanceSituationToInProgress.mockImplementation(
+      () => {
+        throw new ForbiddenException('Solo puede pasar a «En atención»…');
+      },
+    );
 
     await expect(
       service.update(
@@ -206,8 +210,11 @@ describe('SituationsService status transitions', () => {
   it('el PATCH tampoco cierra aportando un motivo', async () => {
     // El motivo de transición no es un sustituto del aprendizaje: aportar texto
     // no reabre esta vía.
-    const { service, situationsRepository, situationsRepository: repo } =
-      createService();
+    const {
+      service,
+      situationsRepository,
+      situationsRepository: repo,
+    } = createService();
     void repo;
     situationsRepository.findByIdWithRelations.mockResolvedValue({
       ...baseSituation,

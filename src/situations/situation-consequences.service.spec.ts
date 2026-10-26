@@ -87,57 +87,66 @@ describe('SituationConsequencesService · agregar afectación', () => {
     const manager = createManagerMock({ findOneResult: seed });
     const calls: string[] = [];
     // findOne: primero la situación bloqueada; después, la afectación creada.
-    manager.findOne.mockImplementation(async (entity: unknown) => {
-      if (entity === Situation) return seed ? { ...seed } : null;
+    manager.findOne.mockImplementation((entity: unknown) => {
+      if (entity === Situation) {
+        return Promise.resolve(seed ? { ...seed } : null);
+      }
       if (entity === SituationConsequence) {
         const saved = manager.save.mock.calls.find(
           ([e]) => e === SituationConsequence,
-        )?.[1] as Record<string, unknown> | undefined;
-        return saved
-          ? {
-              ...saved,
-              id: 'generated-1',
-              createdByUser: { fullName: 'Autor', role: { name: 'Analista' } },
-            }
-          : null;
+        )?.[1];
+        return Promise.resolve(
+          saved
+            ? {
+                ...saved,
+                id: 'generated-1',
+                createdByUser: {
+                  fullName: 'Autor',
+                  role: { name: 'Analista' },
+                },
+              }
+            : null,
+        );
       }
-      return null;
+      return Promise.resolve(null);
     });
-    manager.find.mockImplementation(async (entity: unknown) =>
-      entity === SituationSeverityChange
-        ? [
-            {
-              id: 'rep',
-              previousSeverity: null,
-              newSeverity: SituationSeverity.MEDIUM,
-              source: SituationSeverityChangeSource.REPORTED,
-              effectiveAt: PROBLEM_AT,
-              createdAt: PROBLEM_AT,
-            },
-          ]
-        : [],
+    manager.find.mockImplementation((entity: unknown) =>
+      Promise.resolve(
+        entity === SituationSeverityChange
+          ? [
+              {
+                id: 'rep',
+                previousSeverity: null,
+                newSeverity: SituationSeverity.MEDIUM,
+                source: SituationSeverityChangeSource.REPORTED,
+                effectiveAt: PROBLEM_AT,
+                createdAt: PROBLEM_AT,
+              },
+            ]
+          : [],
+      ),
     );
-    manager.save.mockImplementation(async (_e: unknown, data: object) => {
+    manager.save.mockImplementation((_e: unknown, data: object) => {
       calls.push('save-consequence');
-      return { ...data, id: 'generated-1' };
+      return Promise.resolve({ ...data, id: 'generated-1' });
     });
 
     const timelineService = {
-      createEntry: jest.fn(async () => {
+      createEntry: jest.fn(() => {
         calls.push('timeline');
-        return {};
+        return Promise.resolve({});
       }),
     };
     const auditLogService = {
-      record: jest.fn(async () => {
+      record: jest.fn(() => {
         calls.push('audit');
-        return null;
+        return Promise.resolve(null);
       }),
     };
     const escalationService = {
-      materializeDueEscalations: jest.fn(async () => {
+      materializeDueEscalations: jest.fn(() => {
         calls.push('escalate');
-        return [];
+        return Promise.resolve([]);
       }),
       recordAudit: jest.fn().mockResolvedValue(undefined),
     };
@@ -169,7 +178,7 @@ describe('SituationConsequencesService · agregar afectación', () => {
       analistaAutor,
     );
 
-    const saved = h.manager.save.mock.calls[0][1] as Record<string, unknown>;
+    const saved = h.manager.save.mock.calls[0][1];
     expect(saved.description).toBe('No fue posible cargar archivos.');
     expect((saved.occurredAt as Date).getTime()).toBeGreaterThanOrEqual(before);
     expect(saved.createdByUserId).toBe('autor');
@@ -198,24 +207,26 @@ describe('SituationConsequencesService · agregar afectación', () => {
       'timeline',
       'audit',
     ]);
+    const anyOccurredAt: unknown = expect.any(String);
     expect(h.timelineService.createEntry).toHaveBeenCalledWith(
       expect.objectContaining({
         eventType: TimelineEventType.CONSEQUENCE_ADDED,
         // Sin el texto en metadata.
         metadata: {
           consequenceId: 'generated-1',
-          occurredAt: expect.any(String),
+          occurredAt: anyOccurredAt,
         },
       }),
       h.manager,
     );
+    const auditMetadata: unknown = expect.objectContaining({
+      consequenceId: 'generated-1',
+      descriptionLength: 'Algo'.length,
+    });
     expect(h.auditLogService.record).toHaveBeenCalledWith(
       expect.objectContaining({
         action: AuditAction.SITUATION_CONSEQUENCE_ADDED,
-        metadata: expect.objectContaining({
-          consequenceId: 'generated-1',
-          descriptionLength: 'Algo'.length,
-        }),
+        metadata: auditMetadata,
       }),
     );
   });

@@ -174,9 +174,7 @@ export function validateCoordinationIntegritySnapshot(
     });
   }
 
-  if (
-    snapshot.incomingCriticalCount > snapshot.incomingDependencyCount
-  ) {
+  if (snapshot.incomingCriticalCount > snapshot.incomingDependencyCount) {
     violations.push({
       field: 'incomingCriticalCount',
       issue: 'SEVERITY_SUM_MISMATCH',

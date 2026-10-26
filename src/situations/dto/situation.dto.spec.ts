@@ -24,6 +24,16 @@ async function errorsOf<T extends object>(
   return flatten(errors);
 }
 
+/** Copia plana del objeto sin la clave indicada (la clave queda ausente). */
+function withoutKey<T extends object, K extends keyof T>(
+  source: T,
+  key: K,
+): Omit<T, K> {
+  const copy: Partial<T> = { ...source };
+  delete copy[key];
+  return copy as Omit<T, K>;
+}
+
 describe('DTOs de situación · contrato INTERNAL vivo', () => {
   const internal = {
     title: 'Internet',
@@ -67,12 +77,12 @@ describe('DTOs de situación · contrato INTERNAL vivo', () => {
     });
 
     it('reportKind es obligatorio (sin default silencioso)', async () => {
-      const { reportKind: _omit, ...rest } = internal;
+      const rest = withoutKey(internal, 'reportKind');
       expect(await errorsOf(CreateSituationDto, rest)).toContain('reportKind');
     });
 
     it('coordinationId es obligatorio también en INTERNAL', async () => {
-      const { coordinationId: _omit, ...rest } = internal;
+      const rest = withoutKey(internal, 'coordinationId');
       expect(await errorsOf(CreateSituationDto, rest)).toContain(
         'coordinationId',
       );

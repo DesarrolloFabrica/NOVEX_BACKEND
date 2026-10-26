@@ -27,10 +27,11 @@ describe('SchedulerOidcGuard', () => {
       ),
     };
     const verifier = {
-      verify: jest.fn(async () => {
-        if (claims instanceof Error) throw claims;
-        return claims;
-      }),
+      verify: jest.fn(() =>
+        claims instanceof Error
+          ? Promise.reject(claims)
+          : Promise.resolve(claims),
+      ),
     };
     const guard = new SchedulerOidcGuard(
       configService as never,
@@ -94,7 +95,9 @@ describe('SchedulerOidcGuard', () => {
   });
 
   it('el endpoint es @Public solo para la sesión de usuario y exige este guard', () => {
-    const handler = SituationSweepController.prototype.run;
+    // Referencia al método como objeto (sin invocarlo ni desligar `this`).
+    const prototype: Record<'run', object> = SituationSweepController.prototype;
+    const handler = prototype.run;
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, SituationSweepController)).toBe(
       true,
     );

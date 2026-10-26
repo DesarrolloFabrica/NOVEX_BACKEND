@@ -14,9 +14,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * la afectada. `category_id` pasa a ser nullable porque INTER no usa categoría
  * para simular el tipo.
  */
-export class AddSituationReportKindAndAffectedCoordination1787400000000
-  implements MigrationInterface
-{
+export class AddSituationReportKindAndAffectedCoordination1787400000000 implements MigrationInterface {
   name = 'AddSituationReportKindAndAffectedCoordination1787400000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -118,6 +116,8 @@ export class AddSituationReportKindAndAffectedCoordination1787400000000
       ALTER TABLE "situations"
       ALTER COLUMN "category_id" SET NOT NULL
     `);
-    await queryRunner.query(`DROP TYPE IF EXISTS "situations_report_kind_enum"`);
+    await queryRunner.query(
+      `DROP TYPE IF EXISTS "situations_report_kind_enum"`,
+    );
   }
 }

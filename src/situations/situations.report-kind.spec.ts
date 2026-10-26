@@ -68,59 +68,65 @@ describe('SituationsService · alta por tipo de registro', () => {
     const reportKind = options.reportKind ?? SituationReportKind.INTERNAL;
     const situationsRepository = {
       manager: transactionalManager(manager),
-      findByIdWithRelations: jest.fn(async (id: string) => ({
-        id,
-        title: 't',
-        description: 'd',
-        reportKind,
-        coordinationId:
-          reportKind === SituationReportKind.INTERNAL ? AREA_A : AREA_B,
-        coordination: { id: AREA_B, code: 'coord-b', name: 'B' },
-        affectedCoordinationId: AREA_A,
-        affectedCoordination: { id: AREA_A, code: 'coord-a', name: 'A' },
-        affectedProcess: null,
-        pendingDelivery: null,
-        createdByUserId: analyst.sub,
-        createdByUser: { fullName: 'Analista' },
-        assignedUserId: null,
-        assignedUser: null,
-        categoryId: null,
-        category: null,
-        severity: SituationSeverity.MEDIUM,
-        reportedSeverity: SituationSeverity.MEDIUM,
-        severityEscalationPolicyCode: null,
-        status: 'OPEN',
-        lastStatusComment: null,
-        resolvedAt: null,
-        closedAt: null,
-        dueAt: null,
-        slaPolicyCode: null,
-        slaBreachedAt: null,
-        occurredAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        relatedCoordinations: [],
-        resolution: null,
-      })),
+      findByIdWithRelations: jest.fn((id: string) =>
+        Promise.resolve({
+          id,
+          title: 't',
+          description: 'd',
+          reportKind,
+          coordinationId:
+            reportKind === SituationReportKind.INTERNAL ? AREA_A : AREA_B,
+          coordination: { id: AREA_B, code: 'coord-b', name: 'B' },
+          affectedCoordinationId: AREA_A,
+          affectedCoordination: { id: AREA_A, code: 'coord-a', name: 'A' },
+          affectedProcess: null,
+          pendingDelivery: null,
+          createdByUserId: analyst.sub,
+          createdByUser: { fullName: 'Analista' },
+          assignedUserId: null,
+          assignedUser: null,
+          categoryId: null,
+          category: null,
+          severity: SituationSeverity.MEDIUM,
+          reportedSeverity: SituationSeverity.MEDIUM,
+          severityEscalationPolicyCode: null,
+          status: 'OPEN',
+          lastStatusComment: null,
+          resolvedAt: null,
+          closedAt: null,
+          dueAt: null,
+          slaPolicyCode: null,
+          slaBreachedAt: null,
+          occurredAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          relatedCoordinations: [],
+          resolution: null,
+        }),
+      ),
     };
     const coordinationsRepository = {
-      findOne: jest.fn(async ({ where }: { where: { id: string } }) => ({
-        id: where.id,
-        code: where.id === AREA_A ? 'coord-a' : 'coord-b',
-        name: where.id === AREA_A ? 'A' : 'B',
-        isActive: true,
-      })),
-      find: jest.fn(async () => []),
+      findOne: jest.fn(({ where }: { where: { id: string } }) =>
+        Promise.resolve({
+          id: where.id,
+          code: where.id === AREA_A ? 'coord-a' : 'coord-b',
+          name: where.id === AREA_A ? 'A' : 'B',
+          isActive: true,
+        }),
+      ),
+      find: jest.fn(() => Promise.resolve([])),
     };
     const categoriesRepository = {
-      findOne: jest.fn(async () => ({
-        id: 'cat-1',
-        code: 'INTERNET',
-        name: 'Internet',
-        icon: 'internet',
-        isSelectable: true,
-        ...options.category,
-      })),
+      findOne: jest.fn(() =>
+        Promise.resolve({
+          id: 'cat-1',
+          code: 'INTERNET',
+          name: 'Internet',
+          icon: 'internet',
+          isSelectable: true,
+          ...options.category,
+        }),
+      ),
     };
     const timelineService = { createEntry: jest.fn().mockResolvedValue({}) };
     const auditLogService = { record: jest.fn().mockResolvedValue(null) };
@@ -131,7 +137,7 @@ describe('SituationsService · alta por tipo de registro', () => {
       coordinationsRepository as never,
       categoriesRepository as never,
       {} as never,
-      { create: jest.fn((row) => row) } as never,
+      { create: jest.fn((row: unknown) => row) } as never,
       {} as never,
       detail.severityChangesRepository as never,
       detail.consequencesRepository as never,
@@ -151,8 +157,7 @@ describe('SituationsService · alta por tipo de registro', () => {
   }
 
   const savedSituation = (manager: ReturnType<typeof createManagerMock>) =>
-    manager.save.mock.calls.find(([entity]) => entity === Situation)?.[1] as
-      Record<string, unknown> | undefined;
+    manager.save.mock.calls.find(([entity]) => entity === Situation)?.[1];
 
   describe('INTER_COORDINATION', () => {
     it('rechaza INTER cuando responsable = afectada', async () => {
@@ -282,7 +287,7 @@ describe('SituationsService · alta por tipo de registro', () => {
 
     it('un COORDINADOR registra INTERNAL en su coordinación', async () => {
       const { service, manager } = buildService();
-      await service.create(internalDto() as never, coordinatorA as never);
+      await service.create(internalDto(), coordinatorA as never);
       expect(savedSituation(manager)?.coordinationId).toBe(AREA_A);
     });
 
@@ -299,7 +304,7 @@ describe('SituationsService · alta por tipo de registro', () => {
     it('nace con reported = efectiva, fila REPORTED, sin política y due_at desde el mismo created_at', async () => {
       const { service, manager, timelineService } = buildService();
       await service.create(
-        internalDto({ severity: SituationSeverity.HIGH }) as never,
+        internalDto({ severity: SituationSeverity.HIGH }),
         analyst as never,
       );
 
@@ -354,7 +359,7 @@ describe('SituationsService · alta por tipo de registro', () => {
           initialConsequence: {
             description: '  Se retrasó la entrega de dos contenidos.  ',
           },
-        }) as never,
+        }),
         analyst as never,
       );
 

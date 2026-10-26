@@ -6,8 +6,12 @@ import {
 } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
 import { UserStatus } from '../common/enums/identity.enums';
-import { SituationSeverity, SituationStatus } from '../common/enums/situation.enums';
+import {
+  SituationSeverity,
+  SituationStatus,
+} from '../common/enums/situation.enums';
 import { OperationalScopeService } from '../auth/services/operational-scope.service';
+import type { RecordAuditInput } from '../audit/audit-log.service';
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { Situation } from './entities/situation.entity';
 import { SituationResolution } from './entities/situation-resolution.entity';
@@ -111,7 +115,8 @@ describe('SituationsService · resolver con aprendizaje', () => {
         return Promise.resolve(db.situation);
       }),
       insert: jest.fn((entity: unknown, value: SituationResolution) => {
-        if (entity !== SituationResolution) throw new Error('entidad inesperada');
+        if (entity !== SituationResolution)
+          throw new Error('entidad inesperada');
         if (insertFails || db.resolution) {
           return Promise.reject(
             new QueryFailedError('insert', [], new Error('duplicate key')),
@@ -143,9 +148,7 @@ describe('SituationsService · resolver con aprendizaje', () => {
       },
       findByIdWithRelations: jest.fn(() =>
         Promise.resolve(
-          db.situation
-            ? { ...db.situation, resolution: db.resolution }
-            : null,
+          db.situation ? { ...db.situation, resolution: db.resolution } : null,
         ),
       ),
     };
@@ -156,7 +159,11 @@ describe('SituationsService · resolver con aprendizaje', () => {
         return Promise.resolve({});
       }),
     };
-    const auditLogService = { record: jest.fn().mockResolvedValue(null) };
+    const auditLogService = {
+      record: jest
+        .fn<Promise<null>, [RecordAuditInput]>()
+        .mockResolvedValue(null),
+    };
 
     const generalId =
       options.generalCoordinationId === undefined
@@ -198,7 +205,7 @@ describe('SituationsService · resolver con aprendizaje', () => {
       { find: jest.fn().mockResolvedValue([]) } as never,
       timelineService as never,
       // POLÍTICA REAL.
-      new OperationalScopeService() as never,
+      new OperationalScopeService(),
       auditLogService as never,
       escalationService as never,
     );
@@ -238,7 +245,11 @@ describe('SituationsService · resolver con aprendizaje', () => {
     it('materializa los escalamientos pendientes ANTES de cerrar, con el instante del cierre', async () => {
       const h = createHarness();
 
-      await h.service.resolve(SIT_ID, { learning: 'Aprendizaje' }, coordinadorA);
+      await h.service.resolve(
+        SIT_ID,
+        { learning: 'Aprendizaje' },
+        coordinadorA,
+      );
 
       expect(h.escalationCalls).toHaveLength(1);
       expect(h.escalationCalls[0].status).toBe(SituationStatus.OPEN);
@@ -253,7 +264,11 @@ describe('SituationsService · resolver con aprendizaje', () => {
       const h = createHarness(
         buildSituation({ status: SituationStatus.IN_PROGRESS }),
       );
-      await h.service.resolve(SIT_ID, { learning: 'Aprendizaje' }, coordinadorA);
+      await h.service.resolve(
+        SIT_ID,
+        { learning: 'Aprendizaje' },
+        coordinadorA,
+      );
       expect(h.db.situation.status).toBe(SituationStatus.CLOSED);
       // Una sola transacción para todo el cierre.
       expect(h.db.timeline).toHaveLength(1);
@@ -261,7 +276,11 @@ describe('SituationsService · resolver con aprendizaje', () => {
 
     it('NO simula «En atención» ni asigna un responsable artificial', async () => {
       const h = createHarness();
-      await h.service.resolve(SIT_ID, { learning: 'Aprendizaje' }, coordinadorA);
+      await h.service.resolve(
+        SIT_ID,
+        { learning: 'Aprendizaje' },
+        coordinadorA,
+      );
 
       expect(h.db.situation.assignedUserId).toBeNull();
       // Un único evento: el cierre. No hay un paso intermedio inventado.
@@ -292,7 +311,7 @@ describe('SituationsService · resolver con aprendizaje', () => {
       await h.service.resolve(SIT_ID, { learning: 'Secreto' }, coordinadorA);
 
       const metadata = h.auditLogService.record.mock.calls[0][0].metadata;
-      expect(metadata.learningLength).toBe('Secreto'.length);
+      expect(metadata?.learningLength).toBe('Secreto'.length);
       expect(JSON.stringify(metadata)).not.toContain('Secreto');
     });
   });
@@ -346,7 +365,11 @@ describe('SituationsService · resolver con aprendizaje', () => {
         coordinationId: null,
       });
 
-      await h.service.resolve(SIT_ID, { learning: 'Lección General' }, analista);
+      await h.service.resolve(
+        SIT_ID,
+        { learning: 'Lección General' },
+        analista,
+      );
 
       expect(h.db.situation.status).toBe(SituationStatus.CLOSED);
       expect(h.db.resolution?.learning).toBe('Lección General');
@@ -358,7 +381,7 @@ describe('SituationsService · resolver con aprendizaje', () => {
         buildSituation({
           coordinationId: AREA_A,
           affectedCoordinationId: AREA_B,
-        } as Partial<Situation>),
+        }),
         { generalCoordinationId: AREA_A },
       );
       const analista = actor({
@@ -382,7 +405,7 @@ describe('SituationsService · resolver con aprendizaje', () => {
         buildSituation({
           coordinationId: AREA_B,
           affectedCoordinationId: AREA_A,
-        } as Partial<Situation>),
+        }),
         { generalCoordinationId: AREA_A },
       );
       const analista = actor({
@@ -405,7 +428,7 @@ describe('SituationsService · resolver con aprendizaje', () => {
           coordinationId: AREA_B,
           affectedCoordinationId: AREA_A,
           createdByUserId: 'ana-autor',
-        } as Partial<Situation>),
+        }),
         { generalCoordinationId: AREA_A },
       );
       const analista = actor({
@@ -467,16 +490,16 @@ describe('SituationsService · resolver con aprendizaje', () => {
   });
 
   describe('aprendizaje obligatorio', () => {
-    it.each([['vacío', ''], ['solo espacios', '   \n\t  ']])(
-      'rechaza un aprendizaje %s',
-      async (_l, learning) => {
-        const h = createHarness();
-        await expect(
-          h.service.resolve(SIT_ID, { learning }, coordinadorA),
-        ).rejects.toBeInstanceOf(BadRequestException);
-        expect(h.db.situation.status).toBe(SituationStatus.OPEN);
-      },
-    );
+    it.each([
+      ['vacío', ''],
+      ['solo espacios', '   \n\t  '],
+    ])('rechaza un aprendizaje %s', async (_l, learning) => {
+      const h = createHarness();
+      await expect(
+        h.service.resolve(SIT_ID, { learning }, coordinadorA),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(h.db.situation.status).toBe(SituationStatus.OPEN);
+    });
   });
 
   describe('atomicidad y concurrencia', () => {
@@ -565,7 +588,11 @@ describe('SituationsService · resolver con aprendizaje', () => {
         }),
       );
 
-      await h.service.resolve(SIT_ID, { learning: 'Cierre tardío' }, coordinadorA);
+      await h.service.resolve(
+        SIT_ID,
+        { learning: 'Cierre tardío' },
+        coordinadorA,
+      );
 
       expect(h.db.situation.status).toBe(SituationStatus.CLOSED);
       // No se pisa la fecha de resolución histórica.
@@ -610,7 +637,7 @@ describe('SituationsService · resolver con aprendizaje', () => {
         buildSituation({
           coordinationId: AREA_B,
           affectedCoordinationId: AREA_A,
-        } as Partial<Situation>),
+        }),
         { generalCoordinationId: AREA_A },
       );
       const analista = actor({

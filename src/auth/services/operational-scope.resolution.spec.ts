@@ -54,9 +54,9 @@ describe('OperationalScopeService · reportar y solucionar', () => {
         actor({ roleCode: 'DIRECTOR', permissions: ['SITUATIONS_VIEW'] }),
       ],
     ])('%s sin SITUATIONS_CREATE no reporta', (_label, who) => {
-      expect(() =>
-        service.resolveCreateCoordinationId(who, AREA_B),
-      ).toThrow(ForbiddenException);
+      expect(() => service.resolveCreateCoordinationId(who, AREA_B)).toThrow(
+        ForbiddenException,
+      );
     });
 
     it('el COORDINADOR también puede reportar en la suya', () => {
@@ -68,7 +68,9 @@ describe('OperationalScopeService · reportar y solucionar', () => {
     it('la selección de un ANALISTA ya NO se descarta', () => {
       // Antes de esta fase esto lanzaba ForbiddenException y el caso nacía sin
       // coordinación dueña, por lo que no aparecía en ninguna carta.
-      expect(service.resolveCreateCoordinationId(analista, AREA_B)).toBe(AREA_B);
+      expect(service.resolveCreateCoordinationId(analista, AREA_B)).toBe(
+        AREA_B,
+      );
     });
 
     it('sin selección se conserva el contrato histórico de ANALISTA y COORDINADOR', () => {
@@ -126,9 +128,9 @@ describe('OperationalScopeService · reportar y solucionar', () => {
         coordinationId: null,
         permissions: CLOSE,
       });
-      expect(
-        service.canResolveSituation(who, problemaDeA, AREA_PADRE),
-      ).toBe(false);
+      expect(service.canResolveSituation(who, problemaDeA, AREA_PADRE)).toBe(
+        false,
+      );
       expect(() =>
         service.assertCanResolveSituation(who, problemaDeA, AREA_PADRE),
       ).toThrow(/Coordinación General/);

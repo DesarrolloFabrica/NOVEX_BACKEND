@@ -164,8 +164,8 @@ describe('OperationalKpiService', () => {
       findActiveById: jest.fn().mockResolvedValue(catalog[0]),
       findActiveByIds: jest
         .fn()
-        .mockImplementation(async (ids: string[]) =>
-          catalog.filter((item) => ids.includes(item.id)),
+        .mockImplementation((ids: string[]) =>
+          Promise.resolve(catalog.filter((item) => ids.includes(item.id))),
         ),
     };
     overviewRepository = {
@@ -386,8 +386,8 @@ describe('OperationalKpiService.compare', () => {
       findActiveById: jest.fn(),
       findActiveByIds: jest
         .fn()
-        .mockImplementation(async (ids: string[]) =>
-          catalog.filter((item) => ids.includes(item.id)),
+        .mockImplementation((ids: string[]) =>
+          Promise.resolve(catalog.filter((item) => ids.includes(item.id))),
         ),
     };
     overviewRepository = {
@@ -556,7 +556,9 @@ describe('OperationalKpiService.getHistory', () => {
     aggregateBacklog: jest.Mock;
     aggregateEventMetric: jest.Mock;
   };
-  let categoriesRepository: { findOne: jest.Mock };
+  let categoriesRepository: {
+    findOne: jest.Mock<Promise<IncidentCategory | null>, [unknown]>;
+  };
   let service: OperationalKpiService;
 
   beforeEach(() => {
@@ -587,12 +589,14 @@ describe('OperationalKpiService.getHistory', () => {
       ),
     };
     categoriesRepository = {
-      findOne: jest.fn().mockResolvedValue({
-        id: CAT_INTERNET,
-        code: 'internet',
-        name: 'Internet',
-        isSelectable: true,
-      } as IncidentCategory),
+      findOne: jest
+        .fn<Promise<IncidentCategory | null>, [unknown]>()
+        .mockResolvedValue({
+          id: CAT_INTERNET,
+          code: 'internet',
+          name: 'Internet',
+          isSelectable: true,
+        } as IncidentCategory),
     };
     service = buildService(
       coordinationsRepository,
@@ -698,7 +702,7 @@ describe('OperationalKpiService.getHistory', () => {
           granularity: OperationalKpiHistoryGranularity.WEEK,
           from: '2026-01-01',
           to: '2026-01-31',
-        } as never,
+        },
         DIRECTOR,
       ),
     ).rejects.toBeInstanceOf(BadRequestException);

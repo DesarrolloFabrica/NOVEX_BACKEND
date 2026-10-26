@@ -26,6 +26,32 @@ import { OperationalKpiService } from './operational-kpi.service';
 const AREA_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const AREA_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
+/** Campos de las respuestas HTTP que leen estas pruebas. */
+interface SnapshotBody {
+  scope: { type: string; coordinationId?: string };
+  direction: { coordinations: unknown };
+  universe: { type: string };
+  metricVersions: { integrity: string };
+  coordination: { coordination: { id: string } };
+}
+
+interface CompareBody {
+  items: { coordination: { id: string } }[];
+  metricVersions: { integrity: string };
+}
+
+interface HistoryBody {
+  metric: string;
+  granularity: string;
+  timezone: string;
+  series: unknown;
+}
+
+interface BreakdownBody {
+  dimension: string;
+  items: { category: { name: string }; value: number }[];
+}
+
 const DIRECTOR: AuthPayload = {
   sub: 'director-1',
   email: 'director@cun.edu.co',
@@ -114,7 +140,8 @@ describe('GET /operational-kpis', () => {
     coordinationsRepository.findCatalog.mockResolvedValue(catalog);
     coordinationsRepository.findActiveById.mockResolvedValue(catalog[0]);
     coordinationsRepository.findActiveByIds.mockImplementation(
-      async (ids: string[]) => catalog.filter((item) => ids.includes(item.id)),
+      (ids: string[]) =>
+        Promise.resolve(catalog.filter((item) => ids.includes(item.id))),
     );
     overviewRepository.aggregateActiveSituationsBySeverity.mockResolvedValue(
       [],
@@ -206,11 +233,12 @@ describe('GET /operational-kpis', () => {
       .query({ scope: 'direction' })
       .expect(200);
 
-    expect(response.body.scope.type).toBe('direction');
-    expect(response.body.direction).toBeDefined();
-    expect(Array.isArray(response.body.direction.coordinations)).toBe(true);
-    expect(response.body.universe.type).toBe('active-catalog');
-    expect(response.body.metricVersions.integrity).toBe('integrity-mvp-v1');
+    const body = response.body as SnapshotBody;
+    expect(body.scope.type).toBe('direction');
+    expect(body.direction).toBeDefined();
+    expect(Array.isArray(body.direction.coordinations)).toBe(true);
+    expect(body.universe.type).toBe('active-catalog');
+    expect(body.metricVersions.integrity).toBe('integrity-mvp-v1');
   });
 
   it('GET ?scope=coordination&coordinationId= → 200', async () => {
@@ -219,11 +247,12 @@ describe('GET /operational-kpis', () => {
       .query({ scope: 'coordination', coordinationId: AREA_A })
       .expect(200);
 
-    expect(response.body.scope).toEqual({
+    const body = response.body as SnapshotBody;
+    expect(body.scope).toEqual({
       type: 'coordination',
       coordinationId: AREA_A,
     });
-    expect(response.body.coordination.coordination.id).toBe(AREA_A);
+    expect(body.coordination.coordination.id).toBe(AREA_A);
   });
 
   it('scope inexistente → 400', async () => {
@@ -260,12 +289,13 @@ describe('GET /operational-kpis', () => {
       .query({ coordinationIds: `${AREA_B},${AREA_A}` })
       .expect(200);
 
+    const body = response.body as CompareBody;
     expect(
-      response.body.items.map(
+      body.items.map(
         (item: { coordination: { id: string } }) => item.coordination.id,
       ),
     ).toEqual([AREA_B, AREA_A]);
-    expect(response.body.metricVersions.integrity).toBe('integrity-mvp-v1');
+    expect(body.metricVersions.integrity).toBe('integrity-mvp-v1');
     expect(response.body).not.toHaveProperty('winner');
     expect(response.body).not.toHaveProperty('bestCoordination');
   });
@@ -330,10 +360,11 @@ describe('GET /operational-kpis', () => {
       })
       .expect(200);
 
-    expect(response.body.metric).toBe('backlog');
-    expect(response.body.granularity).toBe('week');
-    expect(response.body.timezone).toBe('America/Bogota');
-    expect(Array.isArray(response.body.series)).toBe(true);
+    const body = response.body as HistoryBody;
+    expect(body.metric).toBe('backlog');
+    expect(body.granularity).toBe('week');
+    expect(body.timezone).toBe('America/Bogota');
+    expect(Array.isArray(body.series)).toBe(true);
   });
 
   it('history sin coordinationId → 400', async () => {
@@ -391,9 +422,10 @@ describe('GET /operational-kpis', () => {
       })
       .expect(200);
 
-    expect(response.body.dimension).toBe('category');
-    expect(response.body.items[0].category.name).toBe('Internet');
-    expect(response.body.items[0].value).toBe(5);
+    const body = response.body as BreakdownBody;
+    expect(body.dimension).toBe('category');
+    expect(body.items[0].category.name).toBe('Internet');
+    expect(body.items[0].value).toBe(5);
   });
 
   it('breakdown sin coordinationId → 400', async () => {

@@ -104,10 +104,9 @@ export class OperationalKpiHistoryRepository {
       ORDER BY b.start_at
     `;
 
-    const rows = (await this.situationsRepository.manager.query(
-      sql,
-      params,
-    )) as Array<{ key: string; total: string | number }>;
+    const rows = await this.situationsRepository.manager.query<
+      Array<{ key: string; total: string | number }>
+    >(sql, params);
 
     for (const row of rows) {
       counts.set(row.key, Number(row.total));
@@ -152,10 +151,9 @@ export class OperationalKpiHistoryRepository {
       ORDER BY b.end_exclusive
     `;
 
-    const rows = (await this.situationsRepository.manager.query(
-      sql,
-      params,
-    )) as Array<{ key: string; total: string | number }>;
+    const rows = await this.situationsRepository.manager.query<
+      Array<{ key: string; total: string | number }>
+    >(sql, params);
 
     for (const row of rows) {
       counts.set(row.key, Number(row.total));
@@ -218,16 +216,18 @@ export class OperationalKpiHistoryRepository {
       GROUP BY b.key, b.end_exclusive
       ORDER BY b.end_exclusive
     `;
-    const rows = (await this.situationsRepository.manager.query(sql, [
+    const rows = await this.situationsRepository.manager.query<
+      Array<{
+        key: string;
+        internal: string | number;
+        external: string | number;
+      }>
+    >(sql, [
       ...cut.params,
       coordinationId,
       SituationReportKind.INTERNAL,
       SituationReportKind.INTER_COORDINATION,
-    ])) as Array<{
-      key: string;
-      internal: string | number;
-      external: string | number;
-    }>;
+    ]);
     for (const row of rows) {
       counts.set(row.key, {
         internal: Number(row.internal),
@@ -261,18 +261,16 @@ export class OperationalKpiHistoryRepository {
       LEFT JOIN incident_categories c ON c.id = s.category_id
       GROUP BY b.key, s.category_id, c.code, c.name, c.is_selectable
     `;
-    const rows = (await this.situationsRepository.manager.query(sql, [
-      ...cut.params,
-      coordinationId,
-      SituationReportKind.INTERNAL,
-    ])) as Array<{
-      key: string;
-      categoryId: string | null;
-      code: string | null;
-      name: string | null;
-      selectable: boolean | null;
-      count: string | number;
-    }>;
+    const rows = await this.situationsRepository.manager.query<
+      Array<{
+        key: string;
+        categoryId: string | null;
+        code: string | null;
+        name: string | null;
+        selectable: boolean | null;
+        count: string | number;
+      }>
+    >(sql, [...cut.params, coordinationId, SituationReportKind.INTERNAL]);
     return rows.map((row) =>
       row.categoryId
         ? {
@@ -320,18 +318,20 @@ export class OperationalKpiHistoryRepository {
       LEFT JOIN coordinations c ON c.id = s.affected_coordination_id
       GROUP BY b.key, s.affected_coordination_id, c.code, c.name, c.short_name
     `;
-    const rows = (await this.situationsRepository.manager.query(sql, [
+    const rows = await this.situationsRepository.manager.query<
+      Array<{
+        key: string;
+        coordinationId: string | null;
+        code: string | null;
+        name: string | null;
+        shortName: string | null;
+        count: string | number;
+      }>
+    >(sql, [
       ...cut.params,
       coordinationId,
       SituationReportKind.INTER_COORDINATION,
-    ])) as Array<{
-      key: string;
-      coordinationId: string | null;
-      code: string | null;
-      name: string | null;
-      shortName: string | null;
-      count: string | number;
-    }>;
+    ]);
     return rows.map((row) => ({
       key: row.key,
       coordinationId: row.coordinationId,

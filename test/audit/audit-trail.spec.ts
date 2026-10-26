@@ -85,10 +85,12 @@ describe('Institutional audit trail', () => {
     const auditLogService = { record: jest.fn().mockResolvedValue(null) };
     const manager = createManagerMock();
     // El alta corre en una transacción: la situación sale de `manager.save`.
-    manager.save.mockImplementation(async (_entity: unknown, data: object) => ({
-      ...data,
-      id: 'sit-new',
-    }));
+    manager.save.mockImplementation((_entity: unknown, data: object) =>
+      Promise.resolve({
+        ...data,
+        id: 'sit-new',
+      }),
+    );
     const situationsRepository = {
       manager: transactionalManager(manager),
       findByIdWithRelations: jest.fn().mockResolvedValue({
@@ -131,7 +133,9 @@ describe('Institutional audit trail', () => {
       detail.consequencesRepository as never,
       { createEntry: jest.fn() } as never,
       {
-        resolveInternalCreateCoordinationId: jest.fn().mockReturnValue('coord-1'),
+        resolveInternalCreateCoordinationId: jest
+          .fn()
+          .mockReturnValue('coord-1'),
         // `toResponse` consulta la política de resolución para `canResolve`.
         canResolveSituation: jest.fn().mockReturnValue(false),
         canAdvanceSituationToInProgress: jest.fn().mockReturnValue(false),

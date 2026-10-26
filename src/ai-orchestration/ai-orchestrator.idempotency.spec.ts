@@ -278,7 +278,10 @@ describe('AIOrchestrator registro idempotente (decisiones)', () => {
     });
     situationsRepository.findOne
       .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ id: 'sit-1', requestFingerprint: 'otra-huella' });
+      .mockResolvedValueOnce({
+        id: 'sit-1',
+        requestFingerprint: 'otra-huella',
+      });
 
     await expect(
       orchestrator.registerAndExecute(dto, actor, KEY),

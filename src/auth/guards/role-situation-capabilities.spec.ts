@@ -12,9 +12,7 @@ import { SituationsController } from '../../situations/situations.controller';
 import { OperationalKpiController } from '../../operational-kpis/operational-kpi.controller';
 import { OperationalOverviewController } from '../../operational-overview/operational-overview.controller';
 
-function actor(
-  roleCode: keyof typeof ROLE_PERMISSION_CODES,
-): AuthPayload {
+function actor(roleCode: keyof typeof ROLE_PERMISSION_CODES): AuthPayload {
   return {
     sub: `${roleCode.toLowerCase()}-user`,
     email: `${roleCode.toLowerCase()}@cun.edu.co`,
@@ -43,14 +41,11 @@ function guardRequiring(...required: string[]): PermissionsGuard {
   return new PermissionsGuard(reflector as unknown as Reflector);
 }
 
-function requiredOn(
-  prototype: object,
-  method: string,
-): string[] | undefined {
+function requiredOn(prototype: object, method: string): string[] | undefined {
   return Reflect.getMetadata(
     REQUIRE_PERMISSIONS_KEY,
-    (prototype as Record<string, unknown>)[method],
-  );
+    (prototype as Record<string, object>)[method],
+  ) as string[] | undefined;
 }
 
 describe('matriz contractual · situaciones (PermissionsGuard + ROLE_PERMISSION_CODES)', () => {
@@ -128,9 +123,9 @@ describe('rutas de situaciones · metadata de autorización', () => {
     expect(
       requiredOn(AIOrchestrationController.prototype, 'registerWithAnalysis'),
     ).toEqual(['SITUATIONS_CREATE']);
-    expect(
-      requiredOn(SituationEvidenceController.prototype, 'create'),
-    ).toEqual(['SITUATIONS_CREATE']);
+    expect(requiredOn(SituationEvidenceController.prototype, 'create')).toEqual(
+      ['SITUATIONS_CREATE'],
+    );
   });
 
   it('ciclo de vida y evidencias DELETE no usan CREATE', () => {
@@ -140,12 +135,12 @@ describe('rutas de situaciones · metadata de autorización', () => {
     expect(requiredOn(SituationsController.prototype, 'resolve')).toEqual([
       'SITUATIONS_CLOSE',
     ]);
-    expect(
-      requiredOn(AIOrchestrationController.prototype, 'analyze'),
-    ).toEqual(['AI_ANALYZE']);
-    expect(
-      requiredOn(SituationEvidenceController.prototype, 'delete'),
-    ).toEqual(['SITUATIONS_UPDATE']);
+    expect(requiredOn(AIOrchestrationController.prototype, 'analyze')).toEqual([
+      'AI_ANALYZE',
+    ]);
+    expect(requiredOn(SituationEvidenceController.prototype, 'delete')).toEqual(
+      ['SITUATIONS_UPDATE'],
+    );
   });
 
   it('lectura institucional y detalle exigen VIEW', () => {
@@ -183,8 +178,8 @@ describe('KPIS_VIEW · PermissionsGuard + ROLE_PERMISSION_CODES', () => {
     expect(
       requiredOn(OperationalKpiController.prototype, 'getSnapshot'),
     ).toEqual(['KPIS_VIEW']);
-    expect(
-      requiredOn(OperationalKpiController.prototype, 'compare'),
-    ).toEqual(['KPIS_VIEW']);
+    expect(requiredOn(OperationalKpiController.prototype, 'compare')).toEqual([
+      'KPIS_VIEW',
+    ]);
   });
 });

@@ -46,6 +46,39 @@ class GeminiProviderFalso {
   }
 }
 
+/** Fila con `id` que devuelve un `INSERT ... RETURNING id`. */
+interface IdRow {
+  id: string;
+}
+
+/** Campos de las respuestas HTTP que leen estas pruebas. */
+interface LoginBody {
+  accessToken: string;
+}
+
+interface ReportBody {
+  situation: { id: string; coordinationId: string; createdByUserName: string };
+}
+
+interface ListItem {
+  id: string;
+  coordinationId: string;
+  createdByUserId: string;
+}
+
+interface ListBody {
+  items: ListItem[];
+  scope: string;
+}
+
+interface DetailBody {
+  id: string;
+  status: string;
+  canResolve: boolean;
+  closedAt: string | null;
+  resolution: { learning: string; resolvedByUserId: string } | null;
+}
+
 describe('Fase 2 · HTTP real contra base aislada', () => {
   let app: INestApplication;
   let ds: DataSource;
@@ -93,7 +126,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     await ds.query("DELETE FROM users WHERE email LIKE '%@t.co'");
 
     const uno = async (sql: string, params: unknown[] = []) =>
-      (await ds.query(sql, params))[0];
+      (await ds.query<IdRow[]>(sql, params))[0];
 
     ids.areaA = (
       await uno(
@@ -141,7 +174,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
         .post('/api/v1/auth/email')
         .send({ email })
         .expect(201);
-      token[email] = res.body.accessToken;
+      token[email] = (res.body as LoginBody).accessToken;
     }
   }, 60_000);
 
@@ -176,9 +209,9 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
       const res = await reportar(email, ids.areaA);
       expect(res.status).toBe(201);
       // La coordinación SELECCIONADA se conserva, no se sustituye.
-      expect(res.body.situation.coordinationId).toBe(ids.areaA);
+      expect((res.body as ReportBody).situation.coordinationId).toBe(ids.areaA);
       // Y la autoría queda registrada aparte.
-      expect(res.body.situation.createdByUserName).toBe(email);
+      expect((res.body as ReportBody).situation.createdByUserName).toBe(email);
     });
 
     it('un COORDINADOR no registra un INTERNAL en un área ajena (403)', async () => {
@@ -212,13 +245,13 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
         .set(auth('coord.b@t.co'))
         .expect(200);
 
-      expect(res.body.items.length).toBeGreaterThan(0);
-      for (const item of res.body.items) {
+      expect((res.body as ListBody).items.length).toBeGreaterThan(0);
+      for (const item of (res.body as ListBody).items) {
         expect(item.createdByUserId).toBe(ids.coordB);
       }
       // Incluye el que registró en el ÁREA A, que no es la suya.
       expect(
-        res.body.items.some(
+        (res.body as ListBody).items.some(
           (i: { coordinationId: string }) => i.coordinationId === ids.areaA,
         ),
       ).toBe(true);
@@ -229,18 +262,18 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
         .get('/api/v1/situations?mine=true&limit=50')
         .set(auth('coord.b@t.co'))
         .expect(200);
-      const ajeno = mios.body.items.find(
+      const ajeno = (mios.body as ListBody).items.find(
         (i: { coordinationId: string }) => i.coordinationId === ids.areaA,
       );
 
       const detalle = await request(app.getHttpServer())
-        .get(`/api/v1/situations/${ajeno.id}`)
+        .get(`/api/v1/situations/${ajeno?.id}`)
         .set(auth('coord.b@t.co'))
         .expect(200);
 
-      expect(detalle.body.id).toBe(ajeno.id);
+      expect((detalle.body as DetailBody).id).toBe(ajeno?.id);
       // Verlo NO le concede resolverlo: el área responsable no es la suya.
-      expect(detalle.body.canResolve).toBe(false);
+      expect((detalle.body as DetailBody).canResolve).toBe(false);
     });
 
     it('NO puede leer un reporte AJENO de otra área', async () => {
@@ -248,7 +281,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
         .get('/api/v1/situations?mine=true&limit=50')
         .set(auth('admin@t.co'))
         .expect(200);
-      const id = delAdmin.body.items[0].id;
+      const id = (delAdmin.body as ListBody).items[0].id;
 
       await request(app.getHttpServer())
         .get(`/api/v1/situations/${id}`)
@@ -260,11 +293,13 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
       // `createdByUserId` no es un parámetro admitido: el ValidationPipe con
       // whitelist lo descarta y el listado sigue siendo el del actor.
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/situations?mine=true&createdByUserId=${ids.admin}&limit=50`)
+        .get(
+          `/api/v1/situations?mine=true&createdByUserId=${ids.admin}&limit=50`,
+        )
         .set(auth('coord.b@t.co'))
         .expect(200);
 
-      for (const item of res.body.items) {
+      for (const item of (res.body as ListBody).items) {
         expect(item.createdByUserId).toBe(ids.coordB);
       }
     });
@@ -299,7 +334,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
           occurredAt: new Date(Date.now() - 3600_000).toISOString(),
         })
         .expect(201);
-      idPropioEnAreaAjena = res.body.situation.id;
+      idPropioEnAreaAjena = (res.body as ReportBody).situation.id;
     });
 
     it('incluye el reporte PROPIO activo de esa coordinación', async () => {
@@ -308,9 +343,9 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
         .set(auth('coord.b@t.co'))
         .expect(200);
 
-      expect(res.body.items.map((i: { id: string }) => i.id)).toContain(
-        idPropioEnAreaAjena,
-      );
+      expect(
+        (res.body as ListBody).items.map((i: { id: string }) => i.id),
+      ).toContain(idPropioEnAreaAjena);
     });
 
     it('declara que la lectura fue parcial', async () => {
@@ -319,7 +354,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
         .set(auth('coord.b@t.co'))
         .expect(200);
 
-      expect(res.body.scope).toBe('own-only');
+      expect((res.body as ListBody).scope).toBe('own-only');
     });
 
     it('NO incluye los reportes ajenos de esa coordinación', async () => {
@@ -330,9 +365,11 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
         .set(auth('coord.b@t.co'))
         .expect(200);
 
-      const ids_ = res.body.items.map((i: { id: string }) => i.id);
-      expect(ids_).not.toContain(ajeno.body.situation.id);
-      for (const item of res.body.items) {
+      const ids_ = (res.body as ListBody).items.map(
+        (i: { id: string }) => i.id,
+      );
+      expect(ids_).not.toContain((ajeno.body as ReportBody).situation.id);
+      for (const item of (res.body as ListBody).items) {
         expect(item.createdByUserId).toBe(ids.coordB);
       }
     });
@@ -346,9 +383,9 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
         .set(auth('coord.b@t.co'))
         .expect(200);
 
-      expect(res.body.items.map((i: { id: string }) => i.id)).not.toContain(
-        enSuArea.body.situation.id,
-      );
+      expect(
+        (res.body as ListBody).items.map((i: { id: string }) => i.id),
+      ).not.toContain((enSuArea.body as ReportBody).situation.id);
     });
 
     it('sobre SU propia coordinación la lectura es completa', async () => {
@@ -357,7 +394,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
         .set(auth('coord.b@t.co'))
         .expect(200);
 
-      expect(res.body.scope).toBe('complete');
+      expect((res.body as ListBody).scope).toBe('complete');
     });
 
     it('un rol no acotado por área lee completo en cualquier coordinación', async () => {
@@ -366,7 +403,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
         .set(auth('admin@t.co'))
         .expect(200);
 
-      expect(res.body.scope).toBe('complete');
+      expect((res.body as ListBody).scope).toBe('complete');
     });
   });
 
@@ -375,7 +412,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
 
     beforeAll(async () => {
       const res = await reportar('admin@t.co', ids.areaA);
-      problemaDeA = res.body.situation.id;
+      problemaDeA = (res.body as ReportBody).situation.id;
     });
 
     it('el coordinador del área responsable ve canResolve = true', async () => {
@@ -383,7 +420,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
         .get(`/api/v1/situations/${problemaDeA}`)
         .set(auth('coord.a@t.co'))
         .expect(200);
-      expect(res.body.canResolve).toBe(true);
+      expect((res.body as DetailBody).canResolve).toBe(true);
     });
 
     it.each([
@@ -415,14 +452,16 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
         .send({ learning: 'Faltó un plan de reversión documentado.' })
         .expect(201);
 
-      expect(res.body.status).toBe('CLOSED');
-      expect(res.body.resolution.learning).toBe(
+      expect((res.body as DetailBody).status).toBe('CLOSED');
+      expect((res.body as DetailBody).resolution?.learning).toBe(
         'Faltó un plan de reversión documentado.',
       );
-      expect(res.body.resolution.resolvedByUserId).toBe(ids.coordA);
-      expect(res.body.closedAt).not.toBeNull();
+      expect((res.body as DetailBody).resolution?.resolvedByUserId).toBe(
+        ids.coordA,
+      );
+      expect((res.body as DetailBody).closedAt).not.toBeNull();
       // Ya cerrado: deja de ofrecerse la acción.
-      expect(res.body.canResolve).toBe(false);
+      expect((res.body as DetailBody).canResolve).toBe(false);
     });
 
     it('una segunda resolución no sobrescribe nada', async () => {
@@ -436,14 +475,14 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
         .get(`/api/v1/situations/${problemaDeA}`)
         .set(auth('coord.a@t.co'))
         .expect(200);
-      expect(detalle.body.resolution.learning).toBe(
+      expect((detalle.body as DetailBody).resolution?.learning).toBe(
         'Faltó un plan de reversión documentado.',
       );
     });
 
     it('el PATCH genérico no permite cerrar por otra vía', async () => {
       const otro = await reportar('admin@t.co', ids.areaA);
-      const id = otro.body.situation.id;
+      const id = (otro.body as ReportBody).situation.id;
 
       const res = await request(app.getHttpServer())
         .patch(`/api/v1/situations/${id}`)
@@ -455,13 +494,13 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
         .get(`/api/v1/situations/${id}`)
         .set(auth('coord.a@t.co'))
         .expect(200);
-      expect(detalle.body.status).toBe('OPEN');
+      expect((detalle.body as DetailBody).status).toBe('OPEN');
     });
 
     it('un problema sin aprendizaje anterior sigue siendo legible', async () => {
       // Se cierra uno por SQL, como estaban los históricos, y se lee por HTTP.
       const creado = await reportar('admin@t.co', ids.areaA);
-      const id = creado.body.situation.id;
+      const id = (creado.body as ReportBody).situation.id;
       await ds.query(
         `UPDATE situations SET status='CLOSED', closed_at=now(), resolved_at=now() WHERE id=$1`,
         [id],
@@ -472,10 +511,10 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
         .set(auth('coord.a@t.co'))
         .expect(200);
 
-      expect(res.body.status).toBe('CLOSED');
+      expect((res.body as DetailBody).status).toBe('CLOSED');
       // Ausencia legítima: null, sin texto inventado.
-      expect(res.body.resolution).toBeNull();
-      expect(res.body.canResolve).toBe(false);
+      expect((res.body as DetailBody).resolution).toBeNull();
+      expect((res.body as DetailBody).canResolve).toBe(false);
     });
   });
 });

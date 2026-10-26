@@ -221,7 +221,7 @@ export class UpdateSituationDto {
  */
 export class ResolveSituationDto {
   @IsString()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(trimString)
   @MinLength(1, { message: 'El aprendizaje no puede estar vacío.' })
   @MaxLength(SITUATION_LEARNING_MAX_LENGTH)
   learning!: string;

@@ -168,6 +168,35 @@ describe('severityAt / invariantes del historial', () => {
   });
 });
 
+/** Resultado de `execute()` del query builder falso. */
+interface FakeExecuteResult {
+  raw: { id: string }[];
+}
+
+/** Query builder encadenable falso: registra `values()` y `set()`. */
+interface FakeInsertQueryBuilder {
+  insert(this: FakeInsertQueryBuilder): FakeInsertQueryBuilder;
+  into(this: FakeInsertQueryBuilder): FakeInsertQueryBuilder;
+  valuesOf: Record<string, unknown> | null;
+  values(
+    this: FakeInsertQueryBuilder,
+    v: Record<string, unknown>,
+  ): FakeInsertQueryBuilder;
+  update(this: FakeInsertQueryBuilder): FakeInsertQueryBuilder;
+  set(
+    this: FakeInsertQueryBuilder,
+    values: Record<string, unknown>,
+  ): FakeInsertQueryBuilder;
+  where(this: FakeInsertQueryBuilder): FakeInsertQueryBuilder;
+  orIgnore(this: FakeInsertQueryBuilder): FakeInsertQueryBuilder;
+  returning(this: FakeInsertQueryBuilder): FakeInsertQueryBuilder;
+  callListeners(
+    this: FakeInsertQueryBuilder,
+    flag: boolean,
+  ): FakeInsertQueryBuilder;
+  execute: jest.Mock<Promise<FakeExecuteResult>, []>;
+}
+
 describe('SeverityEscalationService.materializeDueEscalations', () => {
   function situation(over: Partial<Situation> = {}): Situation {
     return {
@@ -185,49 +214,49 @@ describe('SeverityEscalationService.materializeDueEscalations', () => {
   function harness(options: { conflictOn?: string[] } = {}) {
     const inserted: Array<Record<string, unknown>> = [];
     const updates: Array<Record<string, unknown>> = [];
-    const qb = {
-      insert() {
+    const qb: FakeInsertQueryBuilder = {
+      insert(this: FakeInsertQueryBuilder) {
         return this;
       },
-      into() {
+      into(this: FakeInsertQueryBuilder) {
         return this;
       },
-      valuesOf: null as Record<string, unknown> | null,
-      values(v: Record<string, unknown>) {
+      valuesOf: null,
+      values(this: FakeInsertQueryBuilder, v: Record<string, unknown>) {
         this.valuesOf = v;
         return this;
       },
-      update() {
+      update(this: FakeInsertQueryBuilder) {
         return this;
       },
-      set(values: Record<string, unknown>) {
+      set(this: FakeInsertQueryBuilder, values: Record<string, unknown>) {
         updates.push(values);
         return this;
       },
-      where() {
+      where(this: FakeInsertQueryBuilder) {
         return this;
       },
-      orIgnore() {
+      orIgnore(this: FakeInsertQueryBuilder) {
         return this;
       },
-      returning() {
+      returning(this: FakeInsertQueryBuilder) {
         return this;
       },
-      callListeners(flag: boolean) {
+      callListeners(this: FakeInsertQueryBuilder, flag: boolean) {
         expect(flag).toBe(false);
         return this;
       },
-      execute: jest.fn(async () => {
+      execute: jest.fn((): Promise<FakeExecuteResult> => {
         if (qb.valuesOf) {
           const row = qb.valuesOf;
           qb.valuesOf = null;
           if (options.conflictOn?.includes(row.ruleKey as string)) {
-            return { raw: [] };
+            return Promise.resolve({ raw: [] });
           }
           inserted.push(row);
-          return { raw: [{ id: `chg-${inserted.length}` }] };
+          return Promise.resolve({ raw: [{ id: `chg-${inserted.length}` }] });
         }
-        return { raw: [] };
+        return Promise.resolve({ raw: [] });
       }),
     };
 
@@ -343,11 +372,12 @@ describe('SeverityEscalationService.materializeDueEscalations', () => {
       now: at(7),
     });
     expect(h.inserted.map((r) => r.ruleKey)).toEqual(['step-2']);
+    const whereMatcher: unknown = expect.objectContaining({
+      policyCode: QA_TEST_POLICY.code,
+    });
     expect(h.manager.find).toHaveBeenCalledWith(
       SituationSeverityChange,
-      expect.objectContaining({
-        where: expect.objectContaining({ policyCode: QA_TEST_POLICY.code }),
-      }),
+      expect.objectContaining({ where: whereMatcher }),
     );
   });
 });

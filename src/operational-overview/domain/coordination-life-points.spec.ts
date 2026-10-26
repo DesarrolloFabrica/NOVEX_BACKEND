@@ -55,7 +55,10 @@ function life(
     ...owned,
     ...external,
     activeProblemsCount:
-      owned.lowCount + owned.mediumCount + owned.highCount + owned.criticalCount,
+      owned.lowCount +
+      owned.mediumCount +
+      owned.highCount +
+      owned.criticalCount,
     affectedCoordinationCount: counts.affectedCoordinationCount ?? 0,
     incomingDependencyCount:
       external.externalIncomingLowCount +

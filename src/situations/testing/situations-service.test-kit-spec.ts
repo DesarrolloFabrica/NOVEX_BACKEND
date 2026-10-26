@@ -15,22 +15,27 @@ export interface ManagerMockOptions {
   failSaveOf?: { entity: unknown; error: Error };
 }
 
+/** Lo que devuelve `save`: lo guardado más un `id` (el dado o uno generado). */
+type SavedRow = { id: string; [key: string]: unknown };
+
 export function createManagerMock(options: ManagerMockOptions = {}) {
   let sequence = 0;
   const manager = {
     create: jest.fn((_entity: unknown, data: Record<string, unknown>) => ({
       ...data,
     })),
-    save: jest.fn(async (entity: unknown, data: Record<string, unknown>) => {
-      if (options.failSaveOf && entity === options.failSaveOf.entity) {
-        throw options.failSaveOf.error;
-      }
-      sequence += 1;
-      return {
-        ...data,
-        id: (data.id as string | undefined) ?? `generated-${sequence}`,
-      };
-    }),
+    save: jest.fn(
+      (entity: unknown, data: Record<string, unknown>): Promise<SavedRow> => {
+        if (options.failSaveOf && entity === options.failSaveOf.entity) {
+          return Promise.reject(options.failSaveOf.error);
+        }
+        sequence += 1;
+        return Promise.resolve({
+          ...data,
+          id: (data.id as string | undefined) ?? `generated-${sequence}`,
+        });
+      },
+    ),
     insert: jest.fn().mockResolvedValue({ identifiers: [] }),
     find: jest.fn().mockResolvedValue([]),
     findOne: jest.fn().mockResolvedValue(options.findOneResult ?? null),

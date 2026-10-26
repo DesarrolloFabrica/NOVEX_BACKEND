@@ -44,6 +44,34 @@ class GeminiFalso {
   }
 }
 
+/** Filas SQL que leen estas pruebas. */
+interface IdRow {
+  id: string;
+}
+
+interface ResolutionRow {
+  learning: string;
+  resolved_by_user_id: string;
+}
+
+interface CountRow {
+  n: number;
+}
+
+/** Campos de las respuestas HTTP que leen estas pruebas. */
+interface LoginBody {
+  accessToken: string;
+}
+
+interface ReportBody {
+  situation: { id: string };
+}
+
+interface ResolveBody {
+  status: string;
+  resolution: { learning: string; resolvedByUserId: string };
+}
+
 describe('Fase 2.1 · resolución concurrente contra Nest real', () => {
   let app: INestApplication;
   let ds: DataSource;
@@ -60,7 +88,9 @@ describe('Fase 2.1 · resolución concurrente contra Nest real', () => {
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
     ds = app.get(DataSource);
 
@@ -74,13 +104,13 @@ describe('Fase 2.1 · resolución concurrente contra Nest real', () => {
     await ds.query("DELETE FROM incident_categories WHERE code = 'CONC'");
 
     areaId = (
-      await ds.query(
+      await ds.query<IdRow[]>(
         `INSERT INTO coordinations (code,name,short_name,color,icon,image_asset,display_order)
          VALUES ('coord-x','Área X','X','#fff','x','x.png',90) RETURNING id`,
       )
     )[0].id;
     categoriaId = (
-      await ds.query(
+      await ds.query<IdRow[]>(
         `INSERT INTO incident_categories (code,name) VALUES ('CONC','Concurrencia') RETURNING id`,
       )
     )[0].id;
@@ -88,7 +118,7 @@ describe('Fase 2.1 · resolución concurrente contra Nest real', () => {
     // DOS coordinadores de la MISMA área: ambos autorizados a resolver.
     for (const email of ['uno@conc.co', 'dos@conc.co']) {
       const row = (
-        await ds.query(
+        await ds.query<IdRow[]>(
           `INSERT INTO users (email, full_name, role_id, coordination_id)
            SELECT $1, $1, r.id, $2 FROM roles r WHERE r.code = 'COORDINADOR'
            RETURNING id`,
@@ -101,7 +131,7 @@ describe('Fase 2.1 · resolución concurrente contra Nest real', () => {
         .post('/api/v1/auth/email')
         .send({ email })
         .expect(201);
-      token[email] = res.body.accessToken;
+      token[email] = (res.body as LoginBody).accessToken;
     }
   }, 60_000);
 
@@ -125,7 +155,7 @@ describe('Fase 2.1 · resolución concurrente contra Nest real', () => {
         occurredAt: new Date(Date.now() - 3600_000).toISOString(),
       })
       .expect(201);
-    return res.body.situation.id;
+    return (res.body as ReportBody).situation.id;
   }
 
   it('dos resoluciones SUPERPUESTAS: una gana, la otra recibe 409', async () => {
@@ -156,18 +186,19 @@ describe('Fase 2.1 · resolución concurrente contra Nest real', () => {
     expect(perdedora.status).toBe(409);
 
     // UNA sola fila de aprendizaje, la del ganador, con su autoría.
-    const filas = await ds.query(
+    const filas = await ds.query<ResolutionRow[]>(
       'SELECT learning, resolved_by_user_id FROM situation_resolutions WHERE situation_id = $1',
       [id],
     );
     expect(filas).toHaveLength(1);
-    expect(filas[0].learning).toBe(ganadora.body.resolution.learning);
+    const ganadoraBody = ganadora.body as ResolveBody;
+    expect(filas[0].learning).toBe(ganadoraBody.resolution.learning);
     expect(filas[0].resolved_by_user_id).toBe(
-      ganadora.body.resolution.resolvedByUserId,
+      ganadoraBody.resolution.resolvedByUserId,
     );
 
     // Y UN solo evento de cierre en la línea de tiempo: no se duplica.
-    const cierres = await ds.query(
+    const cierres = await ds.query<CountRow[]>(
       "SELECT count(*)::int AS n FROM situation_timeline_entries WHERE situation_id = $1 AND event_type = 'CLOSED'",
       [id],
     );
@@ -192,7 +223,7 @@ describe('Fase 2.1 · resolución concurrente contra Nest real', () => {
       expect(r.status).toBe(409);
     }
 
-    const filas = await ds.query(
+    const filas = await ds.query<CountRow[]>(
       'SELECT count(*)::int AS n FROM situation_resolutions WHERE situation_id = $1',
       [id],
     );
@@ -215,6 +246,6 @@ describe('Fase 2.1 · resolución concurrente contra Nest real', () => {
 
     expect(res.status).not.toBe(500);
     expect(res.status).toBe(201);
-    expect(res.body.status).toBe('CLOSED');
+    expect((res.body as ResolveBody).status).toBe('CLOSED');
   }, 60_000);
 });

@@ -657,7 +657,9 @@ describe('OperationalOverviewService · alcance', () => {
     expect(propia?.status).toBe('ALERTA');
 
     // El estado de OTRA área también llega, que es lo que dibuja su carta.
-    const ajena = overview.coordinations.find((item) => item.code === 'coord-b2b');
+    const ajena = overview.coordinations.find(
+      (item) => item.code === 'coord-b2b',
+    );
     expect(ajena?.status).toBe('CRITICO');
     expect(ajena?.criticalCount).toBe(3);
   });
@@ -810,7 +812,11 @@ describe('OperationalOverviewService · vidas (lifePoints)', () => {
         severityRow(uuidOf('coord-ingenierias'), SituationSeverity.CRITICAL, 1),
       ],
       incomingRows: [
-        incomingRow('coord-ingenierias', {}, { [SituationSeverity.CRITICAL]: 1 }),
+        incomingRow(
+          'coord-ingenierias',
+          {},
+          { [SituationSeverity.CRITICAL]: 1 },
+        ),
       ],
     });
     const overview = await service.getOverview(ADMIN);
@@ -847,7 +853,9 @@ describe('OperationalOverviewService · vidas (lifePoints)', () => {
 
   it('snapshot inválido para la integridad → lifePoints null (nunca 10) y el resto intacto', async () => {
     const { service } = createService({
-      severityRows: [severityRow(uuidOf('coord-b2b'), SituationSeverity.LOW, 1)],
+      severityRows: [
+        severityRow(uuidOf('coord-b2b'), SituationSeverity.LOW, 1),
+      ],
       affectedRows: [{ coordinationId: uuidOf('coord-negocios'), total: 4 }],
     });
     const overview = await service.getOverview(ADMIN);

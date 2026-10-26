@@ -33,9 +33,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * desde la base en CADA petición; los permisos del JWT son solo una foto del
  * login y no se usan para autorizar.
  */
-export class GrantReportingAndClosurePermissions1787300000000
-  implements MigrationInterface
-{
+export class GrantReportingAndClosurePermissions1787300000000 implements MigrationInterface {
   name = 'GrantReportingAndClosurePermissions1787300000000';
 
   /** Asignaciones que esta fase añade. Nada más. */

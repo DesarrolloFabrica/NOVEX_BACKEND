@@ -69,8 +69,7 @@ export interface CoordinationLifeSnapshot extends CoordinationIntegritySnapshot 
  * CRITICAL).
  */
 export type CoordinationLifeSnapshotIssue =
-  | CoordinationSnapshotIssue
-  | 'INCOMING_BREAKDOWN_EXCEEDS_TOTAL';
+  CoordinationSnapshotIssue | 'INCOMING_BREAKDOWN_EXCEEDS_TOTAL';
 
 export interface CoordinationLifeSnapshotViolation {
   field: string;

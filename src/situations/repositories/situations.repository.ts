@@ -80,7 +80,10 @@ export class SituationsRepository extends Repository<Situation> {
   ): SelectQueryBuilder<Situation> {
     const qb = this.createQueryBuilder('situation')
       .leftJoinAndSelect('situation.coordination', 'coordination')
-      .leftJoinAndSelect('situation.affectedCoordination', 'affectedCoordination')
+      .leftJoinAndSelect(
+        'situation.affectedCoordination',
+        'affectedCoordination',
+      )
       .leftJoinAndSelect('situation.createdByUser', 'createdByUser')
       .leftJoinAndSelect('situation.assignedUser', 'assignedUser')
       .leftJoinAndSelect('situation.category', 'category')

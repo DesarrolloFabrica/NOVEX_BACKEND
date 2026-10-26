@@ -19,8 +19,10 @@ export interface SituationOwnership {
 }
 
 /** Lo que necesita la regla de afectaciones. */
-export interface SituationConsequenceTarget
-  extends Pick<SituationOwnership, 'coordinationId' | 'createdByUserId'> {
+export interface SituationConsequenceTarget extends Pick<
+  SituationOwnership,
+  'coordinationId' | 'createdByUserId'
+> {
   reportKind: SituationReportKind;
   status: SituationStatus;
 }
@@ -219,7 +221,8 @@ export class OperationalScopeService {
 
     if (
       this.isCoordinationScoped(actor) &&
-      (!actor.coordinationId || requestedCoordinationId !== actor.coordinationId)
+      (!actor.coordinationId ||
+        requestedCoordinationId !== actor.coordinationId)
     ) {
       throw new ForbiddenException(
         'Un coordinador solo registra problemas internos de su propia coordinación.',
@@ -365,9 +368,7 @@ export class OperationalScopeService {
   ): void {
     this.assertPermission(actor, 'SITUATIONS_CLOSE');
 
-    if (
-      this.canResolveSituation(actor, situation, generalCoordinationId)
-    ) {
+    if (this.canResolveSituation(actor, situation, generalCoordinationId)) {
       return;
     }
 
