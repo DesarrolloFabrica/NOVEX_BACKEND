@@ -15,6 +15,7 @@ import { JwtStrategy } from '../../src/auth/strategies/jwt.strategy';
 import { RbacService } from '../../src/rbac/rbac.service';
 import { SituationsController } from '../../src/situations/situations.controller';
 import { SituationsService } from '../../src/situations/situations.service';
+import { SituationConsequencesService } from '../../src/situations/situation-consequences.service';
 
 const API_PREFIX = 'api/v1';
 const TEST_JWT_SECRET = 'phase3-stale-jwt-secret-minimum-length';
@@ -55,6 +56,10 @@ describe('SEC-006 stale JWT authorization', () => {
           useValue: {
             resolveActiveAuthorization,
           },
+        },
+        {
+          provide: SituationConsequencesService,
+          useValue: { addConsequence: jest.fn() },
         },
         {
           provide: SituationsService,

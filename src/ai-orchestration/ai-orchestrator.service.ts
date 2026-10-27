@@ -106,11 +106,26 @@ export class AIOrchestrator {
   ) {}
 
   /**
-   * Con `idempotencyKey`, la unicidad la fija el índice parcial
-   * `uq_situations_creator_client_request`: solo el intento que inserta la fila
-   * crea el registro. Un reintento sobre una fila sin análisis reanuda el
-   * análisis sobre esa misma fila, nunca crea otra. Sin clave se mantiene el
-   * comportamiento anterior.
+   * ALTA DE UNA SITUACIÓN (`POST /situations/register-with-analysis`).
+   *
+   * ANÁLISIS IA EN EL REGISTRO: desactivado en la versión de cartas. Antes el
+   * alta exigía Gemini en el mismo acto y, si fallaba, se borraba el
+   * expediente y el usuario no podía reportar. Ahora el alta solo persiste la
+   * situación (`analysis: null`) y el análisis se pide aparte con
+   * `POST :id/analyze`, que conserva el reclamo fenciado de `execute`.
+   *
+   * IDEMPOTENCIA (independiente de la IA). Con `idempotencyKey`, la unicidad la
+   * fija el índice parcial `uq_situations_creator_client_request`: solo el
+   * intento que inserta la fila crea el registro.
+   * - Clave nueva                       → crea y responde `replayed: false`.
+   * - Clave ya usada, mismo contenido    → no crea nada; devuelve la situación
+   *   existente con `replayed: true`.
+   * - Clave ya usada, contenido distinto → 422 `IDEMPOTENCY_KEY_REUSED`; no
+   *   crea ni modifica nada.
+   * - Dos intentos simultáneos           → uno inserta; el otro choca con el
+   *   índice y responde con el registro ganador (o 409
+   *   `REGISTRATION_IN_PROGRESS` si todavía no es visible).
+   * Sin clave se mantiene el comportamiento anterior: cada envío crea una fila.
    */
   async registerAndExecute(
     dto: CreateSituationDto,
@@ -119,7 +134,7 @@ export class AIOrchestrator {
   ): Promise<RegisterSituationWithAnalysisResponseDto> {
     if (!idempotencyKey) {
       const situation = await this.situationsService.create(dto, actor);
-      return this.executeNewRegistration(situation, actor);
+      return this.newRegistrationResponse(situation);
     }
 
     const requestFingerprint = computeRegistrationFingerprint(dto);
@@ -151,11 +166,7 @@ export class AIOrchestrator {
         idempotencyKey,
       );
       if (!concurrent) {
-        throw new ConflictException({
-          code: 'REGISTRATION_IN_PROGRESS',
-          message:
-            'El registro sigue procesándose. Vuelva a confirmar en unos segundos; no se creará un duplicado.',
-        });
+        throw this.registrationInProgress();
       }
       return this.resolveExistingRegistration(
         concurrent,
@@ -164,7 +175,7 @@ export class AIOrchestrator {
       );
     }
 
-    return this.executeNewRegistration(situation, actor);
+    return this.newRegistrationResponse(situation);
   }
 
   /**
@@ -223,49 +234,17 @@ export class AIOrchestrator {
   }
 
   /**
-   * Registro nuevo: la fila acaba de insertarse por esta solicitud. Si el
-   * análisis falla, se elimina la fila mientras este intento todavía posee el
-   * reclamo, así que ningún otro intento puede reanudarla a mitad del borrado.
+   * Registro recién insertado por esta solicitud. No se analiza (ver
+   * `registerAndExecute`), así que no hay nada que revertir: la situación
+   * queda persistida aunque Gemini no esté disponible.
    */
-  private async executeNewRegistration(
+  private newRegistrationResponse(
     situation: SituationResponseDto,
-    actor: AuthPayload,
-  ): Promise<RegisterSituationWithAnalysisResponseDto> {
-    let claimToken: string;
-    try {
-      claimToken = await this.claimAnalysis(situation.id);
-    } catch (error) {
-      if (error instanceof ConflictException) {
-        throw this.registrationInProgress(situation.id);
-      }
-      throw error;
-    }
-
-    try {
-      const analysis = await this.runClaimedAnalysis(
-        situation.id,
-        actor,
-        claimToken,
-      );
-      return { situation, analysis, replayed: false };
-    } catch (error) {
-      if (error instanceof ConflictException) {
-        // Otro intento tomó el reclamo: el resultado lo conserva ese intento.
-        throw this.registrationInProgress(situation.id);
-      }
-
-      await this.discardFailedRegistration(situation.id, claimToken);
-      const causeMessage =
-        error instanceof Error
-          ? error.message
-          : 'Error de análisis desconocido.';
-      throw new ServiceUnavailableException(
-        `La situación no fue registrada porque el análisis IA no pudo completarse: ${causeMessage}`,
-        { cause: error },
-      );
-    } finally {
-      await this.releaseAnalysisClaim(situation.id, claimToken);
-    }
+  ): RegisterSituationWithAnalysisResponseDto {
+    this.logger.log(
+      `Registro sin análisis IA (diferido): situationId=${situation.id}`,
+    );
+    return { situation, analysis: null, replayed: false };
   }
 
   private async runClaimedAnalysis(
@@ -567,11 +546,9 @@ export class AIOrchestrator {
   }
 
   /**
-   * Respuesta para una clave ya usada.
-   * - Con análisis: replay de solo lectura. Nunca modifica la situación ni
-   *   vuelve a llamar a Gemini, aunque su estado haya cambiado.
-   * - Sin análisis: reanudación bajo reclamo sobre la misma fila. Nunca crea otra
-   *   y nunca elimina la fila si falla.
+   * Respuesta para una clave ya usada: replay de SOLO LECTURA. Nunca modifica
+   * la situación, nunca crea otra y nunca llama a Gemini. Si alguien pidió el
+   * análisis después (`POST :id/analyze`), se devuelve; si no, `analysis: null`.
    */
   private async resolveExistingRegistration(
     registration: Situation,
@@ -586,59 +563,22 @@ export class AIOrchestrator {
       });
     }
 
-    const record = await this.analysisRecordRepository.findBySituationId(
-      registration.id,
-    );
-
-    if (!record) {
-      return this.resumeRegistration(registration, actor);
-    }
-
-    const situation = await this.situationsService.getById(
-      registration.id,
-      actor,
-    );
-    const analysis = await this.buildCompletedAnalysisResponse(
-      registration.id,
-      record,
-    );
+    const [situation, record] = await Promise.all([
+      this.situationsService.getById(registration.id, actor),
+      this.analysisRecordRepository.findBySituationId(registration.id),
+    ]);
+    const analysis = record
+      ? await this.buildCompletedAnalysisResponse(registration.id, record)
+      : null;
 
     return { situation, analysis, replayed: true };
   }
 
-  private async resumeRegistration(
-    registration: Situation,
-    actor: AuthPayload,
-  ): Promise<RegisterSituationWithAnalysisResponseDto> {
-    let analysis: ExecuteAIAnalysisResponseDto;
-    try {
-      analysis = await this.execute(registration.id, actor);
-    } catch (error) {
-      if (error instanceof ConflictException) {
-        throw this.registrationInProgress(registration.id);
-      }
-      if (error instanceof ServiceUnavailableException) {
-        throw new ServiceUnavailableException(
-          `La situación quedó registrada, pero el análisis IA no pudo completarse: ${error.message}`,
-          { cause: error },
-        );
-      }
-      throw error;
-    }
-
-    const situation = await this.situationsService.getById(
-      registration.id,
-      actor,
-    );
-    return { situation, analysis, replayed: false };
-  }
-
-  private registrationInProgress(situationId: string): ConflictException {
+  private registrationInProgress(): ConflictException {
     return new ConflictException({
       code: 'REGISTRATION_IN_PROGRESS',
       message:
         'El registro sigue procesándose. Vuelva a confirmar en unos segundos; no se creará un duplicado.',
-      situationId,
     });
   }
 
@@ -705,43 +645,6 @@ export class AIOrchestrator {
       this.configService.get<string>('gemini.model')?.trim() ??
       'gemini-3-flash-preview'
     );
-  }
-
-  /**
-   * Borra la fila de un registro fallido. Solo si este intento todavía posee el
-   * reclamo; si no, no toca nada. Todo ocurre en una transacción corta, sin
-   * llamadas externas.
-   */
-  private async discardFailedRegistration(
-    situationId: string,
-    claimToken: string,
-  ): Promise<void> {
-    const discarded = await this.dataSource.transaction(async (manager) => {
-      const rows: Array<{ id: string }> = await manager.query(
-        `SELECT id FROM situations
-          WHERE id = $1 AND analysis_claim_token = $2
-          FOR UPDATE`,
-        [situationId, claimToken],
-      );
-      if (rows.length !== 1) {
-        return false;
-      }
-
-      await manager.delete(SituationAIAnalysisRecord, { situationId });
-      await manager.delete(SituationAnalysisSession, { situationId });
-      await manager.delete(Situation, { id: situationId });
-      return true;
-    });
-
-    if (discarded) {
-      this.logger.warn(
-        `Registro inicial revertido porque el análisis IA no se completó situationId=${situationId}`,
-      );
-    } else {
-      this.logger.warn(
-        `No se revirtió situationId=${situationId}: el reclamo ya no pertenece a este intento.`,
-      );
-    }
   }
 
   private async ensureSituationExists(situationId: string): Promise<void> {

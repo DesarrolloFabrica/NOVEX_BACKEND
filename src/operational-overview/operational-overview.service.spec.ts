@@ -1,0 +1,971 @@
+import { AuthPayload } from '../auth/contracts/auth-payload.contract';
+import { OperationalScopeService } from '../auth/services/operational-scope.service';
+import { SituationSeverity } from '../common/enums/situation.enums';
+import { Coordination } from '../coordinations/entities/coordination.entity';
+import { OperationalOverviewService } from './operational-overview.service';
+import {
+  ActiveSeverityRow,
+  AffectedCoordinationRow,
+  IncomingDependencyRow,
+} from './repositories/operational-overview.repository';
+
+const CATALOG_FIXTURE = [
+  ['coord-general', 'Coordinación General', 'General', 1],
+  ['coord-b2b', 'Coordinación Supervisor B2B', 'B2B', 2],
+  ['coord-bellas-artes', 'Coordinador Bellas Artes', 'Bellas Artes', 3],
+  [
+    'coord-desarrollo-profesional',
+    'Coordinador Desarrollo Profesional',
+    'Desarrollo Prof.',
+    4,
+  ],
+  ['coord-empresarial', 'Coordinador Empresarial', 'Empresarial', 5],
+  [
+    'coord-especializaciones',
+    'Coordinador Especializaciones',
+    'Especializaciones',
+    6,
+  ],
+  ['coord-ingenierias', 'Coordinador Ingenierías', 'Ingenierías', 7],
+  [
+    'coord-operaciones-academicas',
+    'Coordinador Operaciones Académicas',
+    'Op. Académicas',
+    8,
+  ],
+  [
+    'coord-proyeccion-social',
+    'Coordinador Proyección Social',
+    'Proyección Social',
+    9,
+  ],
+  ['coord-saber-pro', 'Coordinador Saber Pro', 'Saber Pro', 10],
+  ['coord-transversales', 'Coordinador Transversales', 'Transversales', 11],
+  ['coord-homologaciones', 'Homologaciones', 'Homologaciones', 12],
+  ['coord-negocios', 'Negocios', 'Negocios', 13],
+  ['coord-fabrica-contenidos', 'Fabrica de contenidos', 'Fábrica', 14],
+  ['coord-servicios', 'Servicios', 'Servicios', 15],
+] as const;
+
+/** Catálogo institucional: 15 activas, display_order 1-15 continuo. */
+function buildCatalog(): Coordination[] {
+  return CATALOG_FIXTURE.map(
+    ([code, name, shortName, displayOrder]) =>
+      ({
+        id: uuidFor(displayOrder),
+        code,
+        name,
+        shortName,
+        color: '#28C8F4',
+        icon: code,
+        imageAsset: `${code}.png`,
+        displayOrder,
+        isActive: true,
+      }) as unknown as Coordination,
+  );
+}
+
+function uuidFor(order: number): string {
+  return `00000000-0000-0000-0000-${String(order).padStart(12, '0')}`;
+}
+
+function uuidOf(code: string): string {
+  const entry = CATALOG_FIXTURE.find(([itemCode]) => itemCode === code);
+  if (!entry) throw new Error(`Código desconocido en el fixture: ${code}`);
+  return uuidFor(entry[3]);
+}
+
+function severityRow(
+  coordinationId: string | null,
+  severity: SituationSeverity,
+  total: number,
+): ActiveSeverityRow {
+  return { coordinationId, severity, total };
+}
+
+const ADMIN: AuthPayload = {
+  sub: 'admin-user',
+  roleCode: 'ADMIN',
+  coordinationId: null,
+  permissions: ['SITUATIONS_VIEW', 'COORDINATIONS_VIEW'],
+} as unknown as AuthPayload;
+
+const COORDINADOR: AuthPayload = {
+  sub: 'coordinador-user',
+  roleCode: 'COORDINADOR',
+  coordinationId: uuidOf('coord-ingenierias'),
+  permissions: ['SITUATIONS_VIEW', 'COORDINATIONS_VIEW'],
+} as unknown as AuthPayload;
+
+/**
+ * Fila de dependencias entrantes. Por defecto todas son EXTERNAS (responsable
+ * ≠ afectada), así que el desglose externo coincide con el total.
+ */
+function incomingRow(
+  affectedCode: string,
+  bySeverity: Partial<Record<SituationSeverity, number>>,
+  selfBySeverity: Partial<Record<SituationSeverity, number>> = {},
+): IncomingDependencyRow {
+  const external = (severity: SituationSeverity) => bySeverity[severity] ?? 0;
+  const self = (severity: SituationSeverity) => selfBySeverity[severity] ?? 0;
+  const all = Object.values(SituationSeverity);
+
+  return {
+    affectedCoordinationId: uuidOf(affectedCode),
+    total: all.reduce((sum, item) => sum + external(item) + self(item), 0),
+    criticalTotal:
+      external(SituationSeverity.CRITICAL) + self(SituationSeverity.CRITICAL),
+    externalLowTotal: external(SituationSeverity.LOW),
+    externalMediumTotal: external(SituationSeverity.MEDIUM),
+    externalHighTotal: external(SituationSeverity.HIGH),
+    externalCriticalTotal: external(SituationSeverity.CRITICAL),
+  };
+}
+
+function createService(options: {
+  severityRows?: ActiveSeverityRow[];
+  affectedRows?: AffectedCoordinationRow[];
+  incomingRows?: IncomingDependencyRow[];
+  catalog?: Coordination[];
+}) {
+  const coordinationsRepository = {
+    findCatalog: jest.fn().mockResolvedValue(options.catalog ?? buildCatalog()),
+  };
+  const overviewRepository = {
+    aggregateActiveSituationsBySeverity: jest
+      .fn()
+      .mockResolvedValue(options.severityRows ?? []),
+    aggregateAffectedCoordinations: jest
+      .fn()
+      .mockResolvedValue(options.affectedRows ?? []),
+    aggregateIncomingDependencies: jest
+      .fn()
+      .mockResolvedValue(options.incomingRows ?? []),
+  };
+  const service = new OperationalOverviewService(
+    coordinationsRepository as never,
+    overviewRepository as never,
+    new OperationalScopeService(),
+  );
+
+  return { service, coordinationsRepository, overviewRepository };
+}
+
+function findCoordination<T extends { code: string }>(
+  overview: { coordinations: T[] },
+  code: string,
+): T {
+  const found = overview.coordinations.find((item) => item.code === code);
+  if (!found) throw new Error(`Coordinación ausente en la respuesta: ${code}`);
+  return found;
+}
+
+describe('OperationalOverviewService · catálogo e identificadores', () => {
+  it('devuelve las 15 coordinaciones activas para ADMIN, incluida General', async () => {
+    const { service } = createService({});
+    const overview = await service.getOverview(ADMIN);
+
+    expect(overview.coordinations).toHaveLength(15);
+    expect(
+      overview.coordinations.some((item) => item.code === 'coord-general'),
+    ).toBe(true);
+  });
+
+  it('respeta displayOrder y no genera posiciones visuales', async () => {
+    const { service } = createService({});
+    const overview = await service.getOverview(ADMIN);
+
+    expect(overview.coordinations.map((item) => item.displayOrder)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+    ]);
+  });
+
+  it('emite id como UUID y code como código institucional, sin invertirlos', async () => {
+    const { service } = createService({});
+    const overview = await service.getOverview(ADMIN);
+    const general = findCoordination(overview, 'coord-general');
+
+    expect(general.id).toBe(uuidOf('coord-general'));
+    expect(general.code).toBe('coord-general');
+    expect(general.id).not.toBe(general.code);
+  });
+
+  it('no expone arte, metadata interna ni desglose de severidades', async () => {
+    const { service } = createService({});
+    const overview = await service.getOverview(ADMIN);
+
+    expect(Object.keys(overview).sort()).toEqual([
+      'analystRegistry',
+      'coordinations',
+      'directionStatus',
+      'generatedAt',
+      'totals',
+    ]);
+    expect(Object.keys(overview.coordinations[0]).sort()).toEqual([
+      'activeProblemsCount',
+      'affectedCoordinationCount',
+      'code',
+      'color',
+      'criticalCount',
+      'displayOrder',
+      'id',
+      'incomingDependencyCount',
+      'lifePoints',
+      'name',
+      'shortName',
+      'status',
+    ]);
+    expect(Object.keys(overview.analystRegistry).sort()).toEqual([
+      'activeProblemsCount',
+      'affectedCoordinationCount',
+      'criticalCount',
+      'status',
+    ]);
+  });
+
+  it('genera un único generatedAt ISO por request', async () => {
+    const { service } = createService({});
+    const overview = await service.getOverview(ADMIN);
+
+    expect(overview.generatedAt).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+    );
+    expect(Number.isNaN(Date.parse(overview.generatedAt))).toBe(false);
+  });
+});
+
+describe('OperationalOverviewService · integridad por coordinación', () => {
+  it('una coordinación sin problemas activos queda ESTABLE en cero', async () => {
+    const { service } = createService({});
+    const overview = await service.getOverview(ADMIN);
+    const general = findCoordination(overview, 'coord-general');
+
+    expect(general).toMatchObject({
+      status: 'ESTABLE',
+      activeProblemsCount: 0,
+      criticalCount: 0,
+      affectedCoordinationCount: 0,
+    });
+  });
+
+  it('un problema LOW pone la coordinación en ALERTA', async () => {
+    const { service } = createService({
+      severityRows: [
+        severityRow(uuidOf('coord-negocios'), SituationSeverity.LOW, 1),
+      ],
+    });
+    const overview = await service.getOverview(ADMIN);
+
+    expect(findCoordination(overview, 'coord-negocios')).toMatchObject({
+      status: 'ALERTA',
+      activeProblemsCount: 1,
+      criticalCount: 0,
+    });
+  });
+
+  it('una situación CRITICAL lleva la coordinación a CRITICO', async () => {
+    const { service } = createService({
+      severityRows: [
+        severityRow(uuidOf('coord-b2b'), SituationSeverity.CRITICAL, 1),
+      ],
+    });
+    const overview = await service.getOverview(ADMIN);
+
+    expect(findCoordination(overview, 'coord-b2b')).toMatchObject({
+      status: 'CRITICO',
+      activeProblemsCount: 1,
+      criticalCount: 1,
+    });
+  });
+
+  it('tres HIGH llevan a CRITICO', async () => {
+    const { service } = createService({
+      severityRows: [
+        severityRow(uuidOf('coord-saber-pro'), SituationSeverity.HIGH, 3),
+      ],
+    });
+    const overview = await service.getOverview(ADMIN);
+
+    expect(findCoordination(overview, 'coord-saber-pro')).toMatchObject({
+      status: 'CRITICO',
+      activeProblemsCount: 3,
+      criticalCount: 0,
+    });
+  });
+
+  it('cinco activos leves llevan a CRITICO por acumulación', async () => {
+    const { service } = createService({
+      severityRows: [
+        severityRow(uuidOf('coord-servicios'), SituationSeverity.LOW, 3),
+        severityRow(uuidOf('coord-servicios'), SituationSeverity.MEDIUM, 2),
+      ],
+    });
+    const overview = await service.getOverview(ADMIN);
+
+    expect(findCoordination(overview, 'coord-servicios')).toMatchObject({
+      status: 'CRITICO',
+      activeProblemsCount: 5,
+    });
+  });
+
+  it('propagación hacia tres coordinaciones lleva a CRITICO', async () => {
+    const { service } = createService({
+      severityRows: [
+        severityRow(uuidOf('coord-transversales'), SituationSeverity.LOW, 1),
+      ],
+      affectedRows: [
+        { coordinationId: uuidOf('coord-transversales'), total: 3 },
+      ],
+    });
+    const overview = await service.getOverview(ADMIN);
+
+    expect(findCoordination(overview, 'coord-transversales')).toMatchObject({
+      status: 'CRITICO',
+      activeProblemsCount: 1,
+      affectedCoordinationCount: 3,
+    });
+  });
+
+  it('propagación hacia dos coordinaciones no escala por sí sola', async () => {
+    const { service } = createService({
+      severityRows: [
+        severityRow(uuidOf('coord-transversales'), SituationSeverity.LOW, 1),
+      ],
+      affectedRows: [
+        { coordinationId: uuidOf('coord-transversales'), total: 2 },
+      ],
+    });
+    const overview = await service.getOverview(ADMIN);
+
+    expect(findCoordination(overview, 'coord-transversales')).toMatchObject({
+      status: 'ALERTA',
+      affectedCoordinationCount: 2,
+    });
+  });
+
+  it('ignora RESOLVED y CLOSED: la agregación solo recibe estados activos', async () => {
+    const { service, overviewRepository } = createService({});
+    await service.getOverview(ADMIN);
+
+    // El filtro de estados vive en el repositorio (ACTIVE_SITUATION_STATUSES);
+    // el service no puede reintroducir estados cerrados.
+    expect(
+      overviewRepository.aggregateActiveSituationsBySeverity,
+    ).toHaveBeenCalledWith();
+    expect(
+      overviewRepository.aggregateAffectedCoordinations,
+    ).toHaveBeenCalledWith();
+
+    const overview = await service.getOverview(ADMIN);
+    expect(
+      overview.coordinations.every((item) => item.activeProblemsCount === 0),
+    ).toBe(true);
+    expect(overview.directionStatus).toBe('ESTABLE');
+  });
+});
+
+describe('OperationalOverviewService · totals', () => {
+  it('describe solo coordinaciones y no suma el Registro de analista', async () => {
+    const { service } = createService({
+      severityRows: [
+        // 1 crítica
+        severityRow(uuidOf('coord-b2b'), SituationSeverity.CRITICAL, 1),
+        // 4 en alerta
+        severityRow(uuidOf('coord-negocios'), SituationSeverity.LOW, 1),
+        severityRow(uuidOf('coord-servicios'), SituationSeverity.MEDIUM, 1),
+        severityRow(uuidOf('coord-saber-pro'), SituationSeverity.HIGH, 1),
+        severityRow(uuidOf('coord-homologaciones'), SituationSeverity.LOW, 2),
+        // registro de analista crítico
+        severityRow(null, SituationSeverity.CRITICAL, 1),
+      ],
+    });
+    const overview = await service.getOverview(ADMIN);
+
+    expect(overview.totals).toEqual({ critical: 1, alert: 4, stable: 10 });
+    expect(overview.analystRegistry.status).toBe('CRITICO');
+    expect(overview.directionStatus).toBe('CRITICO');
+    expect(overview.coordinations).toHaveLength(15);
+  });
+
+  it('una coordinación DESCONOCIDO no entra en totals', async () => {
+    const { service } = createService({
+      // Propagación sin problemas activos: snapshot imposible.
+      affectedRows: [{ coordinationId: uuidOf('coord-negocios'), total: 2 }],
+    });
+    const overview = await service.getOverview(ADMIN);
+    const { critical, alert, stable } = overview.totals;
+
+    expect(findCoordination(overview, 'coord-negocios').status).toBe(
+      'DESCONOCIDO',
+    );
+    expect(critical + alert + stable).toBe(14);
+    expect(overview.coordinations).toHaveLength(15);
+  });
+});
+
+describe('OperationalOverviewService · Registro de analista', () => {
+  it('sin situaciones sin dueña queda ESTABLE en cero', async () => {
+    const { service } = createService({});
+    const overview = await service.getOverview(ADMIN);
+
+    expect(overview.analystRegistry).toEqual({
+      status: 'ESTABLE',
+      activeProblemsCount: 0,
+      criticalCount: 0,
+      affectedCoordinationCount: 0,
+    });
+  });
+
+  it('nunca aparece dentro de coordinations[]', async () => {
+    const { service } = createService({
+      severityRows: [severityRow(null, SituationSeverity.CRITICAL, 2)],
+    });
+    const overview = await service.getOverview(ADMIN);
+
+    expect(overview.coordinations).toHaveLength(15);
+    expect(
+      overview.coordinations.every((item) => item.code.startsWith('coord-')),
+    ).toBe(true);
+    expect(
+      overview.coordinations.reduce(
+        (total, item) => total + item.activeProblemsCount,
+        0,
+      ),
+    ).toBe(0);
+    expect(overview.analystRegistry.activeProblemsCount).toBe(2);
+  });
+
+  it('no se asigna a Coordinación General', async () => {
+    const { service } = createService({
+      severityRows: [severityRow(null, SituationSeverity.CRITICAL, 1)],
+    });
+    const overview = await service.getOverview(ADMIN);
+
+    expect(findCoordination(overview, 'coord-general')).toMatchObject({
+      status: 'ESTABLE',
+      activeProblemsCount: 0,
+      criticalCount: 0,
+    });
+  });
+
+  it('un LOW sin dueña pone el registro en ALERTA', async () => {
+    const { service } = createService({
+      severityRows: [severityRow(null, SituationSeverity.LOW, 1)],
+    });
+    const overview = await service.getOverview(ADMIN);
+
+    expect(overview.analystRegistry).toMatchObject({
+      status: 'ALERTA',
+      activeProblemsCount: 1,
+      criticalCount: 0,
+    });
+    // 15 estables + registro ALERTA no alcanza el umbral de 5.
+    expect(overview.directionStatus).toBe('ESTABLE');
+  });
+
+  it('cuenta su propagación sin excluir dueña, porque no tiene', async () => {
+    const { service } = createService({
+      severityRows: [severityRow(null, SituationSeverity.MEDIUM, 1)],
+      affectedRows: [{ coordinationId: null, total: 3 }],
+    });
+    const overview = await service.getOverview(ADMIN);
+
+    expect(overview.analystRegistry).toMatchObject({
+      status: 'CRITICO',
+      affectedCoordinationCount: 3,
+    });
+  });
+});
+
+describe('OperationalOverviewService · estado global', () => {
+  const scenario = async (
+    criticals: number,
+    alerts: number,
+    registry: { severity: SituationSeverity; total: number } | null,
+  ) => {
+    const codes = CATALOG_FIXTURE.map(([code]) => code);
+    const severityRows: ActiveSeverityRow[] = [];
+
+    for (let index = 0; index < criticals; index += 1) {
+      severityRows.push(
+        severityRow(uuidOf(codes[index]), SituationSeverity.CRITICAL, 1),
+      );
+    }
+    for (let index = 0; index < alerts; index += 1) {
+      severityRows.push(
+        severityRow(uuidOf(codes[criticals + index]), SituationSeverity.LOW, 1),
+      );
+    }
+    if (registry) {
+      severityRows.push(severityRow(null, registry.severity, registry.total));
+    }
+
+    const { service } = createService({ severityRows });
+    return service.getOverview(ADMIN);
+  };
+
+  it('15 ESTABLE + registro ESTABLE -> ESTABLE', async () => {
+    expect((await scenario(0, 0, null)).directionStatus).toBe('ESTABLE');
+  });
+
+  it('15 ESTABLE + registro ALERTA -> ESTABLE', async () => {
+    const overview = await scenario(0, 0, {
+      severity: SituationSeverity.LOW,
+      total: 1,
+    });
+    expect(overview.analystRegistry.status).toBe('ALERTA');
+    expect(overview.directionStatus).toBe('ESTABLE');
+  });
+
+  it('4 coordinaciones ALERTA + registro ALERTA -> ALERTA', async () => {
+    const overview = await scenario(0, 4, {
+      severity: SituationSeverity.LOW,
+      total: 1,
+    });
+    expect(overview.totals).toMatchObject({ alert: 4 });
+    expect(overview.directionStatus).toBe('ALERTA');
+  });
+
+  it('15 ESTABLE + registro CRITICO -> ALERTA', async () => {
+    const overview = await scenario(0, 0, {
+      severity: SituationSeverity.CRITICAL,
+      total: 1,
+    });
+    expect(overview.analystRegistry.status).toBe('CRITICO');
+    expect(overview.directionStatus).toBe('ALERTA');
+  });
+
+  it('1 coordinación CRITICO + registro CRITICO -> CRITICO', async () => {
+    const overview = await scenario(1, 0, {
+      severity: SituationSeverity.CRITICAL,
+      total: 1,
+    });
+    expect(overview.directionStatus).toBe('CRITICO');
+  });
+
+  it('2 coordinaciones CRITICO + registro ESTABLE -> CRITICO', async () => {
+    expect((await scenario(2, 0, null)).directionStatus).toBe('CRITICO');
+  });
+
+  it('5 coordinaciones ALERTA + registro ESTABLE -> ALERTA', async () => {
+    expect((await scenario(0, 5, null)).directionStatus).toBe('ALERTA');
+  });
+
+  it('2 coordinaciones CRITICO + registro DESCONOCIDO -> CRITICO', async () => {
+    const { service } = createService({
+      severityRows: [
+        severityRow(uuidOf('coord-general'), SituationSeverity.CRITICAL, 1),
+        severityRow(uuidOf('coord-b2b'), SituationSeverity.CRITICAL, 1),
+      ],
+      // Propagación sin problemas activos sin dueña: registro incoherente.
+      affectedRows: [{ coordinationId: null, total: 2 }],
+    });
+    const overview = await service.getOverview(ADMIN);
+
+    expect(overview.analystRegistry.status).toBe('DESCONOCIDO');
+    expect(overview.directionStatus).toBe('CRITICO');
+  });
+
+  it('1 coordinación CRITICO + registro DESCONOCIDO -> DESCONOCIDO', async () => {
+    const { service } = createService({
+      severityRows: [
+        severityRow(uuidOf('coord-general'), SituationSeverity.CRITICAL, 1),
+      ],
+      affectedRows: [{ coordinationId: null, total: 2 }],
+    });
+    const overview = await service.getOverview(ADMIN);
+
+    expect(overview.analystRegistry.status).toBe('DESCONOCIDO');
+    expect(overview.directionStatus).toBe('DESCONOCIDO');
+  });
+
+  it('5 coordinaciones ALERTA + registro DESCONOCIDO -> DESCONOCIDO', async () => {
+    const codes = CATALOG_FIXTURE.map(([code]) => code);
+    const { service } = createService({
+      severityRows: codes
+        .slice(0, 5)
+        .map((code) => severityRow(uuidOf(code), SituationSeverity.LOW, 1)),
+      affectedRows: [{ coordinationId: null, total: 2 }],
+    });
+    const overview = await service.getOverview(ADMIN);
+
+    expect(overview.directionStatus).toBe('DESCONOCIDO');
+  });
+});
+
+describe('OperationalOverviewService · snapshots inválidos', () => {
+  it('degrada solo la fuente incoherente y conserva las demás', async () => {
+    const { service } = createService({
+      severityRows: [
+        severityRow(uuidOf('coord-b2b'), SituationSeverity.LOW, 1),
+      ],
+      // coord-negocios tiene propagación pero ningún problema activo.
+      affectedRows: [{ coordinationId: uuidOf('coord-negocios'), total: 4 }],
+    });
+    const overview = await service.getOverview(ADMIN);
+
+    expect(findCoordination(overview, 'coord-negocios').status).toBe(
+      'DESCONOCIDO',
+    );
+    expect(findCoordination(overview, 'coord-b2b').status).toBe('ALERTA');
+    expect(
+      overview.coordinations.filter((item) => item.status === 'ESTABLE'),
+    ).toHaveLength(13);
+    expect(overview.coordinations).toHaveLength(15);
+  });
+
+  it('no lanza 500 ante una agregación incoherente', async () => {
+    const { service } = createService({
+      affectedRows: [{ coordinationId: uuidOf('coord-negocios'), total: 4 }],
+    });
+    await expect(service.getOverview(ADMIN)).resolves.toBeDefined();
+  });
+});
+
+describe('OperationalOverviewService · alcance', () => {
+  it('ADMIN no queda filtrado: recibe el catálogo completo', async () => {
+    const { service, coordinationsRepository } = createService({});
+    const overview = await service.getOverview(ADMIN);
+
+    expect(coordinationsRepository.findCatalog).toHaveBeenCalledWith(false);
+    expect(overview.coordinations).toHaveLength(15);
+  });
+
+  it('un actor coordination-scoped recibe el tablero COMPLETO', async () => {
+    /*
+     * VERDAD NUEVA (fase 2). Antes el coordinador recibía una sola fila. Ahora
+     * recibe las quince, porque necesita la mesa entera para elegir en qué
+     * coordinación reporta y para leer el estado institucional.
+     *
+     * Lo que se abre es el AGREGADO por área, no los problemas: el listado de
+     * situaciones sigue filtrado por su coordinación, y eso lo cubre
+     * `SituationsService`.
+     */
+    const { service } = createService({
+      severityRows: [
+        severityRow(uuidOf('coord-ingenierias'), SituationSeverity.HIGH, 1),
+        severityRow(uuidOf('coord-b2b'), SituationSeverity.CRITICAL, 3),
+      ],
+    });
+    const overview = await service.getOverview(COORDINADOR);
+
+    expect(overview.coordinations).toHaveLength(15);
+
+    const propia = overview.coordinations.find(
+      (item) => item.code === 'coord-ingenierias',
+    );
+    expect(propia?.status).toBe('ALERTA');
+
+    // El estado de OTRA área también llega, que es lo que dibuja su carta.
+    const ajena = overview.coordinations.find(
+      (item) => item.code === 'coord-b2b',
+    );
+    expect(ajena?.status).toBe('CRITICO');
+    expect(ajena?.criticalCount).toBe(3);
+  });
+
+  it('un actor coordination-scoped no recibe el Registro de analista institucional', async () => {
+    const { service } = createService({
+      severityRows: [
+        severityRow(uuidOf('coord-ingenierias'), SituationSeverity.LOW, 1),
+        severityRow(null, SituationSeverity.CRITICAL, 3),
+      ],
+      affectedRows: [{ coordinationId: null, total: 5 }],
+    });
+    const overview = await service.getOverview(COORDINADOR);
+
+    expect(overview.analystRegistry).toEqual({
+      status: 'ESTABLE',
+      activeProblemsCount: 0,
+      criticalCount: 0,
+      affectedCoordinationCount: 0,
+    });
+  });
+
+  it('rechaza a un actor sin SITUATIONS_VIEW', async () => {
+    const { service } = createService({});
+    const intruder = {
+      ...ADMIN,
+      permissions: ['COORDINATIONS_VIEW'],
+    };
+
+    await expect(service.getOverview(intruder)).rejects.toThrow(
+      /SITUATIONS_VIEW/,
+    );
+  });
+});
+
+describe('OperationalOverviewService · performance', () => {
+  it('ejecuta un número constante de consultas, sin N+1', async () => {
+    const manySituations: ActiveSeverityRow[] = CATALOG_FIXTURE.flatMap(
+      ([code]) => [
+        severityRow(uuidOf(code), SituationSeverity.LOW, 40),
+        severityRow(uuidOf(code), SituationSeverity.HIGH, 60),
+      ],
+    );
+
+    const { service, coordinationsRepository, overviewRepository } =
+      createService({ severityRows: manySituations });
+    await service.getOverview(ADMIN);
+
+    // 1 catálogo + 1 agregación de severidades + 1 agregación de afectaciones.
+    expect(coordinationsRepository.findCatalog).toHaveBeenCalledTimes(1);
+    expect(
+      overviewRepository.aggregateActiveSituationsBySeverity,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      overviewRepository.aggregateAffectedCoordinations,
+    ).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('OperationalOverviewService · vidas (lifePoints)', () => {
+  it('sin problemas activos, las 15 coordinaciones tienen 10 puntos', async () => {
+    const { service } = createService({});
+    const overview = await service.getOverview(ADMIN);
+
+    expect(overview.coordinations.map((item) => item.lifePoints)).toEqual(
+      Array(15).fill(10),
+    );
+  });
+
+  it('pondera los problemas propios por severidad', async () => {
+    const { service } = createService({
+      severityRows: [
+        severityRow(uuidOf('coord-saber-pro'), SituationSeverity.LOW, 1),
+        severityRow(uuidOf('coord-saber-pro'), SituationSeverity.HIGH, 1),
+        severityRow(
+          uuidOf('coord-especializaciones'),
+          SituationSeverity.CRITICAL,
+          3,
+        ),
+        severityRow(uuidOf('coord-b2b'), SituationSeverity.MEDIUM, 2),
+      ],
+    });
+    const overview = await service.getOverview(ADMIN);
+
+    expect(findCoordination(overview, 'coord-general').lifePoints).toBe(10);
+    expect(findCoordination(overview, 'coord-saber-pro').lifePoints).toBe(7);
+    expect(
+      findCoordination(overview, 'coord-especializaciones').lifePoints,
+    ).toBe(4);
+    expect(findCoordination(overview, 'coord-b2b').lifePoints).toBe(8);
+  });
+
+  it('un INTER resta a la responsable (propio) y a la afectada (entrante), una vez a cada una', async () => {
+    // Ingenierías es responsable de un INTER HIGH que afecta a B2B.
+    const { service } = createService({
+      severityRows: [
+        severityRow(uuidOf('coord-ingenierias'), SituationSeverity.HIGH, 1),
+      ],
+      incomingRows: [incomingRow('coord-b2b', { [SituationSeverity.HIGH]: 1 })],
+    });
+    const overview = await service.getOverview(ADMIN);
+
+    expect(findCoordination(overview, 'coord-ingenierias').lifePoints).toBe(8);
+    expect(findCoordination(overview, 'coord-b2b').lifePoints).toBe(8);
+    // Nadie más recibe daño.
+    expect(
+      overview.coordinations.filter((item) => item.lifePoints === 10),
+    ).toHaveLength(13);
+  });
+
+  it('pondera las dependencias entrantes por severidad', async () => {
+    const { service } = createService({
+      incomingRows: [
+        incomingRow('coord-b2b', { [SituationSeverity.LOW]: 1 }),
+        incomingRow('coord-negocios', {
+          [SituationSeverity.MEDIUM]: 1,
+          [SituationSeverity.HIGH]: 1,
+        }),
+        incomingRow('coord-servicios', { [SituationSeverity.CRITICAL]: 2 }),
+      ],
+    });
+    const overview = await service.getOverview(ADMIN);
+
+    expect(findCoordination(overview, 'coord-b2b').lifePoints).toBe(9);
+    expect(findCoordination(overview, 'coord-negocios').lifePoints).toBe(7);
+    expect(findCoordination(overview, 'coord-servicios').lifePoints).toBe(6);
+  });
+
+  it('owned CRITICAL + incoming CRITICAL → 6, sin alterar el estado CRITICO', async () => {
+    const { service } = createService({
+      severityRows: [
+        severityRow(uuidOf('coord-servicios'), SituationSeverity.CRITICAL, 1),
+      ],
+      incomingRows: [
+        incomingRow('coord-servicios', { [SituationSeverity.CRITICAL]: 1 }),
+      ],
+    });
+    const overview = await service.getOverview(ADMIN);
+    const servicios = findCoordination(overview, 'coord-servicios');
+
+    expect(servicios.lifePoints).toBe(6);
+    expect(servicios.status).toBe('CRITICO');
+  });
+
+  it('un INTER con responsable = afectada daña una sola vez y la integridad no cambia', async () => {
+    // Fila reasignada por PATCH: cuenta como propia y figura en el total
+    // entrante, pero no en el desglose externo.
+    const { service } = createService({
+      severityRows: [
+        severityRow(uuidOf('coord-ingenierias'), SituationSeverity.CRITICAL, 1),
+      ],
+      incomingRows: [
+        incomingRow(
+          'coord-ingenierias',
+          {},
+          { [SituationSeverity.CRITICAL]: 1 },
+        ),
+      ],
+    });
+    const overview = await service.getOverview(ADMIN);
+    const ingenierias = findCoordination(overview, 'coord-ingenierias');
+
+    expect(ingenierias.lifePoints).toBe(8);
+    expect(ingenierias.status).toBe('CRITICO');
+    expect(ingenierias.incomingDependencyCount).toBe(1);
+  });
+
+  it('satura en 0 sin arrastrar daño excedente', async () => {
+    const { service } = createService({
+      severityRows: [
+        severityRow(uuidOf('coord-negocios'), SituationSeverity.CRITICAL, 6),
+      ],
+    });
+    const overview = await service.getOverview(ADMIN);
+
+    expect(findCoordination(overview, 'coord-negocios').lifePoints).toBe(0);
+  });
+
+  it('cerrar un problema devuelve sus puntos al recalcular: no hay estado entre lecturas', async () => {
+    const before = await createService({
+      severityRows: [
+        severityRow(uuidOf('coord-negocios'), SituationSeverity.CRITICAL, 1),
+      ],
+    }).service.getOverview(ADMIN);
+    // El problema pasó a CLOSED: la agregación activa ya no lo devuelve.
+    const after = await createService({}).service.getOverview(ADMIN);
+
+    expect(findCoordination(before, 'coord-negocios').lifePoints).toBe(8);
+    expect(findCoordination(after, 'coord-negocios').lifePoints).toBe(10);
+  });
+
+  it('snapshot inválido para la integridad → lifePoints null (nunca 10) y el resto intacto', async () => {
+    const { service } = createService({
+      severityRows: [
+        severityRow(uuidOf('coord-b2b'), SituationSeverity.LOW, 1),
+      ],
+      affectedRows: [{ coordinationId: uuidOf('coord-negocios'), total: 4 }],
+    });
+    const overview = await service.getOverview(ADMIN);
+    const negocios = findCoordination(overview, 'coord-negocios');
+
+    expect(negocios.status).toBe('DESCONOCIDO');
+    expect(negocios.lifePoints).toBeNull();
+    expect(findCoordination(overview, 'coord-b2b').lifePoints).toBe(9);
+  });
+
+  it('desglose entrante incoherente → lifePoints null sin degradar la integridad', async () => {
+    const broken: IncomingDependencyRow = {
+      ...incomingRow('coord-b2b', { [SituationSeverity.LOW]: 1 }),
+      // Más externas que el total entrante: imposible.
+      externalLowTotal: 3,
+    };
+    const { service } = createService({ incomingRows: [broken] });
+    const overview = await service.getOverview(ADMIN);
+    const b2b = findCoordination(overview, 'coord-b2b');
+
+    expect(b2b.lifePoints).toBeNull();
+    expect(b2b.status).toBe('ALERTA');
+  });
+
+  it('el desglose de vidas no altera estados, totals ni directionStatus', async () => {
+    const severityRows = [
+      severityRow(uuidOf('coord-ingenierias'), SituationSeverity.CRITICAL, 1),
+      severityRow(uuidOf('coord-b2b'), SituationSeverity.HIGH, 2),
+    ];
+    const row = incomingRow('coord-servicios', {
+      [SituationSeverity.HIGH]: 1,
+      [SituationSeverity.CRITICAL]: 1,
+    });
+    const withBreakdown = await createService({
+      severityRows,
+      incomingRows: [row],
+    }).service.getOverview(ADMIN);
+    const withoutBreakdown = await createService({
+      severityRows,
+      incomingRows: [
+        {
+          ...row,
+          externalLowTotal: 0,
+          externalMediumTotal: 0,
+          externalHighTotal: 0,
+          externalCriticalTotal: 0,
+        },
+      ],
+    }).service.getOverview(ADMIN);
+
+    const integrityOf = (overview: typeof withBreakdown) => ({
+      directionStatus: overview.directionStatus,
+      totals: overview.totals,
+      statuses: overview.coordinations.map((item) => item.status),
+      incoming: overview.coordinations.map(
+        (item) => item.incomingDependencyCount,
+      ),
+    });
+
+    expect(integrityOf(withBreakdown)).toEqual(integrityOf(withoutBreakdown));
+    expect(findCoordination(withBreakdown, 'coord-servicios').lifePoints).toBe(
+      6,
+    );
+    expect(
+      findCoordination(withoutBreakdown, 'coord-servicios').lifePoints,
+    ).toBe(10);
+  });
+
+  it('COORDINADOR recibe las mismas vidas que ADMIN para las 15 coordinaciones', async () => {
+    const options = {
+      severityRows: [
+        severityRow(uuidOf('coord-ingenierias'), SituationSeverity.HIGH, 1),
+        severityRow(uuidOf('coord-b2b'), SituationSeverity.CRITICAL, 2),
+      ],
+      incomingRows: [
+        incomingRow('coord-servicios', { [SituationSeverity.MEDIUM]: 1 }),
+      ],
+    };
+    const admin = await createService(options).service.getOverview(ADMIN);
+    const coordinador =
+      await createService(options).service.getOverview(COORDINADOR);
+
+    const livesOf = (overview: typeof admin) =>
+      overview.coordinations.map((item) => [item.code, item.lifePoints]);
+
+    expect(livesOf(coordinador)).toEqual(livesOf(admin));
+    expect(findCoordination(admin, 'coord-b2b').lifePoints).toBe(6);
+  });
+
+  it('los casos del Registro de analista no restan vidas a ninguna coordinación', async () => {
+    const { service } = createService({
+      severityRows: [severityRow(null, SituationSeverity.CRITICAL, 4)],
+    });
+    const overview = await service.getOverview(ADMIN);
+
+    expect(overview.analystRegistry.status).toBe('CRITICO');
+    expect(overview.analystRegistry).not.toHaveProperty('lifePoints');
+    expect(overview.coordinations.every((item) => item.lifePoints === 10)).toBe(
+      true,
+    );
+  });
+
+  it('no añade consultas: la agregación entrante se ejecuta una sola vez', async () => {
+    const { service, overviewRepository } = createService({
+      incomingRows: [incomingRow('coord-b2b', { [SituationSeverity.LOW]: 1 })],
+    });
+    await service.getOverview(ADMIN);
+
+    expect(
+      overviewRepository.aggregateIncomingDependencies,
+    ).toHaveBeenCalledTimes(1);
+  });
+});

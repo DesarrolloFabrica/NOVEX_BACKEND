@@ -1,21 +1,30 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { EntityManager, In, QueryFailedError, Repository } from 'typeorm';
 import { AuditAction, AuditResourceType } from '../audit/audit-action.enum';
 import { AuditLogService } from '../audit/audit-log.service';
-import { OperationalScopeService } from '../auth/services/operational-scope.service';
+import {
+  GENERAL_OPERATIONS_COORDINATION_CODE,
+  OperationalScopeService,
+} from '../auth/services/operational-scope.service';
 import { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { TimelineEventType } from '../common/enums/situation-timeline.enums';
-import { SituationStatus } from '../common/enums/situation.enums';
+import {
+  SituationReportKind,
+  SituationSeverityChangeSource,
+  SituationStatus,
+} from '../common/enums/situation.enums';
 import {
   computeDueAt,
   computeSlaHealth,
-  resolveDueAtOnSeverityChange,
   SLA_POLICY_CODE,
   wasClosedOnTime,
 } from './situation-sla.policy';
@@ -28,13 +37,32 @@ import {
   IncidentCategorySummaryDto,
   ListSituationsQueryDto,
   RelatedCoordinationResponseDto,
+  ResolveSituationDto,
+  SituationDetailResponseDto,
+  SituationResolutionResponseDto,
   SituationResponseDto,
   SituationsListResponseDto,
   UpdateSituationDto,
 } from './dto/situation.dto';
 import { Situation } from './entities/situation.entity';
+import { SituationConsequence } from './entities/situation-consequence.entity';
 import { SituationRelatedCoordination } from './entities/situation-related-coordination.entity';
-import { SituationsRepository } from './repositories/situations.repository';
+import { SituationResolution } from './entities/situation-resolution.entity';
+import { SituationSeverityChange } from './entities/situation-severity-change.entity';
+import {
+  sortConsequences,
+  toConsequenceResponse,
+  toSeverityHistoryItems,
+} from './situation-detail.mappers';
+import { ACTIVE_SEVERITY_ESCALATION_POLICY_CODE } from './severity-escalation/severity-escalation.policy';
+import {
+  SeverityEscalationService,
+  type MaterializedEscalation,
+} from './severity-escalation/severity-escalation.service';
+import {
+  SituationsRepository,
+  type SituationSearchFilters,
+} from './repositories/situations.repository';
 import { isFutureOccurredAt } from './occurred-at.validation';
 import {
   isForwardSituationTransition,
@@ -42,8 +70,33 @@ import {
   SITUATION_STATUS_LABEL_ES,
 } from './situation-status.transitions';
 
+/**
+ * Estados desde los que se puede SOLUCIONAR un problema en una sola operación.
+ *
+ * `OPEN` e `IN_PROGRESS` son el flujo vigente. `RESOLVED` es un valor LEGADO al
+ * que ninguna transición conduce ya; se acepta aquí únicamente para que las
+ * filas históricas que quedaron en él puedan cerrarse. No se reactiva como paso
+ * del flujo: nada lo produce.
+ */
+const RESOLVABLE_STATUSES: readonly SituationStatus[] = [
+  SituationStatus.OPEN,
+  SituationStatus.IN_PROGRESS,
+  SituationStatus.RESOLVED,
+];
+
+/** Clave e huella del intento de registro; la fija el orquestador, nunca el cuerpo HTTP. */
+export interface RegistrationIdempotency {
+  clientRequestId: string;
+  requestFingerprint: string;
+}
+
 @Injectable()
-export class SituationsService {
+export class SituationsService implements OnModuleInit {
+  private readonly logger = new Logger(SituationsService.name);
+
+  /** UUID de `coord-general`; sin él el ANALISTA no puede resolver. */
+  private generalCoordinationId: string | null = null;
+
   constructor(
     private readonly situationsRepository: SituationsRepository,
     @InjectRepository(Coordination)
@@ -54,10 +107,36 @@ export class SituationsService {
     private readonly usersRepository: Repository<User>,
     @InjectRepository(SituationRelatedCoordination)
     private readonly relatedCoordinationsRepository: Repository<SituationRelatedCoordination>,
+    @InjectRepository(SituationResolution)
+    private readonly resolutionsRepository: Repository<SituationResolution>,
+    @InjectRepository(SituationSeverityChange)
+    private readonly severityChangesRepository: Repository<SituationSeverityChange>,
+    @InjectRepository(SituationConsequence)
+    private readonly consequencesRepository: Repository<SituationConsequence>,
     private readonly timelineService: SituationTimelineService,
     private readonly scopeService: OperationalScopeService,
     private readonly auditLogService: AuditLogService,
+    private readonly severityEscalationService: SeverityEscalationService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.refreshGeneralCoordinationId();
+  }
+
+  private async refreshGeneralCoordinationId(): Promise<string | null> {
+    const general = await this.coordinationsRepository.findOne({
+      where: { code: GENERAL_OPERATIONS_COORDINATION_CODE },
+    });
+    this.generalCoordinationId = general?.id ?? null;
+    return this.generalCoordinationId;
+  }
+
+  private async ensureGeneralCoordinationId(): Promise<string | null> {
+    if (this.generalCoordinationId) {
+      return this.generalCoordinationId;
+    }
+    return this.refreshGeneralCoordinationId();
+  }
 
   async listIncidentCategories(): Promise<IncidentCategorySummaryDto[]> {
     const categories = await this.categoriesRepository.find({
@@ -81,23 +160,247 @@ export class SituationsService {
   async create(
     dto: CreateSituationDto,
     actor: AuthPayload,
-    idempotency?: { clientRequestId: string; requestFingerprint: string },
-  ): Promise<SituationResponseDto> {
-    const coordinationId = this.scopeService.resolveCreateCoordinationId(
-      actor,
-      dto.coordinationId,
+    idempotency?: RegistrationIdempotency,
+  ): Promise<SituationDetailResponseDto> {
+    // El servicio no da por hecho que su única entrada sea el controlador y no
+    // aplica un default: sin `reportKind` solo cabe el contrato anterior.
+    if (dto.reportKind === SituationReportKind.INTER_COORDINATION) {
+      return this.createInterCoordination(dto, actor, idempotency);
+    }
+    if (dto.reportKind === SituationReportKind.INTERNAL) {
+      return this.createInternal(dto, actor, idempotency);
+    }
+    if (dto.reportKind === undefined) {
+      return this.createLegacyContract(dto, actor, idempotency);
+    }
+    throw new BadRequestException('Indique el tipo de registro (reportKind).');
+  }
+
+  /**
+   * CONTRATO ANTERIOR (TRANSITORIO). El frontend publicado antes de cartas no
+   * envía `reportKind` y, para un coordinador, puede omitir la coordinación.
+   * Durante la ventana en que el backend nuevo convive con ese frontend, sus
+   * altas se siguen aceptando con las reglas que ese contrato tenía, sin
+   * inventar nada:
+   *
+   *   - Tipo INTERNAL. El contrato anterior solo creaba problemas internos:
+   *     exigía categoría y no tenía campos de dependencia (proceso afectado,
+   *     entrega pendiente). Es el mismo valor que la migración 1787400000000
+   *     asignó a todas las situaciones existentes.
+   *   - Coordinación: solo para un rol con coordinación, la enviada o la de su
+   *     sesión (regla de `resolveCreateCoordinationId` en main). Cualquier otro
+   *     rol (el analista registraba «a su nombre, sin coordinación») se
+   *     rechaza con LEGACY_REGISTRATION_REQUIRES_COORDINATION: el dominio de
+   *     cartas exige coordinación y no se inventa.
+   *   - Severidad reportada = `severity`, que el contrato anterior ya exigía.
+   *
+   * Si la petición trae cualquier campo propio de cartas sin `reportKind`, no
+   * es el contrato anterior y se rechaza. Retirar este método cuando ningún
+   * cliente use el formulario anterior (ver docs/RELEASE_CIRCO.md).
+   */
+  private async createLegacyContract(
+    dto: CreateSituationDto,
+    actor: AuthPayload,
+    idempotency?: RegistrationIdempotency,
+  ): Promise<SituationDetailResponseDto> {
+    const usesCardsFields =
+      dto.affectedCoordinationId !== undefined ||
+      dto.affectedProcess !== undefined ||
+      dto.pendingDelivery !== undefined ||
+      dto.initialConsequence !== undefined;
+    if (usesCardsFields || !dto.categoryId) {
+      throw new BadRequestException(
+        'Indique el tipo de registro (reportKind).',
+      );
+    }
+
+    // En el contrato anterior solo un rol con coordinación registraba en una
+    // coordinación (la suya); el analista lo hacía sin coordinación, que el
+    // dominio de cartas ya no admite. `createInternal` vuelve a comprobar que
+    // la coordinación enviada sea la propia.
+    const coordinationId = this.scopeService.isCoordinationScoped(actor)
+      ? (dto.coordinationId ?? actor.coordinationId ?? undefined)
+      : undefined;
+    if (!coordinationId) {
+      throw new BadRequestException({
+        code: 'LEGACY_REGISTRATION_REQUIRES_COORDINATION',
+        message:
+          'El registro sin coordinación ya no existe. Recargue la página para registrar el problema desde las cartas, eligiendo su coordinación.',
+      });
+    }
+
+    this.logger.warn(
+      `Alta con el contrato anterior (sin reportKind) actor=${actor.sub} coordinationId=${coordinationId}`,
     );
 
+    return this.createInternal(
+      { ...dto, reportKind: SituationReportKind.INTERNAL, coordinationId },
+      actor,
+      idempotency,
+    );
+  }
+
+  /**
+   * Problema INTERNAL: ocurre en la coordinación responsable (carta).
+   *
+   * Única semántica de alta interna: coordinación obligatoria (la propia para
+   * un COORDINADOR), categoría obligatoria y vigente en el catálogo, severidad
+   * reportada explícita y, opcionalmente, una afectación inicial.
+   */
+  private async createInternal(
+    dto: CreateSituationDto,
+    actor: AuthPayload,
+    idempotency?: RegistrationIdempotency,
+  ): Promise<SituationDetailResponseDto> {
+    if (!dto.categoryId) {
+      throw new BadRequestException(
+        'La categoría es obligatoria para un problema interno.',
+      );
+    }
+
+    const coordinationId =
+      this.scopeService.resolveInternalCreateCoordinationId(
+        actor,
+        dto.coordinationId,
+      );
+
+    if (
+      dto.affectedCoordinationId &&
+      dto.affectedCoordinationId !== coordinationId
+    ) {
+      throw new BadRequestException(
+        'En un problema interno la coordinación afectada debe coincidir con la responsable.',
+      );
+    }
+
     const [coordination, category, relatedCoordinations] = await Promise.all([
-      coordinationId ? this.ensureCoordination(coordinationId) : null,
-      this.ensureCategory(dto.categoryId),
+      this.ensureCoordination(coordinationId),
+      this.ensureSelectableCategory(dto.categoryId),
       this.resolveRelatedCoordinations(
         dto.relatedCoordinationIds ?? [],
         coordinationId,
       ),
     ]);
 
-    const occurredAt = new Date(dto.occurredAt);
+    return this.persistNewSituation({
+      dto,
+      actor,
+      reportKind: SituationReportKind.INTERNAL,
+      coordination,
+      affectedCoordination: coordination,
+      category,
+      relatedCoordinations,
+      affectedProcess: null,
+      pendingDelivery: null,
+      initialConsequence: dto.initialConsequence?.description?.trim() || null,
+      idempotency,
+    });
+  }
+
+  /**
+   * Dependencia INTER: la afectada espera algo de la responsable externa.
+   * Un solo ID; resuelve solo el coordinador de la responsable.
+   */
+  private async createInterCoordination(
+    dto: CreateSituationDto,
+    actor: AuthPayload,
+    idempotency?: RegistrationIdempotency,
+  ): Promise<SituationDetailResponseDto> {
+    if (dto.initialConsequence) {
+      throw new BadRequestException(
+        'Las afectaciones solo aplican a problemas internos.',
+      );
+    }
+    if (!dto.coordinationId) {
+      throw new BadRequestException(
+        'Indique la coordinación responsable de atender la dependencia.',
+      );
+    }
+    if (!dto.affectedCoordinationId) {
+      throw new BadRequestException(
+        'Indique la coordinación afectada por la dependencia.',
+      );
+    }
+    if (dto.coordinationId === dto.affectedCoordinationId) {
+      throw new BadRequestException(
+        'La coordinación responsable no puede ser la misma que la afectada.',
+      );
+    }
+
+    const affectedProcess = dto.affectedProcess?.trim() ?? '';
+    const pendingDelivery = dto.pendingDelivery?.trim() ?? '';
+    if (!affectedProcess) {
+      throw new BadRequestException(
+        'Describa el proceso de la coordinación afectada que se retrasa o bloquea.',
+      );
+    }
+    if (!pendingDelivery) {
+      throw new BadRequestException(
+        'Describa la entrega o acción pendiente de la coordinación responsable.',
+      );
+    }
+
+    // Autoriza CREATE y fija el RESPONSABLE (selección explícita, nunca sustituida).
+    this.scopeService.resolveCreateCoordinationId(actor, dto.coordinationId);
+
+    const [coordination, affectedCoordination, relatedCoordinations] =
+      await Promise.all([
+        this.ensureCoordination(dto.coordinationId),
+        this.ensureCoordination(dto.affectedCoordinationId),
+        this.resolveRelatedCoordinations(
+          dto.relatedCoordinationIds ?? [],
+          dto.coordinationId,
+        ),
+      ]);
+
+    return this.persistNewSituation({
+      dto,
+      actor,
+      reportKind: SituationReportKind.INTER_COORDINATION,
+      coordination,
+      affectedCoordination,
+      category: null,
+      relatedCoordinations,
+      affectedProcess,
+      pendingDelivery,
+      initialConsequence: null,
+      idempotency,
+    });
+  }
+
+  /**
+   * ALTA TRANSACCIONAL. En una sola transacción:
+   *
+   *   situación  →  SITUATION_CREATED (subscriber, mismo `manager`)
+   *              →  fila REPORTED del historial de severidad
+   *              →  afectación inicial + CONSEQUENCE_ADDED (si viene)
+   *
+   * Si cualquiera falla, ROLLBACK completo: no queda un problema a medio crear.
+   * La auditoría va DESPUÉS del commit, como en el resto del dominio.
+   *
+   * UN SOLO INSTANTE. `createdAt` se captura una vez y se persiste explícito en
+   * `created_at`, en `due_at = created_at + ventana(reported_severity)` y en
+   * el `effective_at` de la fila REPORTED. Antes `created_at` lo ponía el
+   * DEFAULT de PostgreSQL y `due_at` salía de un `new Date()` de JS: diferían
+   * en milisegundos.
+   *
+   * `severity_escalation_policy_code` toma la política activa, que hoy es NULL:
+   * el caso nace sin escalamiento automático.
+   */
+  private async persistNewSituation(input: {
+    dto: CreateSituationDto;
+    actor: AuthPayload;
+    reportKind: SituationReportKind;
+    coordination: Coordination | null;
+    affectedCoordination: Coordination | null;
+    category: IncidentCategory | null;
+    relatedCoordinations: Coordination[];
+    affectedProcess: string | null;
+    pendingDelivery: string | null;
+    initialConsequence: string | null;
+    idempotency?: RegistrationIdempotency;
+  }): Promise<SituationDetailResponseDto> {
+    const occurredAt = new Date(input.dto.occurredAt);
     if (Number.isNaN(occurredAt.getTime())) {
       throw new BadRequestException('La fecha de ocurrencia no es válida.');
     }
@@ -108,59 +411,147 @@ export class SituationsService {
     }
 
     const createdAt = new Date();
-    const situation = this.situationsRepository.create({
-      title: dto.title.trim(),
-      description: dto.description.trim(),
-      coordinationId: coordination?.id ?? null,
-      coordination,
-      createdByUserId: actor.sub,
-      categoryId: category.id,
-      category,
-      severity: dto.severity,
-      status: SituationStatus.OPEN,
-      clientRequestId: idempotency?.clientRequestId ?? null,
-      requestFingerprint: idempotency?.requestFingerprint ?? null,
-      assignedUserId: null,
-      lastStatusComment: null,
-      resolvedAt: null,
-      closedAt: null,
-      dueAt: computeDueAt(dto.severity, createdAt),
-      slaPolicyCode: SLA_POLICY_CODE,
-      slaBreachedAt: null,
-      lastSlaReminderAt: null,
-      occurredAt: occurredAt,
-      relatedCoordinations: relatedCoordinations.map((item, index) =>
-        this.relatedCoordinationsRepository.create({
-          coordinationId: item.id,
-          coordination: item,
-          displayOrder: index,
-        }),
-      ),
-    });
+    const reportedSeverity = input.dto.severity;
 
-    const saved = await this.situationsRepository.save(situation);
-    const withRelations = await this.situationsRepository.findByIdWithRelations(
-      saved.id,
-    );
+    const { situationId, consequenceId } =
+      await this.situationsRepository.manager.transaction(
+        async (manager: EntityManager) => {
+          const situation = manager.create(Situation, {
+            title: input.dto.title.trim(),
+            description: input.dto.description.trim(),
+            reportKind: input.reportKind,
+            coordinationId: input.coordination?.id ?? null,
+            coordination: input.coordination,
+            affectedCoordinationId: input.affectedCoordination?.id ?? null,
+            affectedCoordination: input.affectedCoordination,
+            affectedProcess: input.affectedProcess,
+            pendingDelivery: input.pendingDelivery,
+            createdByUserId: input.actor.sub,
+            categoryId: input.category?.id ?? null,
+            category: input.category,
+            severity: reportedSeverity,
+            reportedSeverity,
+            severityEscalationPolicyCode:
+              ACTIVE_SEVERITY_ESCALATION_POLICY_CODE,
+            status: SituationStatus.OPEN,
+            // Idempotencia del alta: el índice parcial
+            // `uq_situations_creator_client_request` hace que un segundo
+            // intento con la misma clave aborte toda la transacción (también la
+            // fila REPORTED y la afectación inicial), así que no se duplican.
+            clientRequestId: input.idempotency?.clientRequestId ?? null,
+            requestFingerprint: input.idempotency?.requestFingerprint ?? null,
+            assignedUserId: null,
+            lastStatusComment: null,
+            resolvedAt: null,
+            closedAt: null,
+            createdAt,
+            dueAt: computeDueAt(reportedSeverity, createdAt),
+            slaPolicyCode: SLA_POLICY_CODE,
+            slaBreachedAt: null,
+            lastSlaReminderAt: null,
+            occurredAt,
+            relatedCoordinations: input.relatedCoordinations.map(
+              (item, index) =>
+                manager.create(SituationRelatedCoordination, {
+                  coordinationId: item.id,
+                  coordination: item,
+                  displayOrder: index,
+                }),
+            ),
+          });
+
+          const saved = await manager.save(Situation, situation);
+
+          await manager.insert(SituationSeverityChange, {
+            situationId: saved.id,
+            previousSeverity: null,
+            newSeverity: reportedSeverity,
+            source: SituationSeverityChangeSource.REPORTED,
+            effectiveAt: createdAt,
+            actorUserId: input.actor.sub,
+            policyCode: null,
+            ruleKey: null,
+          });
+
+          let createdConsequenceId: string | null = null;
+          if (input.initialConsequence) {
+            const consequence = await manager.save(
+              SituationConsequence,
+              manager.create(SituationConsequence, {
+                situationId: saved.id,
+                description: input.initialConsequence,
+                // Sin fecha propia: ocurre cuando ocurrió el problema.
+                occurredAt,
+                createdAt,
+                createdByUserId: input.actor.sub,
+              }),
+            );
+            createdConsequenceId = consequence.id;
+
+            await this.timelineService.createEntry(
+              {
+                situationId: saved.id,
+                userId: input.actor.sub,
+                eventType: TimelineEventType.CONSEQUENCE_ADDED,
+                title: 'Afectación registrada',
+                description: 'Se registró la afectación inicial del problema.',
+                metadata: {
+                  consequenceId: consequence.id,
+                  occurredAt: consequence.occurredAt.toISOString(),
+                },
+              },
+              manager,
+            );
+          }
+
+          return { situationId: saved.id, consequenceId: createdConsequenceId };
+        },
+      );
+
+    const withRelations =
+      await this.situationsRepository.findByIdWithRelations(situationId);
     if (!withRelations) {
       throw new NotFoundException('No fue posible cargar la situación creada.');
     }
 
     await this.auditLogService.record({
-      actor,
+      actor: input.actor,
       action: AuditAction.SITUATION_CREATED,
       resourceType: AuditResourceType.SITUATION,
       resourceId: withRelations.id,
       metadata: {
         status: withRelations.status,
         severity: withRelations.severity,
+        reportedSeverity: withRelations.reportedSeverity,
+        reportKind: withRelations.reportKind,
         categoryId: withRelations.categoryId,
+        affectedCoordinationId: withRelations.affectedCoordinationId,
         dueAt: withRelations.dueAt,
         slaPolicyCode: withRelations.slaPolicyCode,
+        severityEscalationPolicyCode:
+          withRelations.severityEscalationPolicyCode,
+        initialConsequenceId: consequenceId,
       },
     });
 
-    return this.toResponse(withRelations);
+    if (consequenceId && input.initialConsequence) {
+      await this.auditLogService.record({
+        actor: input.actor,
+        action: AuditAction.SITUATION_CONSEQUENCE_ADDED,
+        resourceType: AuditResourceType.SITUATION,
+        resourceId: withRelations.id,
+        metadata: {
+          consequenceId,
+          occurredAt: withRelations.occurredAt,
+          descriptionLength: input.initialConsequence.length,
+          initial: true,
+        },
+      });
+    }
+
+    await this.ensureGeneralCoordinationId();
+
+    return this.toDetailResponse(withRelations, input.actor);
   }
 
   async list(
@@ -168,48 +559,187 @@ export class SituationsService {
     actor: AuthPayload,
   ): Promise<SituationsListResponseDto> {
     this.scopeService.assertPermission(actor, 'SITUATIONS_VIEW');
+    await this.ensureGeneralCoordinationId();
 
-    const scopedQuery: ListSituationsQueryDto = {
-      ...query,
-      coordinationId: this.scopeService.resolveSituationListCoordinationId(
-        actor,
-        query.coordinationId,
-      ),
-    };
+    if (query.closedFrom && query.closedTo) {
+      const from = new Date(query.closedFrom);
+      const to = new Date(query.closedTo);
+      if (
+        Number.isNaN(from.getTime()) ||
+        Number.isNaN(to.getTime()) ||
+        from.getTime() > to.getTime()
+      ) {
+        throw new BadRequestException(
+          'El intervalo de cierre no es válido: closedFrom debe ser anterior o igual a closedTo.',
+        );
+      }
+    }
+
+    /*
+     * DOS MODOS DE LISTADO, con alcances distintos:
+     *
+     *   MIS REPORTES (`mine=true`)  Los casos que creó QUIEN pide, en cualquier
+     *                               coordinación. La autoría la pone el
+     *                               servidor con `actor.sub`; el cliente solo
+     *                               enciende el interruptor. El alcance de
+     *                               coordinación NO se aplica aquí, porque ver
+     *                               lo que uno mismo reportó no es leer los
+     *                               problemas de otra área: es leer los suyos.
+     *
+     *   LISTADO NORMAL             Sin cambios: un coordinador sigue viendo
+     *                               solo su coordinación, y el resto de roles
+     *                               lo que ya veían. Esta fase NO abre la
+     *                               lectura general de problemas ajenos.
+     */
+    const { mine, ...rest } = query;
+
+    /*
+     * PEDIR OTRA ÁREA DEVUELVE LO QUE UNO PUEDE LEER DE ELLA, NI MÁS NI MENOS.
+     *
+     * `resolveSituationListCoordinationId` sustituye la coordinación pedida por
+     * la del actor cuando está acotado por área, y esa sustitución silenciosa le
+     * devolvería los problemas de SU área presentados bajo el rótulo de otra:
+     * algo falso. Por eso no se usa aquí.
+     *
+     * Pero responder con una página vacía también engañaba, de otra forma: un
+     * coordinador SÍ puede leer los reportes que él mismo hizo en otra área
+     * —`assertSituationReadable` se lo permite, y el detalle se abre sin
+     * problema—, así que verlos desaparecer de la lista mientras el panel
+     * derecho los muestra era una contradicción en la misma pantalla.
+     *
+     * La lista se restringe entonces a la INTERSECCIÓN: los problemas de la
+     * coordinación pedida QUE ADEMÁS reportó el propio actor. No se abre nada
+     * nuevo —es exactamente lo que ya podía leer uno a uno— y la respuesta se
+     * marca `own-only` para que la interfaz no presente ese conteo como el
+     * total del área.
+     */
+    const lecturaRestringida =
+      !mine &&
+      Boolean(query.coordinationId) &&
+      this.scopeService.isCoordinationScoped(actor) &&
+      query.coordinationId !== actor.coordinationId;
+
+    const scopedQuery: SituationSearchFilters = mine
+      ? { ...rest, createdByUserId: actor.sub }
+      : lecturaRestringida
+        ? { ...rest, createdByUserId: actor.sub }
+        : {
+            ...rest,
+            coordinationId:
+              this.scopeService.resolveSituationListCoordinationId(
+                actor,
+                query.coordinationId,
+              ),
+          };
 
     const page = scopedQuery.page ?? 1;
     const limit = scopedQuery.limit ?? 50;
     const [items, total] = await this.situationsRepository.search(scopedQuery);
 
     return {
-      items: items.map((item) => this.toResponse(item)),
+      items: items.map((item) => this.toResponse(item, actor)),
       total,
       page,
       limit,
+      // El alcance viaja con los datos: una lista vacía no significa lo mismo
+      // cuando se leyó todo que cuando solo se leyó lo propio.
+      scope: lecturaRestringida ? 'own-only' : 'complete',
     };
   }
 
-  async getById(id: string, actor: AuthPayload): Promise<SituationResponseDto> {
+  async getById(
+    id: string,
+    actor: AuthPayload,
+  ): Promise<SituationDetailResponseDto> {
     const situation = await this.situationsRepository.findByIdWithRelations(id);
     if (!situation) {
       throw new NotFoundException(`Situación no encontrada: ${id}`);
     }
 
-    this.scopeService.assertSituationInScope(actor, situation);
-    return this.toResponse(situation);
+    // LECTURA: alcance de coordinación O reporte propio. Ver un caso propio de
+    // otra área no concede ninguna operación sobre él; eso lo siguen decidiendo
+    // `assertCanUpdateSituation` y `assertCanResolveSituation`.
+    this.scopeService.assertSituationReadable(actor, situation);
+    await this.ensureGeneralCoordinationId();
+    return this.toDetailResponse(situation, actor);
+  }
+
+  /**
+   * Detalle: el ítem de listado + historial de severidad + afectaciones.
+   * Dos consultas acotadas a la situación; `severityAtOccurrence` se deriva del
+   * historial ya cargado.
+   */
+  private async toDetailResponse(
+    situation: Situation,
+    actor: AuthPayload,
+  ): Promise<SituationDetailResponseDto> {
+    const [history, consequences] = await Promise.all([
+      this.severityChangesRepository.find({
+        where: { situationId: situation.id },
+      }),
+      this.consequencesRepository.find({
+        where: { situationId: situation.id },
+        relations: { createdByUser: true },
+      }),
+    ]);
+
+    const ordered = sortConsequences(consequences);
+
+    return {
+      ...this.toResponse(situation, actor),
+      severityHistory: toSeverityHistoryItems(history),
+      consequences: ordered.map((item) => toConsequenceResponse(item, history)),
+      consequenceCount: ordered.length,
+    };
   }
 
   async update(
     id: string,
     dto: UpdateSituationDto,
     actor: AuthPayload,
-  ): Promise<SituationResponseDto> {
+  ): Promise<SituationDetailResponseDto> {
     const situation = await this.situationsRepository.findByIdWithRelations(id);
     if (!situation) {
       throw new NotFoundException(`Situación no encontrada: ${id}`);
     }
 
-    this.scopeService.assertCanUpdateSituation(actor, situation);
+    /*
+     * AVANCE OPEN → IN_PROGRESS: política propia (`canAdvance…`), más
+     * estrecha que `canUpdate` (autoría u otras ediciones). El resto del
+     * PATCH sigue con `assertCanUpdateSituation`.
+     */
+    const advancesToInProgress =
+      dto.status === SituationStatus.IN_PROGRESS &&
+      situation.status === SituationStatus.OPEN;
+
+    if (advancesToInProgress) {
+      this.scopeService.assertCanAdvanceSituationToInProgress(
+        actor,
+        situation,
+        await this.ensureGeneralCoordinationId(),
+      );
+    } else {
+      this.scopeService.assertCanUpdateSituation(actor, situation);
+    }
+
+    /*
+     * CIERRE FUERA DE ESTA RUTA.
+     *
+     * Cerrar un problema es ahora una operación con reglas propias —solo el
+     * coordinador del área responsable, y siempre con aprendizaje— y esas
+     * reglas no se pueden aplicar desde aquí, porque `assertCanUpdateSituation`
+     * autoriza por AUTORÍA o por área, que es un criterio más amplio. Si el
+     * PATCH genérico siguiera admitiendo `CLOSED`, el autor de un reporte
+     * podría cerrarlo sin ser coordinador y sin registrar ningún aprendizaje.
+     *
+     * Se bloquea el DESTINO, no el endpoint: el resto de campos y la transición
+     * a `IN_PROGRESS` siguen funcionando igual que antes.
+     */
+    if (dto.status === SituationStatus.CLOSED) {
+      throw new ForbiddenException(
+        'El cierre se registra en POST /situations/:id/resolution, con el aprendizaje correspondiente.',
+      );
+    }
 
     if (
       situation.status === SituationStatus.CLOSED &&
@@ -230,33 +760,23 @@ export class SituationsService {
       const coordination = await this.ensureCoordination(dto.coordinationId);
       situation.coordinationId = coordination.id;
       situation.coordination = coordination;
+      // En INTERNAL la afectada ES la responsable: si se reasigna una, se
+      // reasigna la otra. Antes quedaban desincronizadas en silencio.
+      if (situation.reportKind === SituationReportKind.INTERNAL) {
+        situation.affectedCoordinationId = coordination.id;
+        situation.affectedCoordination = coordination;
+      }
     }
 
-    if (dto.categoryId !== undefined) {
-      const category = await this.ensureCategory(dto.categoryId);
-      situation.categoryId = category.id;
-      situation.category = category;
-    }
+    // `categoryId` y `severity` ya no llegan por aquí: el DTO no los declara y
+    // la validación global los rechaza. La categoría es inmutable y la
+    // severidad solo la cambia el sistema, con historial.
 
     if (dto.title !== undefined) {
       situation.title = dto.title.trim();
     }
     if (dto.description !== undefined) {
       situation.description = dto.description.trim();
-    }
-    if (dto.severity !== undefined) {
-      const previousSeverity = situation.severity;
-      situation.severity = dto.severity;
-      if (dto.severity !== previousSeverity) {
-        situation.dueAt = resolveDueAtOnSeverityChange({
-          previousSeverity,
-          nextSeverity: dto.severity,
-          status: situation.status,
-          createdAt: situation.createdAt,
-          currentDueAt: situation.dueAt,
-        });
-        situation.slaPolicyCode = SLA_POLICY_CODE;
-      }
     }
     if (dto.occurredAt !== undefined) {
       const occurredAt = new Date(dto.occurredAt);
@@ -326,15 +846,212 @@ export class SituationsService {
               : null,
         },
       });
-    } else if (changedFields.length > 0) {
+    }
+
+    /*
+     * PATCH MIXTO. Antes, si la petición cambiaba el estado Y otros campos, solo
+     * se auditaba el cambio de estado (un `else if`) y el subscriber descartaba
+     * los campos: ese cambio se perdía en ambos registros. Ahora los campos se
+     * auditan siempre que los haya; el comentario de estado ya viaja en el
+     * evento de transición y no se repite.
+     */
+    const fieldChanges = statusTransitionApplied
+      ? changedFields.filter((field) => field !== 'statusComment')
+      : changedFields;
+    if (fieldChanges.length > 0) {
       await this.auditLogService.record({
         actor,
         action: AuditAction.SITUATION_UPDATED,
         resourceType: AuditResourceType.SITUATION,
         resourceId: situation.id,
-        metadata: { changedFields },
+        metadata: { changedFields: fieldChanges },
       });
     }
+
+    return this.getById(id, actor);
+  }
+
+  /**
+   * SOLUCIONAR UN PROBLEMA: cierre y aprendizaje en UNA sola operación atómica.
+   *
+   * AUTORIZACIÓN. Se decide con `assertCanResolveSituation`, la política única
+   * del sistema, y se evalúa contra la coordinación responsable PERSISTIDA que
+   * se acaba de leer con bloqueo; nunca contra una coordinación enviada por el
+   * cliente, porque el cuerpo de la petición solo trae el aprendizaje. El
+   * permiso `SITUATIONS_CLOSE` que exige el controlador es condición necesaria
+   * pero NO suficiente: tenerlo no exime de coordinar el área responsable.
+   *
+   * UNA SOLA PETICIÓN. Se admite `OPEN` además de `IN_PROGRESS`, así que el
+   * cliente no encadena dos llamadas. Deliberadamente NO se simula el paso por
+   * «En atención» ni se asigna un responsable: `assignedUserId` se queda como
+   * estuviera, porque inventar una asignación falsearía el historial.
+   *
+   * TRANSACCIÓN. El cambio de estado, el aprendizaje y el evento de la línea de
+   * tiempo comparten transacción: o se guardan los tres o ninguno. La auditoría
+   * se escribe DESPUÉS del commit, a propósito: es un registro observacional y
+   * un fallo suyo no debe deshacer una resolución ya confirmada.
+   *
+   * CONCURRENCIA. Dos defensas, en este orden:
+   *   1. `pessimistic_write` sobre la fila de la situación. La segunda petición
+   *      espera al commit de la primera, vuelve a leer, ve `CLOSED` y se
+   *      rechaza con 409 sin tocar nada.
+   *   2. La clave primaria de `situation_resolutions`. Si dos escrituras
+   *      llegaran a coincidir pese al bloqueo, la base rechaza la segunda.
+   * En ningún caso se sobrescribe el aprendizaje ni cambia la autoría de la
+   * resolución ya registrada, y el evento de cierre se emite una sola vez.
+   */
+  async resolve(
+    id: string,
+    dto: ResolveSituationDto,
+    actor: AuthPayload,
+  ): Promise<SituationDetailResponseDto> {
+    // Segunda barrera del aprendizaje vacío: el DTO ya recorta y valida, pero
+    // el servicio no da por hecho que su única entrada sea el controlador.
+    const learning = dto.learning?.trim() ?? '';
+    if (learning.length === 0) {
+      throw new BadRequestException('El aprendizaje no puede estar vacío.');
+    }
+
+    let escalations: MaterializedEscalation[] = [];
+    const previousStatus = await this.situationsRepository.manager.transaction(
+      async (manager: EntityManager) => {
+        /*
+         * BLOQUEO SOBRE LA FILA DESNUDA.
+         *
+         * `loadEagerRelations: false` es imprescindible, no una optimización:
+         * `Situation` declara `coordination`, `createdByUser`, `assignedUser` y
+         * `category` como EAGER, así que TypeORM las une con LEFT JOIN aunque no
+         * se pidan, y PostgreSQL rechaza la consulta con
+         *
+         *   FOR UPDATE cannot be applied to the nullable side of an outer join
+         *
+         * Omitir `relations` no basta: las eager se añaden igual. El detalle
+         * completo se recarga al final, ya fuera de la transacción.
+         */
+        const situation = await manager.findOne(Situation, {
+          where: { id },
+          loadEagerRelations: false,
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!situation) {
+          throw new NotFoundException(`Situación no encontrada: ${id}`);
+        }
+
+        this.scopeService.assertCanResolveSituation(
+          actor,
+          situation,
+          await this.ensureGeneralCoordinationId(),
+        );
+
+        if (!RESOLVABLE_STATUSES.includes(situation.status)) {
+          throw new ConflictException(
+            'El problema ya fue solucionado y no admite una nueva resolución.',
+          );
+        }
+
+        const statusBefore = situation.status;
+        const now = new Date();
+
+        /*
+         * Antes de congelar el caso, se registran los escalamientos que ya
+         * deberían regir (con política nula, no-op). El horizonte es este mismo
+         * instante de cierre: ninguno puede quedar con `effective_at` posterior
+         * a `closed_at`. Actualiza `situation.severity` en memoria, así que el
+         * `save` de abajo no la revierte.
+         */
+        escalations =
+          await this.severityEscalationService.materializeDueEscalations({
+            manager,
+            situation,
+            now,
+          });
+
+        situation.status = SituationStatus.CLOSED;
+        situation.closedAt = now;
+        // `resolvedAt` se conserva si la fila legada ya lo traía.
+        situation.resolvedAt = situation.resolvedAt ?? now;
+        /*
+         * COMENTARIO DE TRANSICIÓN ≠ APRENDIZAJE. `lastStatusComment` describe
+         * la ÚLTIMA transición y se sobrescribe en cada cambio de estado; el
+         * aprendizaje es el registro definitivo del cierre y vive en su propia
+         * tabla. Esta operación no aporta comentario de transición, así que se
+         * deja explícitamente en null: copiar ahí el aprendizaje lo expondría a
+         * ser borrado por la siguiente escritura, y arrastrar el comentario de
+         * una transición anterior lo haría leer como el motivo del cierre.
+         */
+        situation.lastStatusComment = null;
+
+        await manager.save(Situation, situation);
+
+        try {
+          await manager.insert(SituationResolution, {
+            situationId: situation.id,
+            learning,
+            resolvedByUserId: actor.sub,
+          });
+        } catch (error) {
+          // Violación de clave primaria: otra resolución ganó la carrera.
+          if (error instanceof QueryFailedError) {
+            throw new ConflictException(
+              'El problema ya fue solucionado y no admite una nueva resolución.',
+            );
+          }
+          throw error;
+        }
+
+        await this.timelineService.createEntry(
+          {
+            situationId: situation.id,
+            userId: actor.sub,
+            eventType: TimelineEventType.CLOSED,
+            title: 'Problema solucionado',
+            description: `El estado cambió de ${SITUATION_STATUS_LABEL_ES[statusBefore]} a ${SITUATION_STATUS_LABEL_ES[SituationStatus.CLOSED]}. Aprendizaje registrado.`,
+            metadata: {
+              field: 'status',
+              previousValue: statusBefore,
+              newValue: SituationStatus.CLOSED,
+              previousLabel: SITUATION_STATUS_LABEL_ES[statusBefore],
+              newLabel: SITUATION_STATUS_LABEL_ES[SituationStatus.CLOSED],
+              /*
+               * `commentKind: 'learning'` distingue este evento del cierre
+               * antiguo, cuyo texto era un motivo de transición. El aprendizaje
+               * NO se copia al metadata: su único almacén es
+               * `situation_resolutions`.
+               */
+              commentKind: 'learning',
+              statusComment: null,
+              resolvedByUserId: actor.sub,
+              dueAt: situation.dueAt,
+              closedOnTime: wasClosedOnTime(
+                situation.dueAt,
+                situation.closedAt,
+              ),
+              slaBreachedAt: situation.slaBreachedAt,
+            },
+          },
+          manager,
+        );
+
+        return statusBefore;
+      },
+    );
+
+    await this.auditLogService.record({
+      actor,
+      action: AuditAction.SITUATION_RESOLVED,
+      resourceType: AuditResourceType.SITUATION,
+      resourceId: id,
+      metadata: {
+        previousStatus,
+        nextStatus: SituationStatus.CLOSED,
+        // Se audita QUE hubo aprendizaje y su tamaño, no su contenido: el texto
+        // tiene un único almacén y la auditoría no debe volverse un segundo
+        // lugar donde buscarlo.
+        learningLength: learning.length,
+      },
+    });
+    await this.severityEscalationService.recordAudit(escalations);
 
     return this.getById(id, actor);
   }
@@ -343,8 +1060,6 @@ export class SituationsService {
     const fields: string[] = [];
     if (dto.title !== undefined) fields.push('title');
     if (dto.description !== undefined) fields.push('description');
-    if (dto.severity !== undefined) fields.push('severity');
-    if (dto.categoryId !== undefined) fields.push('categoryId');
     if (dto.coordinationId !== undefined) fields.push('coordinationId');
     if (dto.occurredAt !== undefined) fields.push('occurredAt');
     if (dto.statusComment !== undefined) fields.push('statusComment');
@@ -483,12 +1198,24 @@ export class SituationsService {
     return coordination;
   }
 
-  private async ensureCategory(id: string): Promise<IncidentCategory> {
+  /**
+   * Categoría para un ALTA: debe existir y estar vigente en el catálogo. Las
+   * categorías legacy (`is_selectable = false`) siguen legibles en los casos
+   * que ya las tienen, pero no se asignan a casos nuevos.
+   */
+  private async ensureSelectableCategory(
+    id: string,
+  ): Promise<IncidentCategory> {
     const category = await this.categoriesRepository.findOne({
       where: { id },
     });
     if (!category) {
       throw new NotFoundException(`Categoría no encontrada: ${id}`);
+    }
+    if (!category.isSelectable) {
+      throw new BadRequestException(
+        'La categoría ya no está vigente en el catálogo y no puede asignarse a un problema nuevo.',
+      );
     }
     return category;
   }
@@ -536,7 +1263,33 @@ export class SituationsService {
     };
   }
 
-  private toResponse(situation: Situation): SituationResponseDto {
+  private toResolutionResponse(
+    situation: Situation,
+  ): SituationResolutionResponseDto | null {
+    const resolution = situation.resolution;
+    if (!resolution) return null;
+
+    return {
+      learning: resolution.learning,
+      resolvedByUserId: resolution.resolvedByUserId,
+      resolvedByUserName: resolution.resolvedByUser?.fullName ?? '',
+      // La FECHA no se duplica en la tabla de aprendizaje: sale del campo que
+      // ya tenía esa semántica en el dominio.
+      resolvedAt: situation.resolvedAt ?? null,
+      recordedAt: resolution.createdAt,
+    };
+  }
+
+  /**
+   * `actor` entra aquí solo para resolver `canResolve` con la MISMA política
+   * que autoriza la escritura. Es una pista para la interfaz, nunca la
+   * autorización: el endpoint vuelve a comprobarla contra la coordinación
+   * responsable persistida en cada resolución.
+   */
+  private toResponse(
+    situation: Situation,
+    actor: AuthPayload,
+  ): SituationResponseDto {
     const related = [...(situation.relatedCoordinations ?? [])].sort(
       (a, b) => a.displayOrder - b.displayOrder,
     );
@@ -545,18 +1298,26 @@ export class SituationsService {
       id: situation.id,
       title: situation.title,
       description: situation.description,
+      reportKind: situation.reportKind ?? SituationReportKind.INTERNAL,
       coordinationId: situation.coordinationId,
       coordinationCode: situation.coordination?.code ?? null,
       coordinationName: situation.coordination?.name ?? null,
+      affectedCoordinationId: situation.affectedCoordinationId ?? null,
+      affectedCoordinationCode: situation.affectedCoordination?.code ?? null,
+      affectedCoordinationName: situation.affectedCoordination?.name ?? null,
+      affectedProcess: situation.affectedProcess ?? null,
+      pendingDelivery: situation.pendingDelivery ?? null,
       createdByUserId: situation.createdByUserId,
       createdByUserName: situation.createdByUser.fullName,
       assignedUserId: situation.assignedUserId ?? null,
       assignedUserName: situation.assignedUser?.fullName ?? null,
-      categoryId: situation.categoryId,
-      categoryCode: situation.category.code,
-      categoryName: situation.category.name,
-      categoryIcon: situation.category.icon,
+      categoryId: situation.categoryId ?? null,
+      categoryCode: situation.category?.code ?? null,
+      categoryName: situation.category?.name ?? null,
+      categoryIcon: situation.category?.icon ?? null,
+      categorySelectable: situation.category?.isSelectable ?? null,
       severity: situation.severity,
+      reportedSeverity: situation.reportedSeverity,
       status: situation.status,
       lastStatusComment: situation.lastStatusComment ?? null,
       resolvedAt: situation.resolvedAt ?? null,
@@ -564,11 +1325,12 @@ export class SituationsService {
       dueAt: situation.dueAt ?? null,
       slaPolicyCode: situation.slaPolicyCode ?? null,
       slaBreachedAt: situation.slaBreachedAt ?? null,
+      // SLA = promesa original: la ventana de aviso sale de la REPORTADA.
       slaHealth: computeSlaHealth(
         situation.dueAt,
         situation.status,
         new Date(),
-        situation.severity,
+        situation.reportedSeverity,
       ),
       closedOnTime:
         situation.status === SituationStatus.CLOSED
@@ -580,6 +1342,27 @@ export class SituationsService {
       relatedCoordinations: related.map((item) =>
         this.toRelatedCoordinationResponse(item),
       ),
+      resolution: this.toResolutionResponse(situation),
+      canResolve:
+        RESOLVABLE_STATUSES.includes(situation.status) &&
+        this.scopeService.canResolveSituation(
+          actor,
+          situation,
+          this.generalCoordinationId,
+        ),
+      /**
+       * Pista de UI para OPEN → IN_PROGRESS. Independiente de `canUpdate`
+       * (otras ediciones / autoría) y de `canResolve`.
+       */
+      canAdvanceToInProgress:
+        situation.status === SituationStatus.OPEN &&
+        this.scopeService.canAdvanceSituationToInProgress(
+          actor,
+          situation,
+          this.generalCoordinationId,
+        ),
+      canUpdate: this.scopeService.canUpdateSituation(actor, situation),
+      canAddConsequence: this.scopeService.canAddConsequence(actor, situation),
     };
   }
 }

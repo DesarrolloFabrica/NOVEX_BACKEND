@@ -5,9 +5,11 @@ import {
   JoinColumn,
   ManyToOne,
   OneToMany,
+  OneToOne,
 } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import {
+  SituationReportKind,
   SituationSeverity,
   SituationStatus,
 } from '../../common/enums/situation.enums';
@@ -15,10 +17,16 @@ import { Coordination } from '../../coordinations/entities/coordination.entity';
 import { IncidentCategory } from '../../intelligence/entities/incident-category.entity';
 import { User } from '../../users/entities/user.entity';
 import { SituationRelatedCoordination } from './situation-related-coordination.entity';
+import { SituationResolution } from './situation-resolution.entity';
 
 @Entity({ name: 'situations' })
 @Index('idx_situations_status_occurred_at', ['status', 'occurredAt'])
 @Index('idx_situations_coordination_status', ['coordinationId', 'status'])
+@Index('idx_situations_affected_coordination_status', [
+  'affectedCoordinationId',
+  'status',
+])
+@Index('idx_situations_report_kind', ['reportKind'])
 @Index(
   'uq_situations_creator_client_request',
   ['createdByUserId', 'clientRequestId'],
@@ -31,7 +39,10 @@ export class Situation extends BaseEntity {
   @Column({ type: 'text' })
   description!: string;
 
-  /** Nula cuando el caso lo registra un analista, que no representa área. */
+  /**
+   * Coordinación RESPONSABLE: quien atiende y puede resolver.
+   * Nula solo en registros históricos de analista sin área.
+   */
   @ManyToOne(() => Coordination, { nullable: true, eager: true })
   @JoinColumn({ name: 'coordination_id' })
   coordination!: Coordination | null;
@@ -39,6 +50,33 @@ export class Situation extends BaseEntity {
   @Index()
   @Column({ type: 'uuid', name: 'coordination_id', nullable: true })
   coordinationId!: string | null;
+
+  /**
+   * Coordinación AFECTADA: la que sufre el impacto (carta desde la que se
+   * reportó). En INTERNAL coincide con la responsable; en INTER es distinta.
+   */
+  @ManyToOne(() => Coordination, { nullable: true, eager: true })
+  @JoinColumn({ name: 'affected_coordination_id' })
+  affectedCoordination!: Coordination | null;
+
+  @Column({ type: 'uuid', name: 'affected_coordination_id', nullable: true })
+  affectedCoordinationId!: string | null;
+
+  @Column({
+    type: 'enum',
+    enum: SituationReportKind,
+    name: 'report_kind',
+    default: SituationReportKind.INTERNAL,
+  })
+  reportKind!: SituationReportKind;
+
+  /** Proceso de la afectada que se retrasa o bloquea (solo INTER). */
+  @Column({ type: 'text', name: 'affected_process', nullable: true })
+  affectedProcess!: string | null;
+
+  /** Entrega o acción pendiente de la responsable (solo INTER). */
+  @Column({ type: 'text', name: 'pending_delivery', nullable: true })
+  pendingDelivery!: string | null;
 
   @ManyToOne(() => User, { nullable: false, eager: true })
   @JoinColumn({ name: 'created_by_user_id' })
@@ -56,20 +94,53 @@ export class Situation extends BaseEntity {
   @Column({ type: 'uuid', name: 'assigned_user_id', nullable: true })
   assignedUserId!: string | null;
 
-  @ManyToOne(() => IncidentCategory, { nullable: false, eager: true })
+  /** Nula en INTER_COORDINATION: el tipo no se simula con una categoría. */
+  @ManyToOne(() => IncidentCategory, { nullable: true, eager: true })
   @JoinColumn({ name: 'category_id' })
-  category!: IncidentCategory;
+  category!: IncidentCategory | null;
 
   @Index()
-  @Column({ type: 'uuid', name: 'category_id' })
-  categoryId!: string;
+  @Column({ type: 'uuid', name: 'category_id', nullable: true })
+  categoryId!: string | null;
 
+  /**
+   * Severidad EFECTIVA: el nivel operacional actual. Es la caché de la última
+   * fila de `situation_severity_changes` y la leen listas, overview, integridad
+   * y KPI. Solo la cambia el escalamiento del sistema; el PATCH ya no la acepta.
+   */
   @Index()
   @Column({
     type: 'enum',
     enum: SituationSeverity,
   })
   severity!: SituationSeverity;
+
+  /**
+   * Severidad REPORTADA: la evaluación de quien registró el problema.
+   * Inmutable. Es la ÚNICA entrada del SLA (`due_at`, ventana de aviso,
+   * `slaHealth`, `closedOnTime`): el plazo es la promesa original y no se
+   * reescribe cuando la urgencia cambia.
+   */
+  @Column({
+    type: 'enum',
+    enum: SituationSeverity,
+    enumName: 'situations_severity_enum',
+    name: 'reported_severity',
+  })
+  reportedSeverity!: SituationSeverity;
+
+  /**
+   * Política de escalamiento temporal congelada al crear el caso. NULO = el
+   * caso no escala automáticamente. Hoy siempre es nulo: no hay política
+   * aprobada (solo fixtures de test usan una).
+   */
+  @Column({
+    type: 'varchar',
+    length: 40,
+    name: 'severity_escalation_policy_code',
+    nullable: true,
+  })
+  severityEscalationPolicyCode!: string | null;
 
   @Index()
   @Column({
@@ -150,4 +221,15 @@ export class Situation extends BaseEntity {
     { cascade: true },
   )
   relatedCoordinations!: SituationRelatedCoordination[];
+
+  /**
+   * Aprendizaje del cierre. NULO mientras el problema sigue activo y también en
+   * los casos cerrados antes de esta fase: la ausencia es un estado legítimo.
+   *
+   * Sin `cascade`: la fila la escribe la transacción de `SituationsService.resolve`,
+   * que necesita controlar el momento exacto del INSERT para que la clave
+   * primaria actúe de barrera ante dos resoluciones simultáneas.
+   */
+  @OneToOne(() => SituationResolution, (resolution) => resolution.situation)
+  resolution!: SituationResolution | null;
 }

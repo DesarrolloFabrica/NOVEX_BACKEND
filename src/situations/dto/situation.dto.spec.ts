@@ -1,0 +1,163 @@
+import 'reflect-metadata';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
+import {
+  CreateSituationConsequenceDto,
+  CreateSituationDto,
+  UpdateSituationDto,
+} from './situation.dto';
+
+/** Las mismas opciones que el ValidationPipe global (main.ts). */
+async function errorsOf<T extends object>(
+  cls: new () => T,
+  plain: Record<string, unknown>,
+): Promise<string[]> {
+  const instance = plainToInstance(cls, plain, {
+    enableImplicitConversion: true,
+  });
+  const errors = await validate(instance, {
+    whitelist: true,
+    forbidNonWhitelisted: true,
+  });
+  const flatten = (list: typeof errors): string[] =>
+    list.flatMap((e) => [e.property, ...flatten(e.children ?? [])]);
+  return flatten(errors);
+}
+
+/** Copia plana del objeto sin la clave indicada (la clave queda ausente). */
+function withoutKey<T extends object, K extends keyof T>(
+  source: T,
+  key: K,
+): Omit<T, K> {
+  const copy: Partial<T> = { ...source };
+  delete copy[key];
+  return copy as Omit<T, K>;
+}
+
+describe('DTOs de situación · contrato INTERNAL vivo', () => {
+  const internal = {
+    title: 'Internet',
+    description: 'Intermitente',
+    reportKind: 'INTERNAL',
+    coordinationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    categoryId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    severity: 'MEDIUM',
+    occurredAt: '2026-10-07T10:00:00.000Z',
+  };
+
+  describe('UpdateSituationDto (PATCH)', () => {
+    it.each(['severity', 'categoryId', 'reportedSeverity'])(
+      '"%s" ya no es editable: se rechaza',
+      async (field) => {
+        expect(
+          await errorsOf(UpdateSituationDto, { [field]: 'HIGH' }),
+        ).toContain(field);
+      },
+    );
+
+    it('los campos que siguen editables pasan', async () => {
+      expect(
+        await errorsOf(UpdateSituationDto, {
+          title: 'Nuevo título',
+          status: 'IN_PROGRESS',
+        }),
+      ).toEqual([]);
+    });
+  });
+
+  describe('CreateSituationDto', () => {
+    it('INTERNAL válido, con o sin afectación inicial', async () => {
+      expect(await errorsOf(CreateSituationDto, internal)).toEqual([]);
+      expect(
+        await errorsOf(CreateSituationDto, {
+          ...internal,
+          initialConsequence: { description: 'Se retrasó una entrega.' },
+        }),
+      ).toEqual([]);
+    });
+
+    /*
+     * Sin `reportKind` el DTO ya no rechaza por sí solo: deja pasar la forma
+     * del CONTRATO ANTERIOR (frontend publicado antes de cartas) para que el
+     * servicio decida con sus reglas (situations.legacy-contract.spec.ts).
+     * Lo que sí sigue exigiendo es la forma de aquel contrato.
+     */
+    it('sin reportKind admite solo la forma del contrato anterior', async () => {
+      const legacy = withoutKey(internal, 'reportKind');
+      expect(await errorsOf(CreateSituationDto, legacy)).toEqual([]);
+      // Aquel contrato exigía categoría y severidad.
+      expect(
+        await errorsOf(CreateSituationDto, withoutKey(legacy, 'categoryId')),
+      ).toContain('categoryId');
+      expect(
+        await errorsOf(CreateSituationDto, withoutKey(legacy, 'severity')),
+      ).toContain('severity');
+      // Un tipo desconocido sigue sin pasar.
+      expect(
+        await errorsOf(CreateSituationDto, { ...internal, reportKind: 'OTRO' }),
+      ).toContain('reportKind');
+    });
+
+    it('sin reportKind, una coordinación enviada debe seguir siendo un UUID', async () => {
+      expect(
+        await errorsOf(CreateSituationDto, {
+          ...withoutKey(internal, 'reportKind'),
+          coordinationId: 'no-es-uuid',
+        }),
+      ).toContain('coordinationId');
+    });
+
+    it('coordinationId es obligatorio también en INTERNAL', async () => {
+      const rest = withoutKey(internal, 'coordinationId');
+      expect(await errorsOf(CreateSituationDto, rest)).toContain(
+        'coordinationId',
+      );
+    });
+
+    it('la afectación inicial no admite texto en blanco ni más de 2000', async () => {
+      expect(
+        await errorsOf(CreateSituationDto, {
+          ...internal,
+          initialConsequence: { description: '   ' },
+        }),
+      ).toContain('description');
+      expect(
+        await errorsOf(CreateSituationDto, {
+          ...internal,
+          initialConsequence: { description: 'x'.repeat(2001) },
+        }),
+      ).toContain('description');
+    });
+
+    it('la afectación inicial no acepta fecha propia', async () => {
+      expect(
+        await errorsOf(CreateSituationDto, {
+          ...internal,
+          initialConsequence: {
+            description: 'x',
+            occurredAt: internal.occurredAt,
+          },
+        }),
+      ).toContain('occurredAt');
+    });
+  });
+
+  describe('CreateSituationConsequenceDto', () => {
+    it('texto 1..2000, fecha opcional ISO', async () => {
+      expect(
+        await errorsOf(CreateSituationConsequenceDto, { description: 'ok' }),
+      ).toEqual([]);
+      expect(
+        await errorsOf(CreateSituationConsequenceDto, {
+          description: 'ok',
+          occurredAt: 'ayer',
+        }),
+      ).toContain('occurredAt');
+      expect(
+        await errorsOf(CreateSituationConsequenceDto, {
+          description: 'x'.repeat(2001),
+        }),
+      ).toContain('description');
+    });
+  });
+});

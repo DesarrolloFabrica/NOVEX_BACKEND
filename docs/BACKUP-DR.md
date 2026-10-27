@@ -27,12 +27,18 @@
 # Listar backups
 gcloud sql backups list --instance=novex-db --project=it-fab-contenido-edu-5
 
-# Restaurar a una instancia nueva (recomendado; no overwrite in-place sin plan)
+# Restaurar SIEMPRE a una instancia nueva: --restore-instance es la instancia
+# que se SOBRESCRIBE y nunca debe ser la de producción.
 gcloud sql backups restore BACKUP_ID \
   --backup-instance=novex-db \
-  --backup-project=it-fab-contenido-edu-5 \
+  --restore-instance=novex-db-restore-test-AAAAMMDD \
   --project=it-fab-contenido-edu-5
 ```
+
+Procedimiento completo y costes de la prueba en instancia aislada: [RESTORE-TEST.md](RESTORE-TEST.md).
+El nombre real de la instancia se toma de la revisión de Cloud Run que sirve
+tráfico (`scripts/release-circo-preflight.ps1`); `novex-db` es el valor
+documentado, no verificado.
 
 Para PITR usar la consola Cloud SQL → Backups → “Restore to point in time”, o la API equivalente.
 

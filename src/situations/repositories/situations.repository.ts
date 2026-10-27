@@ -1,7 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
+import { SituationStatus } from '../../common/enums/situation.enums';
 import { Situation } from '../entities/situation.entity';
 import { ListSituationsQueryDto } from '../dto/situation.dto';
+
+/**
+ * Filtros efectivos de búsqueda. Extiende el DTO público con la autoría, que
+ * el SERVICIO resuelve desde el actor autenticado y el cliente no puede enviar.
+ */
+export type SituationSearchFilters = ListSituationsQueryDto & {
+  createdByUserId?: string;
+};
 
 @Injectable()
 export class SituationsRepository extends Repository<Situation> {
@@ -9,15 +18,13 @@ export class SituationsRepository extends Repository<Situation> {
     super(Situation, dataSource.createEntityManager());
   }
 
-  async search(query: ListSituationsQueryDto): Promise<[Situation[], number]> {
+  async search(query: SituationSearchFilters): Promise<[Situation[], number]> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 50;
 
-    const qb = this.createFilteredQuery(query)
-      .orderBy('situation.occurredAt', 'DESC')
-      .addOrderBy('situation.createdAt', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit);
+    const qb = this.createFilteredQuery(query);
+    this.applyListOrder(qb, query);
+    qb.skip((page - 1) * limit).take(limit);
 
     return qb.getManyAndCount();
   }
@@ -27,12 +34,15 @@ export class SituationsRepository extends Repository<Situation> {
       where: { id },
       relations: {
         coordination: true,
+        affectedCoordination: true,
         createdByUser: true,
         assignedUser: true,
         category: true,
         relatedCoordinations: {
           coordination: true,
         },
+        // El aprendizaje viaja con el detalle: la UI no debe pedirlo aparte.
+        resolution: true,
       },
       order: {
         relatedCoordinations: {
@@ -42,11 +52,38 @@ export class SituationsRepository extends Repository<Situation> {
     });
   }
 
+  private applyListOrder(
+    qb: SelectQueryBuilder<Situation>,
+    query: SituationSearchFilters,
+  ): void {
+    const byClosedAt =
+      Boolean(query.closedFrom) ||
+      Boolean(query.closedTo) ||
+      query.status === SituationStatus.CLOSED;
+
+    if (byClosedAt) {
+      qb.orderBy('situation.closedAt', 'DESC', 'NULLS LAST').addOrderBy(
+        'situation.createdAt',
+        'DESC',
+      );
+      return;
+    }
+
+    qb.orderBy('situation.occurredAt', 'DESC').addOrderBy(
+      'situation.createdAt',
+      'DESC',
+    );
+  }
+
   private createFilteredQuery(
-    query: ListSituationsQueryDto,
+    query: SituationSearchFilters,
   ): SelectQueryBuilder<Situation> {
     const qb = this.createQueryBuilder('situation')
       .leftJoinAndSelect('situation.coordination', 'coordination')
+      .leftJoinAndSelect(
+        'situation.affectedCoordination',
+        'affectedCoordination',
+      )
       .leftJoinAndSelect('situation.createdByUser', 'createdByUser')
       .leftJoinAndSelect('situation.assignedUser', 'assignedUser')
       .leftJoinAndSelect('situation.category', 'category')
@@ -57,7 +94,11 @@ export class SituationsRepository extends Repository<Situation> {
       .leftJoinAndSelect(
         'relatedCoordinations.coordination',
         'relatedCoordination',
-      );
+      )
+      // LEFT JOIN, no INNER: los problemas activos y los cerrados sin
+      // aprendizaje deben seguir apareciendo en el listado.
+      .leftJoinAndSelect('situation.resolution', 'resolution')
+      .leftJoinAndSelect('resolution.resolvedByUser', 'resolvedByUser');
 
     if (query.status) {
       qb.andWhere('situation.status = :status', { status: query.status });
@@ -69,9 +110,26 @@ export class SituationsRepository extends Repository<Situation> {
       });
     }
 
+    /*
+     * Visibilidad dual: la carta pide su coordinación y debe ver tanto los
+     * casos que LE RESPONDEN (responsable) como los que LE AFECTAN (impacto
+     * recibido). Una fila, un ID: el OR no duplica.
+     */
     if (query.coordinationId) {
-      qb.andWhere('situation.coordinationId = :coordinationId', {
-        coordinationId: query.coordinationId,
+      qb.andWhere(
+        '(situation.coordinationId = :coordinationId OR situation.affectedCoordinationId = :coordinationId)',
+        { coordinationId: query.coordinationId },
+      );
+    }
+
+    /*
+     * AUTORÍA. `createdByUserId` NO viene del DTO de consulta: lo inyecta el
+     * servicio a partir de `actor.sub` cuando la petición pide «mis reportes».
+     * Por eso el tipo del parámetro lo añade el servicio y no el cliente.
+     */
+    if (query.createdByUserId) {
+      qb.andWhere('situation.createdByUserId = :createdByUserId', {
+        createdByUserId: query.createdByUserId,
       });
     }
 
@@ -90,6 +148,18 @@ export class SituationsRepository extends Repository<Situation> {
     if (query.occurredTo) {
       qb.andWhere('situation.occurredAt <= :occurredTo', {
         occurredTo: new Date(query.occurredTo),
+      });
+    }
+
+    if (query.closedFrom) {
+      qb.andWhere('situation.closedAt >= :closedFrom', {
+        closedFrom: new Date(query.closedFrom),
+      });
+    }
+
+    if (query.closedTo) {
+      qb.andWhere('situation.closedAt <= :closedTo', {
+        closedTo: new Date(query.closedTo),
       });
     }
 

@@ -20,4 +20,18 @@ export class CoordinationsRepository extends Repository<Coordination> {
 
     return qb.addOrderBy('coordination.name', 'ASC').getMany();
   }
+
+  findActiveById(id: string): Promise<Coordination | null> {
+    return this.findOne({ where: { id, isActive: true } });
+  }
+
+  findActiveByIds(ids: readonly string[]): Promise<Coordination[]> {
+    if (ids.length === 0) {
+      return Promise.resolve([]);
+    }
+    return this.createQueryBuilder('coordination')
+      .where('coordination.id IN (:...ids)', { ids: [...ids] })
+      .andWhere('coordination.isActive = :isActive', { isActive: true })
+      .getMany();
+  }
 }

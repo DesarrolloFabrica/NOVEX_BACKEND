@@ -86,12 +86,14 @@ export class SituationContextBuilder {
         name: coordination.name,
         shortName: coordination.shortName,
       })),
-      category: {
-        id: entity.category.id,
-        code: entity.category.code,
-        name: entity.category.name,
-        description: entity.category.description,
-      },
+      category: entity.category
+        ? {
+            id: entity.category.id,
+            code: entity.category.code,
+            name: entity.category.name,
+            description: entity.category.description,
+          }
+        : null,
       availableCategories: catalogCategories.map((category) => ({
         id: category.id,
         code: category.code,

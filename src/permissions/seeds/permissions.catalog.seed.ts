@@ -106,6 +106,13 @@ export const CATALOG_PERMISSIONS: readonly PermissionCatalogItem[] = [
     description: 'Permite exportar reportes en formatos institucionales.',
   },
   {
+    code: 'KPIS_VIEW',
+    name: 'Consultar KPIs operacionales',
+    module: 'KPIS',
+    description:
+      'Permite consultar el snapshot analítico de la operación (GET /operational-kpis). No implica operar situaciones ni exportar reportes institucionales.',
+  },
+  {
     code: 'SYSTEM_CONFIGURATION',
     name: 'Configuración del sistema',
     module: 'SYSTEM',
@@ -118,22 +125,42 @@ export const ALL_PERMISSION_CODES = CATALOG_PERMISSIONS.map(
 );
 
 /**
- * La operación sobre situaciones pertenece a quien la vive: coordinaciones y
- * analistas. La administración de plataforma no interviene en el ciclo
- * operativo, así que ADMIN queda fuera de estos permisos.
+ * Operar el ciclo de una situación (crear, modificar, cerrar, relanzar IA)
+ * pertenece a ANALISTA y COORDINADOR. ADMIN administra la plataforma; DIRECTOR
+ * consulta. Ninguno de los dos interviene situaciones.
  */
-const OPERATIONAL_ONLY_PERMISSION_CODES = [
+const SITUATION_OPERATION_PERMISSION_CODES = [
   'SITUATIONS_CREATE',
   'SITUATIONS_UPDATE',
   'SITUATIONS_CLOSE',
   'AI_ANALYZE',
 ];
 
+/**
+ * KPIs analíticos: capability distinta de REPORTS_VIEW.
+ * En esta fase solo DIRECTOR la recibe. ADMIN no la hereda del filtro ALL.
+ */
+const DIRECTOR_ONLY_PERMISSION_CODES = ['KPIS_VIEW'];
+
+/**
+ * REPARTO POR ROL.
+ *
+ *   REPORTAR    `SITUATIONS_CREATE`: ANALISTA y COORDINADOR. DIRECTOR y ADMIN
+ *               consultan; el guard rechaza create sin ese permiso.
+ *   SOLUCIONAR  `SITUATIONS_CLOSE`: COORDINADOR (área responsable) y ANALISTA
+ *               (solo si Coordinación General es la responsable). El permiso
+ *               delimita el rol; la política delimita el caso.
+ *
+ * ADMIN conserva USERS_*, COORDINATIONS_MANAGE y SYSTEM_CONFIGURATION.
+ * NO recibe CREATE/UPDATE/CLOSE ni AI_ANALYZE.
+ */
 export const ROLE_PERMISSION_CODES: Readonly<
   Record<'ADMIN' | 'DIRECTOR' | 'ANALISTA' | 'COORDINADOR', readonly string[]>
 > = {
   ADMIN: ALL_PERMISSION_CODES.filter(
-    (code) => !OPERATIONAL_ONLY_PERMISSION_CODES.includes(code),
+    (code) =>
+      !SITUATION_OPERATION_PERMISSION_CODES.includes(code) &&
+      !DIRECTOR_ONLY_PERMISSION_CODES.includes(code),
   ),
   DIRECTOR: [
     'AUTH_VIEW_PROFILE',
@@ -142,6 +169,7 @@ export const ROLE_PERMISSION_CODES: Readonly<
     'AI_VIEW_REPORTS',
     'REPORTS_VIEW',
     'REPORTS_EXPORT',
+    'KPIS_VIEW',
   ],
   ANALISTA: [
     'AUTH_VIEW_PROFILE',
@@ -149,6 +177,7 @@ export const ROLE_PERMISSION_CODES: Readonly<
     'SITUATIONS_VIEW',
     'SITUATIONS_CREATE',
     'SITUATIONS_UPDATE',
+    'SITUATIONS_CLOSE',
     'AI_ANALYZE',
     'AI_VIEW_REPORTS',
     'REPORTS_VIEW',
@@ -159,6 +188,9 @@ export const ROLE_PERMISSION_CODES: Readonly<
     'SITUATIONS_VIEW',
     'SITUATIONS_CREATE',
     'SITUATIONS_UPDATE',
+    // Soluciona el área que coordina. La comprobación efectiva vive en
+    // `SituationsController.resolve` y `OperationalScopeService`.
+    'SITUATIONS_CLOSE',
     'AI_ANALYZE',
     'AI_VIEW_REPORTS',
   ],

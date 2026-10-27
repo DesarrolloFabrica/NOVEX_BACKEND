@@ -5,17 +5,30 @@ import {
 } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
 import { UserStatus } from '../common/enums/identity.enums';
-import { SituationSeverity } from '../common/enums/situation.enums';
+import {
+  SituationReportKind,
+  SituationSeverity,
+} from '../common/enums/situation.enums';
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import type { CreateSituationDto } from '../situations/dto/situation.dto';
 import { computeRegistrationFingerprint } from '../situations/registration-fingerprint';
 import { AIOrchestrator } from './ai-orchestrator.service';
+
+/*
+ * Registro idempotente SIN análisis IA en el alta (versión de cartas).
+ *
+ * La idempotencia es independiente de la IA: la clave y la huella siguen
+ * decidiendo si se crea, se repite o se rechaza. Lo que cambia respecto de
+ * main es que el alta nunca toma el reclamo de análisis, nunca llama a Gemini
+ * y nunca borra la fila. El reclamo sigue protegiendo `POST :id/analyze`.
+ */
 
 const KEY = '6f1c2b1e-8d2a-4c3b-9e4f-112233445566';
 
 const dto: CreateSituationDto = {
   title: 'Caída de red',
   description: 'Sin conexión en piso 3',
+  reportKind: SituationReportKind.INTERNAL,
   coordinationId: '11111111-1111-4111-8111-111111111111',
   categoryId: '22222222-2222-4222-8222-222222222222',
   severity: SituationSeverity.MEDIUM,
@@ -49,9 +62,9 @@ interface Options {
   existing?: unknown;
   record?: unknown;
   create?: jest.Mock;
-  /** false: el reclamo lo tiene otro intento vigente. */
+  /** false: el reclamo de análisis lo tiene otro intento vigente. */
   claimAvailable?: boolean;
-  runClaimed?: jest.Mock;
+  runClaimed?: () => Promise<unknown>;
 }
 
 function createOrchestrator(options: Options = {}) {
@@ -131,32 +144,40 @@ function createOrchestrator(options: Options = {}) {
 describe('AIOrchestrator registro idempotente (decisiones)', () => {
   const fingerprint = computeRegistrationFingerprint(dto);
 
-  it('sin cabecera mantiene el flujo anterior sin clave ni huella', async () => {
-    const { orchestrator, situationsService, runClaimed } =
+  it('sin cabecera mantiene el flujo anterior sin clave ni huella, y sin IA', async () => {
+    const { orchestrator, situationsService, runClaimed, dataSource } =
       createOrchestrator();
 
     const result = await orchestrator.registerAndExecute(dto, actor);
 
     expect(situationsService.create).toHaveBeenCalledWith(dto, actor);
-    expect(runClaimed).toHaveBeenCalledTimes(1);
-    expect(result.replayed).toBe(false);
+    expect(runClaimed).not.toHaveBeenCalled();
+    expect(dataSource.query).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      situation: { id: 'sit-1', status: 'OPEN' },
+      analysis: null,
+      replayed: false,
+    });
   });
 
-  it('clave nueva crea la fila con clave y huella, y analiza una vez', async () => {
-    const { orchestrator, situationsService, runClaimed } =
+  it('clave nueva crea la fila con clave y huella, sin analizar ni tomar el reclamo', async () => {
+    const { orchestrator, situationsService, runClaimed, dataSource } =
       createOrchestrator();
 
     const result = await orchestrator.registerAndExecute(dto, actor, KEY);
 
+    expect(situationsService.create).toHaveBeenCalledTimes(1);
     expect(situationsService.create).toHaveBeenCalledWith(dto, actor, {
       clientRequestId: KEY,
       requestFingerprint: fingerprint,
     });
-    expect(runClaimed).toHaveBeenCalledTimes(1);
+    expect(runClaimed).not.toHaveBeenCalled();
+    expect(dataSource.query).not.toHaveBeenCalled();
     expect(result.replayed).toBe(false);
+    expect(result.analysis).toBeNull();
   });
 
-  it('repetición completada: solo lee; no crea, no analiza y no modifica', async () => {
+  it('repetición con análisis ya pedido aparte: solo lee y lo devuelve', async () => {
     const {
       orchestrator,
       situationsService,
@@ -176,47 +197,12 @@ describe('AIOrchestrator registro idempotente (decisiones)', () => {
     expect(situationsRepository.update).not.toHaveBeenCalled();
     expect(dataSource.query).not.toHaveBeenCalled();
     expect(result.replayed).toBe(true);
-    expect(result.analysis.sessionId).toBe('session-1');
-    expect(result.analysis.confidence).toBe(0.82);
+    expect(result.analysis?.sessionId).toBe('session-1');
+    expect(result.analysis?.confidence).toBe(0.82);
   });
 
-  it('misma clave con otro contenido: 422 sin crear ni analizar', async () => {
-    const { orchestrator, situationsService, runClaimed } = createOrchestrator({
-      existing: { id: 'sit-1', requestFingerprint: 'otra-huella' },
-      record: analysisRecord,
-    });
-
-    await expect(
-      orchestrator.registerAndExecute(dto, actor, KEY),
-    ).rejects.toBeInstanceOf(UnprocessableEntityException);
-    expect(situationsService.create).not.toHaveBeenCalled();
-    expect(runClaimed).not.toHaveBeenCalled();
-  });
-
-  it('huérfano con reclamo vigente de otro intento: 409 sin analizar ni borrar', async () => {
-    const { orchestrator, situationsService, runClaimed, manager } =
-      createOrchestrator({
-        existing: { id: 'sit-1', requestFingerprint: fingerprint },
-        record: null,
-        claimAvailable: false,
-      });
-
-    const error = await orchestrator
-      .registerAndExecute(dto, actor, KEY)
-      .catch((caught: unknown) => caught);
-
-    expect(error).toBeInstanceOf(ConflictException);
-    expect((error as ConflictException).getResponse()).toMatchObject({
-      code: 'REGISTRATION_IN_PROGRESS',
-      situationId: 'sit-1',
-    });
-    expect(situationsService.create).not.toHaveBeenCalled();
-    expect(runClaimed).not.toHaveBeenCalled();
-    expect(manager.delete).not.toHaveBeenCalled();
-  });
-
-  it('huérfano sin reclamo: reanuda sobre la misma fila sin crear otra ni borrar', async () => {
-    const { orchestrator, situationsService, runClaimed, manager } =
+  it('repetición sin análisis (respuesta perdida): devuelve la misma fila, sin crear, analizar ni borrar', async () => {
+    const { orchestrator, situationsService, runClaimed, manager, dataSource } =
       createOrchestrator({
         existing: { id: 'sit-1', requestFingerprint: fingerprint },
         record: null,
@@ -225,29 +211,54 @@ describe('AIOrchestrator registro idempotente (decisiones)', () => {
     const result = await orchestrator.registerAndExecute(dto, actor, KEY);
 
     expect(situationsService.create).not.toHaveBeenCalled();
-    expect(runClaimed).toHaveBeenCalledTimes(1);
-    expect(result.replayed).toBe(false);
+    expect(runClaimed).not.toHaveBeenCalled();
+    expect(dataSource.query).not.toHaveBeenCalled();
+    expect(manager.delete).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      situation: { id: 'sit-1', status: 'IN_PROGRESS' },
+      analysis: null,
+      replayed: true,
+    });
+  });
+
+  it('repetición mientras otro intento analiza la fila: el replay no depende del reclamo', async () => {
+    const { orchestrator, situationsService, runClaimed, manager } =
+      createOrchestrator({
+        existing: { id: 'sit-1', requestFingerprint: fingerprint },
+        record: null,
+        claimAvailable: false,
+      });
+
+    const result = await orchestrator.registerAndExecute(dto, actor, KEY);
+
+    expect(result.replayed).toBe(true);
+    expect(situationsService.create).not.toHaveBeenCalled();
+    expect(runClaimed).not.toHaveBeenCalled();
     expect(manager.delete).not.toHaveBeenCalled();
   });
 
-  it('huérfano que vuelve a fallar en Gemini: conserva la fila y no borra', async () => {
-    const { orchestrator, manager } = createOrchestrator({
-      existing: { id: 'sit-1', requestFingerprint: fingerprint },
-      record: null,
-      runClaimed: () =>
-        Promise.reject(new ServiceUnavailableException('Gemini no respondió')),
+  it('misma clave con otro contenido: 422 IDEMPOTENCY_KEY_REUSED sin crear ni analizar', async () => {
+    const { orchestrator, situationsService, runClaimed } = createOrchestrator({
+      existing: { id: 'sit-1', requestFingerprint: 'otra-huella' },
+      record: analysisRecord,
     });
 
-    await expect(
-      orchestrator.registerAndExecute(dto, actor, KEY),
-    ).rejects.toThrow('La situación quedó registrada');
-    expect(manager.delete).not.toHaveBeenCalled();
+    const error = await orchestrator
+      .registerAndExecute(dto, actor, KEY)
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(UnprocessableEntityException);
+    expect((error as UnprocessableEntityException).getResponse()).toMatchObject(
+      { code: 'IDEMPOTENCY_KEY_REUSED' },
+    );
+    expect(situationsService.create).not.toHaveBeenCalled();
+    expect(runClaimed).not.toHaveBeenCalled();
   });
 
-  it('carrera por inserción: la perdedora devuelve el resultado completado', async () => {
+  it('carrera por inserción: la perdedora devuelve el registro ganador como replay', async () => {
     const create = jest.fn().mockRejectedValue(uniqueViolation());
     const { orchestrator, runClaimed, situationsRepository } =
-      createOrchestrator({ create, record: analysisRecord });
+      createOrchestrator({ create });
     situationsRepository.findOne
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ id: 'sit-1', requestFingerprint: fingerprint });
@@ -257,6 +268,27 @@ describe('AIOrchestrator registro idempotente (decisiones)', () => {
     expect(create).toHaveBeenCalledTimes(1);
     expect(runClaimed).not.toHaveBeenCalled();
     expect(result.replayed).toBe(true);
+    expect(result.analysis).toBeNull();
+  });
+
+  it('carrera por inserción con otro contenido: 422, nunca un segundo registro', async () => {
+    const create = jest.fn().mockRejectedValue(uniqueViolation());
+    const { orchestrator, situationsRepository } = createOrchestrator({
+      create,
+    });
+    situationsRepository.findOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'sit-1',
+        requestFingerprint: 'otra-huella',
+      });
+
+    await expect(
+      orchestrator.registerAndExecute(dto, actor, KEY),
+    ).rejects.toMatchObject({
+      response: { code: 'IDEMPOTENCY_KEY_REUSED' },
+    });
+    expect(create).toHaveBeenCalledTimes(1);
   });
 
   it('carrera por inserción sin fila visible: 409 de procesamiento, no 500', async () => {
@@ -280,54 +312,60 @@ describe('AIOrchestrator registro idempotente (decisiones)', () => {
     ).rejects.toThrow('timeout de BD');
   });
 
-  it('fallo de Gemini en registro nuevo: borra la fila dentro de su reclamo', async () => {
+  it('Gemini caído no afecta al alta: se registra y no se borra nada', async () => {
+    const { orchestrator, manager, runClaimed } = createOrchestrator({
+      runClaimed: () =>
+        Promise.reject(new ServiceUnavailableException('Gemini no respondió')),
+    });
+
+    const result = await orchestrator.registerAndExecute(dto, actor, KEY);
+
+    expect(result.situation).toEqual({ id: 'sit-1', status: 'OPEN' });
+    expect(runClaimed).not.toHaveBeenCalled();
+    expect(manager.delete).not.toHaveBeenCalled();
+  });
+});
+
+describe('AIOrchestrator análisis bajo demanda (POST :id/analyze)', () => {
+  it('con el reclamo libre analiza una vez y libera el reclamo con su token', async () => {
+    const { orchestrator, runClaimed, dataSource } = createOrchestrator();
+
+    await orchestrator.execute('sit-1', actor);
+
+    expect(runClaimed).toHaveBeenCalledTimes(1);
+    const [claimSql] = dataSource.query.mock.calls[0] as [string];
+    expect(claimSql).toContain('analysis_claim_token = $2');
+    const [releaseSql] = dataSource.query.mock.calls.at(-1) as [string];
+    expect(releaseSql).toContain('analysis_claim_token = NULL');
+  });
+
+  it('con el reclamo de otro intento vigente: 409 ANALYSIS_IN_PROGRESS sin llamar a Gemini', async () => {
+    const { orchestrator, runClaimed } = createOrchestrator({
+      claimAvailable: false,
+    });
+
+    const error = await orchestrator
+      .execute('sit-1', actor)
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ConflictException);
+    expect((error as ConflictException).getResponse()).toMatchObject({
+      code: 'ANALYSIS_IN_PROGRESS',
+    });
+    expect(runClaimed).not.toHaveBeenCalled();
+  });
+
+  it('si Gemini falla, conserva la situación y libera el reclamo', async () => {
     const { orchestrator, manager, dataSource } = createOrchestrator({
       runClaimed: () =>
         Promise.reject(new ServiceUnavailableException('Gemini no respondió')),
     });
 
-    await expect(
-      orchestrator.registerAndExecute(dto, actor, KEY),
-    ).rejects.toThrow('La situación no fue registrada');
-
-    expect(manager.delete).toHaveBeenCalledWith(expect.anything(), {
-      id: 'sit-1',
-    });
-    // El reclamo se libera después del borrado, con el token de este intento.
-    const releaseCall = dataSource.query.mock.calls.at(-1) as unknown[];
-    expect(releaseCall[0]).toContain('analysis_claim_token = NULL');
-  });
-
-  it('pérdida de reclamo durante un registro nuevo: no borra y responde 409', async () => {
-    const { orchestrator, manager } = createOrchestrator({
-      runClaimed: () =>
-        Promise.reject(
-          new ConflictException({
-            code: 'ANALYSIS_CLAIM_LOST',
-            message: 'reemplazado',
-          }),
-        ),
-    });
-
-    await expect(
-      orchestrator.registerAndExecute(dto, actor, KEY),
-    ).rejects.toMatchObject({
-      response: { code: 'REGISTRATION_IN_PROGRESS' },
-    });
+    await expect(orchestrator.execute('sit-1', actor)).rejects.toThrow(
+      'Gemini no respondió',
+    );
     expect(manager.delete).not.toHaveBeenCalled();
-  });
-
-  it('reclamo ajeno al crear: 409 sin borrar la fila de la otra solicitud', async () => {
-    const { orchestrator, manager, runClaimed } = createOrchestrator({
-      claimAvailable: false,
-    });
-
-    await expect(
-      orchestrator.registerAndExecute(dto, actor, KEY),
-    ).rejects.toMatchObject({
-      response: { code: 'REGISTRATION_IN_PROGRESS' },
-    });
-    expect(runClaimed).not.toHaveBeenCalled();
-    expect(manager.delete).not.toHaveBeenCalled();
+    const [releaseSql] = dataSource.query.mock.calls.at(-1) as [string];
+    expect(releaseSql).toContain('analysis_claim_token = NULL');
   });
 });

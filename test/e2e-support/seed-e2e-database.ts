@@ -26,6 +26,8 @@ const ROOT = join(__dirname, '../..');
 
 export const E2E_COORDINATOR_EMAIL = 'coordinadora.e2e@cun.edu.co';
 export const E2E_ANALYST_EMAIL = 'analista.e2e@cun.edu.co';
+/** Lectura de Dirección (KPIs y panel Director); sin coordinación propia. */
+export const E2E_DIRECTOR_EMAIL = 'director.e2e@cun.edu.co';
 
 function requireTestDatabaseEnv() {
   const names = [
@@ -175,6 +177,18 @@ async function main(): Promise<void> {
         fullName: 'Analista E2E',
         roleId: roleIds.get('ANALISTA') as string,
         coordinationId,
+        status: UserStatus.ACTIVE,
+        onboardingCompleted: true,
+        onboardingStep: 99,
+      }),
+    );
+
+    await userRepo.save(
+      userRepo.create({
+        email: E2E_DIRECTOR_EMAIL,
+        fullName: 'Director E2E',
+        roleId: roleIds.get('DIRECTOR') as string,
+        coordinationId: null,
         status: UserStatus.ACTIVE,
         onboardingCompleted: true,
         onboardingStep: 99,
