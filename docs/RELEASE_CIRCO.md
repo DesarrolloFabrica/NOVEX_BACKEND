@@ -73,6 +73,7 @@ NOVEX.
 | Sin mocks en la app publicada | grafo de imports desde `main.tsx` + búsqueda en el bundle de producción + guarda `production-data-sources.test.ts` |
 | Error de API → aviso de error, nunca cifras ni gráficas | navegador sobre la base aislada (overview y KPIs caídos) |
 | Barrido: sin `SEVERITY_ESCALATION_ENABLED` no se escala aunque exista política | prueba contra PostgreSQL |
+| Compatibilidad: el backend `49a6483` lista, muestra, da de alta con el contrato anterior, reintenta sin duplicar y guarda notas con `clientKey` sobre el esquema con las 9 migraciones | PostgreSQL 16 local desechable, 21/21 (§10.1); sin producción ni Gemini real |
 
 ### Pendiente (no verificado)
 
@@ -421,3 +422,75 @@ Pruebas reales (base desechable, backend y navegador reales):
   mesa, subbaraja y selección: deuda previa de la candidata). El único
   distinto («detalle crece… 1920x1080») es inestable en ambas versiones
   (aislado: release 2/2, candidata 1/2).
+
+### 10.1 Compatibilidad del backend 49a6483 con el esquema de la release (2026-10-27, local)
+
+Pregunta: ¿el backend que sigue sirviendo en producción durante la ventana
+funciona contra el esquema con las 9 migraciones aplicadas? Respuesta: **sí**,
+en una base PostgreSQL 16 local desechable. Sin credenciales ni datos de
+producción. No sustituye a la validación manual con usuario real (§1).
+
+**Procedimiento (copias de trabajo aisladas; las ramas no se tocaron)**
+
+1. Esquema del estado de producción (18 migraciones): las 15 de `49a6483`
+   (ficheros idénticos a los de la release), más `AddSituationResolutions1787200000000`
+   y `GrantReportingAndClosurePermissions1787300000000` de la release, más una
+   fila en `typeorm_migrations` para `AllowAnalystUnassignedSituations1786500000000`
+   (sin fichero en el repo, como en producción). Catálogos y usuarios sintéticos
+   con el seed E2E del backend `49a6483`, sin cargar datos reales.
+   Comprobación: 18 filas en `typeorm_migrations`, 17 permisos, 37 `role_permissions`.
+2. Datos sintéticos con la API de `49a6483` (7 situaciones con análisis, notas,
+   reintentos, PATCH de estado, clave reutilizada y un analista sin coordinación).
+   Gemini se sustituye por el stub de E2E del propio repo (`test/e2e-support/gemini-stub.ts`).
+3. Las 9 migraciones con el CLI de la release: `npm run migration:run`
+   (12,9 s, sin errores; 18 → 27 filas en `typeorm_migrations`).
+4. `49a6483` arrancado contra ese esquema y la batería de comprobaciones de abajo.
+
+**Resultados**
+
+| Comprobación | Resultado |
+|---|---|
+| Datos anteriores tras migrar: situaciones, evidencias, timeline, usuarios y coordinaciones | huella idéntica antes y después |
+| Permisos | 17 → 18; `SITUATIONS_CREATE` solo en ANALISTA y COORDINADOR; `role_permissions` 37 (reparto distinto) |
+| Listado por rol (coordinador A y B, analista, Director, Admin) | igual que antes de migrar |
+| Detalle de los registros anteriores (4 situaciones) y estado conservado | 200; estado IN_PROGRESS intacto |
+| Evidencias de un registro anterior | 2 notas, sin duplicar |
+| Alta con el contrato del frontend `b20ffd3` (sin `reportKind`) | 201 con situación y análisis |
+| Reintento con la misma `Idempotency-Key` | mismo id, `replayed: true`, ninguna fila nueva |
+| Misma clave con otro cuerpo | 422 `IDEMPOTENCY_KEY_REUSED` |
+| Analista sin coordinación (contrato anterior) | 201 |
+| Nota con `clientKey` repetida | devuelve la misma evidencia |
+| Nota con `clientKey` nueva | 201, crea la evidencia |
+| Campos añadidos por la release en filas nuevas | `reported_severity` no nulo, `report_kind = INTERNAL`, una fila REPORTED por situación |
+| Errores en logs de `49a6483` | 0 `QueryFailedError` |
+| Llamadas al stub de Gemini | 7 (una por alta que analiza) |
+
+Total: **21/21 comprobaciones pasan**. No fue necesario corregir ninguna
+incompatibilidad en la release.
+
+**Limitaciones (lo que esta prueba no demuestra)**
+
+- Gemini es el stub de E2E: la respuesta de análisis es una fixture válida, no
+  un modelo real. Mide compatibilidad de aplicación y de esquema, no calidad del análisis.
+- El cron de SLA se desactivó en el JavaScript compilado de la copia de trabajo
+  (sin tocar el fuente). `49a6483` no tiene interruptor para ese cron.
+- `GOOGLE_CLIENT_ID` es un valor de marcador (el arranque lo exige); el acceso
+  fue por el login por correo de desarrollo (`ENABLE_EMAIL_LOGIN=true`), no por Google.
+- El esquema se construyó a partir de los ficheros y del seed del repo, no se
+  comparó con la firma del esquema de producción (no se accedió a producción).
+- Los catálogos de permisos y coordinaciones vienen del seed de `49a6483`; los de
+  producción pueden diferir en datos, no en estructura verificada.
+- El frontend no se ejecutó: el payload y las cabeceras se copiaron del código
+  de `b20ffd3` (`situationRegistration.service.ts`, `situations.api.ts`). No hay prueba en navegador.
+- Sin concurrencia real ni tráfico. La prueba de concurrencia de idempotencia
+  sigue en §10 (base desechable, API real).
+- Una ejecución fallida del generador dejó una situación sintética extra antes
+  de la instantánea; los conteos de este apartado la incluyen.
+
+**Reproducción**
+
+- Contenedor `postgres:16` local con base `novex_compat_test`; arrancar `49a6483`
+  con `DB_CLOUD=false`, `ENABLE_EMAIL_LOGIN=true`, `GEMINI_BASE_URL` apuntando al stub
+  y `GOOGLE_CLIENT_ID` de marcador. El backend se compiló con `nest build` y se ejecutó `dist/src/main.js`.
+- Las 9 migraciones: `npm run migration:run` en la release, con `DB_CLOUD=false` y `DB_*_LOCAL`
+  apuntando a la base local. Nunca contra `novex-db`.
