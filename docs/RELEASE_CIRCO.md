@@ -79,7 +79,7 @@ NOVEX.
 
 | Qué | Por qué | Cómo cerrarlo |
 |---|---|---|
-| Prueba manual de alta en producción tras la corrección del 26-oct (notas, doble clic, listado) | requiere un usuario real | `docs/INCIDENTE-20261023-MIGRACIONES.md` §«Prueba manual» |
+| Validación manual en producción con usuario real: login, listado y detalle de situaciones existentes; y, si el usuario tiene una situación real que registrar, guardado de notas y una sola aparición en el listado. **Pendiente de confirmación del usuario.** No se provocan dobles clics ni situaciones ficticias en producción. No se aprueba por ausencia de errores en logs | requiere un usuario real | `docs/INCIDENTE-20261023-MIGRACIONES.md` §«Prueba manual» |
 | Repetir §2.2 justo antes de migrar | el estado puede cambiar hasta la ventana | §2.2 |
 
 Ya cerrado el 26-oct (solo lectura, Cloud Shell): revisiones y configuración
@@ -257,13 +257,29 @@ Detenerse = no fusionar el siguiente PR y aplicar §7.
 
 ## 7. Recuperación y limitaciones
 
-| Situación | Acción | Limitación |
+**Principios**
+
+- **Disponibilidad no es comportamiento anterior.** Volver al backend `49a6483`
+  devuelve el servicio, pero **conserva el esquema nuevo**: permisos (`SITUATIONS_CREATE`
+  retirado a ADMIN y DIRECTOR), severidad reportada, historial de severidad,
+  consecuencias y ayudas de compatibilidad. No restaura el estado de producción de antes de la release.
+- **Frontend y backend se mueven como pareja.** El frontend de circo usa rutas y
+  campos que `49a6483` no tiene (KPIs Director, historial de severidad, INTER). **No dejar
+  el frontend de circo apuntando al backend anterior.** La compatibilidad probada
+  (§10.1) es solo la del backend con el contrato de alta del frontend `b20ffd3`.
+- **Pareja anterior conocida como buena** (la servida el 26-oct y el 27-oct):
+  frontend `novex-frontend-00073-duy` (`b20ffd3`) + backend `novex-backend-00085-tug` (`49a6483`).
+- **Ninguna acción de esta sección es automática.** Restaurar backups, revertir
+  migraciones, lanzar `workflow_dispatch` o revertir código requieren aprobación explícita.
+
+| Situación | Acción (con aprobación) | Qué se recupera / limitación |
 |---|---|---|
-| Falla el backend nuevo y ya hay revisión anterior de cartas sana | `gcloud run services update-traffic novex-backend --to-revisions=REV=100` | ninguna (mismo esquema) |
-| Hay que volver al backend **anterior a cartas** | `workflow_dispatch` de *Deploy Backend* sobre `backup/main-pre-circo-20261026`, o tráfico a su revisión | funciona porque `1788100000000` sigue aplicada; **el listado global (Director/Admin) da 500 en cuanto existe un problema INTER** (espera categoría) |
-| Hay que volver al frontend anterior | `workflow_dispatch` de *Deploy Frontend* sobre el respaldo, o tráfico a su revisión | solo tiene sentido junto con el backend anterior |
-| Devolver `main` al código anterior sin reescribirlo | `git revert -m 1 <merge>` en cada repo (PR) | crea commits nuevos y dispara despliegue |
-| Deshacer el esquema | **no recomendado**: `migration:revert` borra afectaciones, historial de severidad, severidad reportada y permisos, y se bloquea en `1787400000000` si hay problemas INTER | la vía real es restaurar el backup de §3, perdiendo lo escrito después |
+| Falla el backend nuevo; el frontend de circo no se ha publicado todavía | Tráfico a `novex-backend-00085-tug` y frontend a `novex-frontend-00073-duy` (`update-traffic` en ambos) | Disponibilidad con la pareja anterior. El esquema y los permisos nuevos se mantienen. **Sin probar:** el listado global Director/Admin puede dar 500 si existe un problema INTER creado durante la ventana (§10.1 no creó INTER) |
+| Falla tras publicar el frontend de circo | Corregir hacia delante. Si no es posible, volver a la pareja anterior **de los dos servicios a la vez** | Igual que la fila anterior: disponibilidad, no comportamiento anterior. Afectaciones INTER y cambios de severidad hechos en la ventana siguen en la base |
+| Hay que desplegar el backend anterior desde su respaldo de código | `workflow_dispatch` de *Deploy Backend* sobre `backup/main-pre-circo-20261026`, solo con aprobación | Mismo esquema nuevo; `1788100000000` sigue aplicada para aceptar el contrato anterior |
+| Pérdida o corrupción de datos | Restaurar **el backup on-demand tomado en la ventana de despliegue** (§3) en una instancia nueva, verificar, y decidir la reconciliación con el responsable | Recupera los datos hasta ese backup. Lo escrito después se pierde salvo reconciliación. **No usar `1793034669505`**: es anterior a la corrección y a las escrituras posteriores. Restaurar sobrescribe la instancia destino; nunca sobre `novex-db` sin aprobación |
+| Revertir el esquema | **No recomendado**: `migration:revert` borra afectaciones, historial de severidad, severidad reportada y permisos, y se bloquea en `1787400000000` si hay problemas INTER | Ninguna vía segura sin restaurar un backup |
+| Devolver `main` al código anterior | `git revert -m 1 <merge>` en cada repo (PR), con aprobación | Crea commits nuevos y dispara despliegue; no reescribe historia |
 
 ### 7.1 Datos existentes: qué cambia al verlos con la versión de cartas
 

@@ -76,11 +76,16 @@ Lo que la comparación no puede descartar es un cambio de datos. Su entrada en
 
 ## Prueba manual pendiente (usuario real, en producción)
 
-1. Iniciar sesión como coordinador y abrir el registro de situaciones.
-2. Registrar un problema real con notas de captura; confirmar que se crea y que
-   no aparece el aviso «No se guardaron algunas notas».
-3. Pulsar dos veces «confirmar» en un registro real: debe existir uno solo.
-4. Abrir el listado y el detalle de ese problema.
+**Estado: pendiente de confirmación del usuario.** No se ha aprobado por ausencia
+de errores en logs.
+
+1. Login real con la cuenta del usuario.
+2. Listado y detalle de situaciones existentes.
+3. Si el usuario tiene una situación real que registrar: guardar las notas de
+   captura y comprobar que aparece **una sola vez** en el listado y que no aparece
+   el aviso «No se guardaron algunas notas».
+
+No se provocan dobles clics ni se crean situaciones ficticias en producción.
 
 ## Lecciones
 
