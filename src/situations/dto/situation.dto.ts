@@ -147,10 +147,10 @@ export class SituationResponseDto {
   createdByUserName!: string;
   assignedUserId!: string | null;
   assignedUserName!: string | null;
-  categoryId!: string;
-  categoryCode!: string;
-  categoryName!: string;
-  categoryIcon!: string;
+  categoryId!: string | null;
+  categoryCode!: string | null;
+  categoryName!: string | null;
+  categoryIcon!: string | null;
   severity!: SituationSeverity;
   status!: SituationStatus;
   lastStatusComment!: string | null;

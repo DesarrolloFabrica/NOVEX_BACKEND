@@ -56,12 +56,14 @@ export class Situation extends BaseEntity {
   @Column({ type: 'uuid', name: 'assigned_user_id', nullable: true })
   assignedUserId!: string | null;
 
-  @ManyToOne(() => IncidentCategory, { nullable: false, eager: true })
+  // Nullable en BD desde la release (los INTER no tienen categoría). El tipo se
+  // mantiene: el contexto IA sigue asumiendo categoría. Ver situations.service.ts.
+  @ManyToOne(() => IncidentCategory, { nullable: true, eager: true })
   @JoinColumn({ name: 'category_id' })
   category!: IncidentCategory;
 
   @Index()
-  @Column({ type: 'uuid', name: 'category_id' })
+  @Column({ type: 'uuid', name: 'category_id', nullable: true })
   categoryId!: string;
 
   @Index()
