@@ -76,8 +76,11 @@ Lo que la comparación no puede descartar es un cambio de datos. Su entrada en
 
 ## Prueba manual pendiente (usuario real, en producción)
 
-**Estado: pendiente de confirmación del usuario.** No se ha aprobado por ausencia
-de errores en logs.
+**Estado: comprobación previa al despliegue parcial, confirmada por el usuario el
+27-oct sobre el frontend anterior `b20ffd3` (publicado):** login, listado y detalle
+de situaciones existentes correctos. **No se ha hecho alta nueva.** Pendiente: alta
+con una situación real (notas, una sola aparición) y revisión visual de cartas y
+circo al publicar. No se aprueba por ausencia de errores en logs.
 
 1. Login real con la cuenta del usuario.
 2. Listado y detalle de situaciones existentes.

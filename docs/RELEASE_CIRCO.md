@@ -79,7 +79,7 @@ NOVEX.
 
 | Qué | Por qué | Cómo cerrarlo |
 |---|---|---|
-| Validación manual en producción con usuario real: login, listado y detalle de situaciones existentes; y, si el usuario tiene una situación real que registrar, guardado de notas y una sola aparición en el listado. **Pendiente de confirmación del usuario.** No se provocan dobles clics ni situaciones ficticias en producción. No se aprueba por ausencia de errores en logs | requiere un usuario real | `docs/INCIDENTE-20261023-MIGRACIONES.md` §«Prueba manual» |
+| Validación manual en producción con usuario real: login, listado y detalle de situaciones existentes; y, si el usuario tiene una situación real que registrar, guardado de notas y una sola aparición en el listado. **Pendiente de confirmación del usuario.** No se provocan dobles clics ni situaciones ficticias en producción. No se aprueba por ausencia de errores en logs. **Comprobación previa al despliegue (27-oct, sobre el frontend anterior `b20ffd3`, publicado y confirmada por el usuario): login, listado y detalle de situaciones existentes correctos. No se ha hecho alta nueva.** Pendiente: alta con una situación real y revisión visual de cartas y circo al publicar | requiere un usuario real | `docs/INCIDENTE-20261023-MIGRACIONES.md` §«Prueba manual» |
 | Repetir §2.2 justo antes de migrar | el estado puede cambiar hasta la ventana | §2.2 |
 
 Ya cerrado el 26-oct (solo lectura, Cloud Shell): revisiones y configuración
@@ -267,15 +267,15 @@ Detenerse = no fusionar el siguiente PR y aplicar §7.
   campos que `49a6483` no tiene (KPIs Director, historial de severidad, INTER). **No dejar
   el frontend de circo apuntando al backend anterior.** La compatibilidad probada
   (§10.1) es solo la del backend con el contrato de alta del frontend `b20ffd3`.
-- **Pareja anterior conocida como buena** (la servida el 26-oct y el 27-oct):
+- **Pareja anterior, válida solo mientras no existan reportes INTER** (servida el 26-oct y el 27-oct; comprobada en §10.1 sin INTER y **no válida con INTER**, §10.2):
   frontend `novex-frontend-00073-duy` (`b20ffd3`) + backend `novex-backend-00085-tug` (`49a6483`).
 - **Ninguna acción de esta sección es automática.** Restaurar backups, revertir
   migraciones, lanzar `workflow_dispatch` o revertir código requieren aprobación explícita.
 
 | Situación | Acción (con aprobación) | Qué se recupera / limitación |
 |---|---|---|
-| Falla el backend nuevo; el frontend de circo no se ha publicado todavía | Tráfico a `novex-backend-00085-tug` y frontend a `novex-frontend-00073-duy` (`update-traffic` en ambos) | Disponibilidad con la pareja anterior. El esquema y los permisos nuevos se mantienen. **Sin probar:** el listado global Director/Admin puede dar 500 si existe un problema INTER creado durante la ventana (§10.1 no creó INTER) |
-| Falla tras publicar el frontend de circo | Corregir hacia delante. Si no es posible, volver a la pareja anterior **de los dos servicios a la vez** | Igual que la fila anterior: disponibilidad, no comportamiento anterior. Afectaciones INTER y cambios de severidad hechos en la ventana siguen en la base |
+| Falla el backend nuevo; el frontend de circo no se ha publicado todavía | Tráfico a `novex-backend-00085-tug` y frontend a `novex-frontend-00073-duy` (`update-traffic` en ambos) | Disponibilidad con la pareja anterior. El esquema y los permisos nuevos se mantienen. **Probado el 27-oct (§10.2): no viable una vez existe un INTER.** Con reportes INTER creados por la release, `49a6483` devuelve 500 en el listado de **todos** los roles y en el detalle de los INTER. Sin INTER, la pareja anterior sí sirve (§10.1). Ver la fila siguiente |
+| Falla tras publicar el frontend de circo | Corregir hacia delante. Volver a la pareja anterior **de los dos servicios a la vez** solo si **no existe ningún reporte INTER**. Si ya existe alguno, la vuelta atrás de código no es viable (§10.2): corregir hacia delante, o asumir indisponibilidad de lectura hasta la corrección | Igual que la fila anterior: disponibilidad, no comportamiento anterior. Afectaciones INTER y cambios de severidad hechos en la ventana siguen en la base |
 | Hay que desplegar el backend anterior desde su respaldo de código | `workflow_dispatch` de *Deploy Backend* sobre `backup/main-pre-circo-20261026`, solo con aprobación | Mismo esquema nuevo; `1788100000000` sigue aplicada para aceptar el contrato anterior |
 | Pérdida o corrupción de datos | Restaurar **el backup on-demand tomado en la ventana de despliegue** (§3) en una instancia nueva, verificar, y decidir la reconciliación con el responsable | Recupera los datos hasta ese backup. Lo escrito después se pierde salvo reconciliación. **No usar `1793034669505`**: es anterior a la corrección y a las escrituras posteriores. Restaurar sobrescribe la instancia destino; nunca sobre `novex-db` sin aprobación |
 | Revertir el esquema | **No recomendado**: `migration:revert` borra afectaciones, historial de severidad, severidad reportada y permisos, y se bloquea en `1787400000000` si hay problemas INTER | Ninguna vía segura sin restaurar un backup |
@@ -510,3 +510,35 @@ incompatibilidad en la release.
   y `GOOGLE_CLIENT_ID` de marcador. El backend se compiló con `nest build` y se ejecutó `dist/src/main.js`.
 - Las 9 migraciones: `npm run migration:run` en la release, con `DB_CLOUD=false` y `DB_*_LOCAL`
   apuntando a la base local. Nunca contra `novex-db`.
+
+### 10.2 Recuperación con reportes INTER (2026-10-27, local)
+
+Pregunta: ¿se puede volver al backend `49a6483` después de que la release haya
+creado reportes INTER? Respuesta: **no**. Misma base local de §10.1, con los datos
+de referencia de §10.1 más dos reportes INTER creados por el backend release
+(`fc43d2f`) con su contrato real (`reportKind`, `affectedCoordinationId`,
+`affectedProcess`, `pendingDelivery`).
+
+| Comprobación | Backend release `fc43d2f` | Backend `49a6483` |
+|---|---|---|
+| Alta de INTER (2 casos) | 201 | no aplica |
+| Listado coordinador A / B / analista / Director / Admin | 200 (7 / 3 / 10 / 10 / 10) | **500 en los cinco roles** |
+| Detalle de cada INTER | 200 | **500 o 404** según rol |
+| Alta con contrato anterior tras los INTER | no aplica | 201; detalle 200 |
+
+Causa: los INTER se guardan con `category_id` nulo (la release no pide categoría
+en INTER). `49a6483` asume categoría en el listado y lanza `TypeError`; los logs
+registran `unhandled_exception` en `GET /situations`.
+
+**Consecuencias para la recuperación**
+
+- Volver a `49a6483` **no es una recuperación de disponibilidad** una vez existe
+  cualquier INTER: deja sin listado a todos los roles y sin detalle de los INTER.
+  Esto corrige la afirmación anterior de que el fallo era solo del listado global
+  Director/Admin.
+- Antes del primer INTER, la vuelta atrás sí está probada en §10.1, aunque no es
+  un plan de recuperación: el backend antiguo no conoce las nuevas reglas ni los permisos nuevos.
+- Recuperación real con INTER: corrección hacia delante en la release (con
+  aprobación), o aceptar indisponibilidad de lectura de los INTER hasta esa corrección.
+  No se toca el esquema ni los datos para «arreglar» el listado antiguo.
+- No se modificó ninguna base distinta de la local desechable. No hubo acceso a producción.
