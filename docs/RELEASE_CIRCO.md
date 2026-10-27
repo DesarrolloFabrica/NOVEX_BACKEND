@@ -281,6 +281,72 @@ Detenerse = no fusionar el siguiente PR y aplicar §7.
 | Revertir el esquema | **No recomendado**: `migration:revert` borra afectaciones, historial de severidad, severidad reportada y permisos, y se bloquea en `1787400000000` si hay problemas INTER | Ninguna vía segura sin restaurar un backup |
 | Devolver `main` al código anterior | `git revert -m 1 <merge>` en cada repo (PR), con aprobación | Crea commits nuevos y dispara despliegue; no reescribe historia |
 
+### 7.3 Versión de recuperación compatible (2026-10-27)
+
+Con un reporte INTER, la vuelta a `49a6483` sin cambios no funciona (§10.2). La
+alternativa es una **pareja de recuperación**: las mismas revisiones anteriores con
+un cambio mínimo de lectura. No está desplegada.
+
+| Repo | Rama | Commit | Base | Cambio |
+|---|---|---|---|---|
+| NOVEX_BACKEND | `recovery/pre-circo-compatible-20261027` | `4e59f99` | `49a6483` | `fix(situations)`: la respuesta de situaciones admite categoría nula; `category` y `category_id` nullable en metadatos; test de regresión |
+| NOVEX_FRONTEND | `recovery/pre-circo-compatible-20261027` | `2127658` | `b20ffd3` | `fix(impact-network)`: «Sin categoría» en lugar de «Otro» cuando no hay categoría; solo presentación |
+
+**No cambia:** permisos, aislamiento por coordinación (regla de la coordinación
+responsable), alta, IA, idempotencia, esquema y datos. Las filas INTER tienen
+la misma huella antes y después del cambio.
+
+**Comprobado (27-oct, base local desechable)**
+
+- Matriz de lectura: 5 perfiles × listas, detalle y 6 subrecursos, para una situación
+  INTERNAL y dos INTER. Errores 500: **antes 13, después 0**.
+- Registro con contrato anterior (201), reintento idempotente (`replayed`), clave
+  reutilizada (422), nota con `clientKey` repetida (misma evidencia), analista sin
+  coordinación (201): 8/8 pasan con los INTER presentes.
+- Backend: 32 suites y 155 pruebas unitarias (incluida la de regresión), lint y build.
+- Frontend: typecheck, lint, 38 archivos y 198 pruebas, build.
+- Validación visual con Playwright y login por correo, perfiles director, coordinadora y
+  analista: sin «Otro» ni «null», sin errores de página, INTER con «Sin categoría».
+
+**No comprobado y limitaciones**
+
+- **Visibilidad de la coordinación afectada.** La release muestra cada INTER a la
+  responsable y a la afectada; la recuperación, solo a la responsable (regla de
+  `49a6483`). Medido: la coordinadora A ve 4 situaciones con la release y 3 con la
+  recuperación. Es una pérdida funcional aceptada para esta vuelta atrás.
+- **Análisis IA sobre un INTER** (`POST /situations/:id/analyze`): no probado. El contexto
+  IA sigue asumiendo categoría. No lanzar análisis IA sobre INTER con esta pareja.
+- `GET /situations/:id/analysis` de un INTER devuelve 404 en ambas versiones (no tiene análisis).
+- `/operational-events` devuelve 404 también en `49a6483` sin INTER (ruta preexistente).
+- Frontend: validado con login por correo local. Google no probado. No se probaron
+  escrituras (alta, notas) en el navegador.
+- No desplegada en Cloud Run: el comportamiento con Cloud SQL real no se ha probado.
+- «Sin categoría» sustituye a «Otro» también en situaciones sin análisis IA. Es un
+  cambio visual deliberado, no específico de INTER.
+
+**Procedimiento de despliegue (no ejecutado; requiere aprobación explícita)**
+
+Se usa solo si existe un INTER o la release ha creado datos que `49a6483` no lee.
+Antes de eso, la vuelta atrás a las revisiones `00085-tug` y `00073-duy` sigue siendo válida.
+
+1. Confirmar que `main` sigue en `49a6483` (backend) y `b20ffd3` (frontend), y que los dos
+   commits de recuperación están en origin.
+2. **Backend:** `Deploy Backend` por `workflow_dispatch` sobre `recovery/pre-circo-compatible-20261027`.
+   El workflow despliega la revisión candidata con `--no-traffic`, valida (CORS, health) y
+   **promociona a 100 % automáticamente** si pasa. Es un cambio de producción.
+3. **Frontend:** `Deploy Frontend` por `workflow_dispatch` sobre la misma rama. Mismo
+   comportamiento: candidato, smoke y promoción automática.
+4. Orden: backend primero. La pareja de recuperación es compatible con el backend
+   recuperado y con el frontend de recuperación.
+5. Comprobar tras el despliegue: `/health` y `/health/ready`; listados de Director y
+   coordinador sin 500; detalle de un INTER; login real con Google por perfil; ausencia de
+   «Otro» en los INTER. Vigilar `unhandled_exception` en `GET /situations`.
+6. Ninguna acción de esta sección se ejecuta sin aprobación. El despliegue de
+   recuperación no revierte migraciones ni restaura backups.
+
+Para volver a la release corregida, se publica la release con la misma secuencia (§4)
+cuando se apruebe. La pareja de recuperación no se usa como estado definitivo.
+
 ### 7.1 Datos existentes: qué cambia al verlos con la versión de cartas
 
 Comprobado con datos generados por la API de la versión anterior (§10). Las
