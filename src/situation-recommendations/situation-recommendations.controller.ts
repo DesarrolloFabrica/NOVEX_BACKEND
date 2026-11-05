@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  NotFoundException,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -17,7 +18,10 @@ import {
   CreateManualRecommendationDto,
   UpdateSituationRecommendationDto,
 } from './dto/situation-recommendation.dto';
-import { SituationRecommendationsService } from './situation-recommendations.service';
+import {
+  recommendationNotFound,
+  SituationRecommendationsService,
+} from './situation-recommendations.service';
 
 @Controller('situations')
 @UseGuards(PermissionsGuard)
@@ -64,17 +68,47 @@ export class SituationRecommendationsBySituationController {
   }
 }
 
+/**
+ * Acceso a una recomendación por su propio id.
+ *
+ * Una recomendación no tiene alcance propio: hereda el de su SITUACIÓN. Por eso
+ * estas rutas no definen reglas nuevas; delegan en `SituationAccessService`,
+ * igual que las rutas anidadas bajo `/situations/:id`:
+ *
+ *   LECTURA       `requireAccessibleSituation` (alcance de lectura del caso).
+ *   MODIFICACIÓN  `requireOperableSituation` (alcance de escritura del caso),
+ *                 comprobado ANTES de tocar la recomendación o validar
+ *                 entidades relacionadas (`assignedUserId`).
+ *
+ * FUERA DE ALCANCE = INEXISTENTE. Si la situación no es accesible, la respuesta
+ * es exactamente la misma que para un id que no existe (mismo estado y mismo
+ * cuerpo), de modo que estas rutas no sirven para enumerar recomendaciones ni
+ * situaciones de otras coordinaciones. Solo se normaliza `NotFoundException`:
+ * un 403 de propiedad ya definido por el contrato y cualquier error inesperado
+ * se propagan sin cambios.
+ */
 @Controller('recommendations')
 @UseGuards(PermissionsGuard)
 export class SituationRecommendationsController {
   constructor(
     private readonly recommendationsService: SituationRecommendationsService,
+    private readonly situationAccessService: SituationAccessService,
   ) {}
 
   @Get(':id')
   @RequirePermissions('SITUATIONS_VIEW')
-  getById(@Param('id', ParseUUIDPipe) id: string) {
-    return this.recommendationsService.getById(id);
+  async getById(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthPayload,
+  ) {
+    const recommendation = await this.recommendationsService.getById(id);
+    await this.requireRecommendationScope(id, () =>
+      this.situationAccessService.requireAccessibleSituation(
+        user,
+        recommendation.situationId,
+      ),
+    );
+    return recommendation;
   }
 
   /**
@@ -84,11 +118,36 @@ export class SituationRecommendationsController {
    */
   @Patch(':id')
   @RequirePermissions('SITUATIONS_UPDATE')
-  update(
+  async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateSituationRecommendationDto,
     @CurrentUser() user: AuthPayload,
   ) {
+    const recommendation = await this.recommendationsService.getById(id);
+    await this.requireRecommendationScope(id, () =>
+      this.situationAccessService.requireOperableSituation(
+        user,
+        recommendation.situationId,
+      ),
+    );
     return this.recommendationsService.updateRecommendation(id, dto, user.sub);
+  }
+
+  /**
+   * Ejecuta la comprobación de alcance de la situación y, si la deniega como
+   * «no encontrada», responde con el MISMO error que un id inexistente.
+   */
+  private async requireRecommendationScope(
+    recommendationId: string,
+    check: () => Promise<unknown>,
+  ): Promise<void> {
+    try {
+      await check();
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw recommendationNotFound(recommendationId);
+      }
+      throw error;
+    }
   }
 }

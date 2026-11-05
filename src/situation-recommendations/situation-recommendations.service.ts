@@ -24,6 +24,15 @@ import {
 import { SituationRecommendation } from './entities/situation-recommendation.entity';
 import { SituationRecommendationsRepository } from './repositories/situation-recommendations.repository';
 
+/**
+ * Único error «recomendación no encontrada». Lo usan tanto el id inexistente
+ * como el acceso denegado por alcance (`SituationRecommendationsController`),
+ * para que ambas respuestas sean indistinguibles.
+ */
+export function recommendationNotFound(id: string): NotFoundException {
+  return new NotFoundException(`Recomendación no encontrada: ${id}`);
+}
+
 @Injectable()
 export class SituationRecommendationsService {
   constructor(
@@ -332,7 +341,7 @@ export class SituationRecommendationsService {
     const recommendation =
       await this.recommendationsRepository.findByIdWithRelations(id);
     if (!recommendation) {
-      throw new NotFoundException(`Recomendación no encontrada: ${id}`);
+      throw recommendationNotFound(id);
     }
     return recommendation;
   }
