@@ -338,7 +338,12 @@ describe('Institutional audit trail', () => {
   it('registra AI_ANALYSIS_COMPLETED y AI_ANALYSIS_FAILED', async () => {
     const auditLogService = { record: jest.fn().mockResolvedValue(null) };
     const transaction = jest.fn(
-      (work: (manager: { getRepository: jest.Mock }) => unknown) =>
+      (
+        work: (manager: {
+          getRepository: jest.Mock;
+          query: jest.Mock;
+        }) => unknown,
+      ) =>
         Promise.resolve(
           work({
             getRepository: jest.fn().mockReturnValue({

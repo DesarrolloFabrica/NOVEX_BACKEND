@@ -1,26 +1,37 @@
 /**
- * Integración con PostgreSQL real. Ejercita el reclamo fenciado, la confirmación
- * transaccional, el borrado en fallo, el índice de idempotencia y el cierre.
+ * Integración con PostgreSQL real: alta idempotente, reclamo de análisis con
+ * lease y confirmación protegida, identidad estable de evidencias, cierre con
+ * aprendizaje y reversibilidad de las migraciones de idempotencia.
  *
  * Solo se simulan los límites externos: Gemini (con cola de comportamientos),
- * el motor de prompts y la auditoría. La persistencia del análisis es real.
+ * el motor de prompts, la línea de tiempo y la auditoría. Alta, reclamo,
+ * sesiones de análisis y cierre son reales.
  *
- * Seguridad: se ejecuta solo contra una base cuyo nombre contenga "test" y
- * nunca carga `.env`. Variables requeridas: TEST_DB_HOST, TEST_DB_PORT,
- * TEST_DB_USER, TEST_DB_PASSWORD, TEST_DB_NAME.
+ * Seguridad: la suite BORRA el esquema (`DROP SCHEMA public CASCADE`) y lo
+ * recrea con las migraciones. Solo corre contra una base desechable validada
+ * por la guarda central (`test/support/disposable-database.guard.ts`): bandera
+ * explícita, destino declarado y marca de base desechable. Procedimiento en
+ * CLAUDE.md.
+ *
+ * Contrato vigente (actualizado en la Fase 01A): el ALTA no analiza; el
+ * análisis es una acción posterior (`execute`) bajo reclamo con lease; el
+ * cierre es la resolución con aprendizaje, nunca el PATCH.
  */
 import {
-  BadRequestException,
   ConflictException,
   ForbiddenException,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { DataSource, QueryFailedError } from 'typeorm';
 import { join } from 'node:path';
 import { UserStatus } from '../../src/common/enums/identity.enums';
-import { SituationSeverity } from '../../src/common/enums/situation.enums';
+import {
+  SituationReportKind,
+  SituationSeverity,
+  SituationStatus,
+} from '../../src/common/enums/situation.enums';
 import { isUniqueViolation } from '../../src/common/utils/database-errors';
-import { computeRegistrationFingerprint } from '../../src/situations/registration-fingerprint';
 import type { AuthPayload } from '../../src/auth/contracts/auth-payload.contract';
 import { OperationalScopeService } from '../../src/auth/services/operational-scope.service';
 import { AIOrchestrator } from '../../src/ai-orchestration/ai-orchestrator.service';
@@ -30,52 +41,29 @@ import { SituationsRepository } from '../../src/situations/repositories/situatio
 import { SituationsService } from '../../src/situations/situations.service';
 import { Coordination } from '../../src/coordinations/entities/coordination.entity';
 import { IncidentCategory } from '../../src/intelligence/entities/incident-category.entity';
+import { SituationConsequence } from '../../src/situations/entities/situation-consequence.entity';
 import { SituationRelatedCoordination } from '../../src/situations/entities/situation-related-coordination.entity';
+import { SituationResolution } from '../../src/situations/entities/situation-resolution.entity';
+import { SituationSeverityChange } from '../../src/situations/entities/situation-severity-change.entity';
 import type { CreateSituationDto } from '../../src/situations/dto/situation.dto';
 import { User } from '../../src/users/entities/user.entity';
+import { openDisposableDataSource } from '../support/disposable-database.guard';
 
 const ROOT = join(__dirname, '../..');
 const KEY = '6f1c2b1e-8d2a-4c3b-9e4f-112233445566';
 const OTHER_KEY = '7a2d3c4f-9e5b-4d4c-8f50-223344556677';
 const INDEX_NAME = 'uq_situations_creator_client_request';
 const EVIDENCE_INDEX_NAME = 'uq_situation_evidences_client_key';
-
-const fingerprintOf = (input: CreateSituationDto) =>
-  computeRegistrationFingerprint(input);
+/** Primera migración del bloque de idempotencia que la prueba revierte. */
+const FIRST_IDEMPOTENCY_MIGRATION =
+  'CreateSituationClientRequestUniqueIndex1787200000001';
 
 const delay = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 type ProviderBehavior = () => Promise<unknown>;
 
-function requireTestDatabaseEnv() {
-  const required = [
-    'TEST_DB_HOST',
-    'TEST_DB_PORT',
-    'TEST_DB_USER',
-    'TEST_DB_PASSWORD',
-    'TEST_DB_NAME',
-  ] as const;
-  const missing = required.filter((name) => !process.env[name]);
-  if (missing.length > 0) {
-    throw new Error(`Faltan variables de prueba: ${missing.join(', ')}`);
-  }
-  const database = process.env.TEST_DB_NAME as string;
-  if (!database.toLowerCase().includes('test')) {
-    throw new Error(
-      `Por seguridad, TEST_DB_NAME debe contener "test". Valor recibido: ${database}`,
-    );
-  }
-  return {
-    host: process.env.TEST_DB_HOST as string,
-    port: Number(process.env.TEST_DB_PORT),
-    username: process.env.TEST_DB_USER as string,
-    password: process.env.TEST_DB_PASSWORD as string,
-    database,
-  };
-}
-
-describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () => {
+describe('Alta idempotente y reclamo de análisis con PostgreSQL real', () => {
   let ds: DataSource;
   let coordinationId: string;
   let otherCoordinationId: string;
@@ -87,6 +75,7 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
 
   /** Cola de comportamientos del proveedor Gemini; cada llamada consume uno. */
   let providerQueue: ProviderBehavior[] = [];
+  let providerCalls = 0;
 
   const okAnalysis = { provider: 'gemini', confidence: { overall: 0.9 } };
   const defaultProviderCall: ProviderBehavior = () =>
@@ -95,6 +84,7 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
   const dto: CreateSituationDto = {
     title: 'Caída de red',
     description: 'Sin conexión en piso 3',
+    reportKind: SituationReportKind.INTERNAL,
     categoryId: '',
     severity: SituationSeverity.MEDIUM,
     occurredAt: '2026-01-15',
@@ -120,18 +110,28 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
     return rows[0].total;
   }
 
-  async function situationByKey(key: string) {
-    const [row] = await query<{
-      id: string;
-      status: string;
-      analysis_claim_token: string | null;
-      analysis_claim_expires_at: Date | null;
-    }>(
-      `SELECT id, status, analysis_claim_token, analysis_claim_expires_at
-         FROM situations WHERE client_request_id = $1`,
-      [key],
+  async function claimOf(situationId: string): Promise<string | null> {
+    const [row] = await query<{ analysis_claim_token: string | null }>(
+      'SELECT analysis_claim_token FROM situations WHERE id = $1',
+      [situationId],
     );
-    return row;
+    return row.analysis_claim_token;
+  }
+
+  async function waitForClaim(situationId: string): Promise<void> {
+    for (let i = 0; i < 100; i += 1) {
+      if (await claimOf(situationId)) return;
+      await delay(20);
+    }
+    throw new Error('El intento no llegó a tomar el reclamo.');
+  }
+
+  async function expireClaim(situationId: string): Promise<void> {
+    await query(
+      `UPDATE situations SET analysis_claim_expires_at = now() - interval '1 second'
+        WHERE id = $1`,
+      [situationId],
+    );
   }
 
   function buildOrchestrator() {
@@ -142,13 +142,17 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
       ds.getRepository(IncidentCategory),
       ds.getRepository(User),
       ds.getRepository(SituationRelatedCoordination),
+      ds.getRepository(SituationResolution),
+      ds.getRepository(SituationSeverityChange),
+      ds.getRepository(SituationConsequence),
       { createEntry: () => Promise.resolve({}) } as never,
       new OperationalScopeService(),
       { record: () => Promise.resolve(null) } as never,
-    );
-
-    const analysisRecordRepository = new SituationAIAnalysisRecordRepository(
-      ds,
+      // Sin política de escalamiento (estado productivo actual).
+      {
+        materializeDueEscalations: () => Promise.resolve([]),
+        recordAudit: () => Promise.resolve(undefined),
+      } as never,
     );
 
     const orchestrator = new AIOrchestrator(
@@ -170,7 +174,9 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
       } as never,
       {
         name: 'gemini',
+        // Gemini SIMULADO: nunca se llama al real.
         executeAnalysis: () => {
+          providerCalls += 1;
           const next = providerQueue.shift() ?? defaultProviderCall;
           return next();
         },
@@ -187,7 +193,7 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
         createEntry: () => Promise.resolve({}),
         findBySituation: () => Promise.resolve({ items: [] }),
       } as never,
-      analysisRecordRepository,
+      new SituationAIAnalysisRecordRepository(ds),
       {
         getLatestSession: async (situationId: string) => {
           const [row] = await query<{ version: number; created_at: Date }>(
@@ -244,19 +250,27 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
             createdAt: row.created_at,
           };
         },
-        deleteBySituationId: () => Promise.resolve(undefined),
       } as never,
       { record: () => Promise.resolve(null) } as never,
     );
 
-    return { orchestrator, situationsService, situationsRepository };
+    return { orchestrator, situationsService };
+  }
+
+  /** Un problema registrado por el coordinador, sin análisis (como en producción). */
+  async function registerSituation(key: string = OTHER_KEY): Promise<string> {
+    const { orchestrator } = buildOrchestrator();
+    const created = await orchestrator.registerAndExecute(
+      { ...dto, title: `Caso ${key.slice(0, 8)} ${Date.now()}` },
+      actor,
+      key,
+    );
+    return created.situation.id;
   }
 
   beforeAll(async () => {
-    const config = requireTestDatabaseEnv();
-    ds = new DataSource({
-      type: 'postgres',
-      ...config,
+    // Guarda central ANTES de cualquier SQL; después, esquema limpio.
+    ds = await openDisposableDataSource('registration-idempotency', {
       synchronize: false,
       entities: [join(ROOT, 'src/**/*.entity.ts')],
       migrations: [join(ROOT, 'src/database/migrations/*.ts')],
@@ -264,9 +278,7 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
       migrationsRun: false,
       migrationsTransactionMode: 'each',
     });
-    await ds.initialize();
 
-    // Base de prueba vacía en cada ejecución: esquema limpio desde las migraciones.
     await ds.query('DROP SCHEMA IF EXISTS public CASCADE');
     await ds.query('CREATE SCHEMA public');
     await ds.runMigrations();
@@ -292,19 +304,19 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
       'INSERT INTO incident_categories (code, name) VALUES ($1, $2) RETURNING id',
       [`TEST_CAT_${suffix}`, 'Categoría de prueba'],
     );
-    const email = `coord.${suffix}@cun.edu.co`;
+    const email = `coord.${suffix}@test.novex.invalid`;
     const [creator] = await query<{ id: string }>(
       `INSERT INTO users (email, full_name, role_id, coordination_id, status)
        VALUES ($1, 'Coordinador de prueba', $2, $3, 'ACTIVE')
        RETURNING id`,
       [email, role.id, coordination.id],
     );
-    const analystEmail = `analyst.${suffix}@cun.edu.co`;
+    const analystEmail = `analyst.${suffix}@test.novex.invalid`;
     const [analystUser] = await query<{ id: string }>(
       `INSERT INTO users (email, full_name, role_id, coordination_id, status)
-       VALUES ($1, 'Analista de prueba', $2, $3, 'ACTIVE')
+       VALUES ($1, 'Analista de prueba', $2, NULL, 'ACTIVE')
        RETURNING id`,
-      [analystEmail, role.id, coordination.id],
+      [analystEmail, role.id],
     );
 
     coordinationId = coordination.id;
@@ -325,6 +337,7 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
         'SITUATIONS_CREATE',
         'SITUATIONS_VIEW',
         'SITUATIONS_UPDATE',
+        'SITUATIONS_CLOSE',
         'AI_ANALYZE',
       ],
       status: UserStatus.ACTIVE,
@@ -335,7 +348,13 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
       roleId: role.id,
       roleCode: 'ANALISTA',
       coordinationId: null,
-      permissions: ['SITUATIONS_VIEW', 'SITUATIONS_UPDATE', 'AI_ANALYZE'],
+      permissions: [
+        'SITUATIONS_VIEW',
+        'SITUATIONS_CREATE',
+        'SITUATIONS_UPDATE',
+        'SITUATIONS_CLOSE',
+        'AI_ANALYZE',
+      ],
       status: UserStatus.ACTIVE,
     };
   });
@@ -346,6 +365,7 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
 
   beforeEach(async () => {
     providerQueue = [];
+    providerCalls = 0;
     await ds.query('DELETE FROM situations WHERE created_by_user_id = $1', [
       creatorId,
     ]);
@@ -394,8 +414,8 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
     });
   });
 
-  describe('registro con análisis', () => {
-    it('dos solicitudes simultáneas con la misma clave crean una sola situación y analizan una vez', async () => {
+  describe('alta idempotente (el alta no analiza)', () => {
+    it('dos solicitudes simultáneas con la misma clave crean una sola situación', async () => {
       const { orchestrator } = buildOrchestrator();
 
       const outcomes: PromiseSettledResult<RegisterSituationWithAnalysisResponseDto>[] =
@@ -405,9 +425,6 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
         ]);
 
       expect(await countByKey(KEY)).toBe(1);
-      const row = await situationByKey(KEY);
-      expect(await sessionCount(row.id)).toBe(1);
-
       const fulfilled = outcomes.filter(
         (
           o,
@@ -427,9 +444,10 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
           (failure.reason as ConflictException).getResponse(),
         ).toMatchObject({ code: 'REGISTRATION_IN_PROGRESS' });
       }
+      expect(providerCalls).toBe(0);
     });
 
-    it('diez solicitudes simultáneas con la misma clave producen exactamente un registro y un análisis', async () => {
+    it('diez solicitudes simultáneas con la misma clave producen exactamente un registro', async () => {
       const { orchestrator } = buildOrchestrator();
 
       await Promise.allSettled(
@@ -439,11 +457,27 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
       );
 
       expect(await countByKey(KEY)).toBe(1);
-      const row = await situationByKey(KEY);
-      expect(await sessionCount(row.id)).toBe(1);
+      expect(providerCalls).toBe(0);
     });
 
-    it('repetición después de completar: replay sin análisis ni escritura', async () => {
+    it('el alta nunca llama a Gemini: registra aunque el proveedor esté caído', async () => {
+      const { orchestrator } = buildOrchestrator();
+      providerQueue = [() => Promise.reject(new Error('Gemini caído'))];
+
+      const created = await orchestrator.registerAndExecute(
+        { ...dto },
+        actor,
+        KEY,
+      );
+
+      expect(created.replayed).toBe(false);
+      expect(created.analysis).toBeNull();
+      expect(await countByKey(KEY)).toBe(1);
+      expect(await sessionCount(created.situation.id)).toBe(0);
+      expect(providerCalls).toBe(0);
+    });
+
+    it('repetición después de completar: replay sin escritura', async () => {
       const { orchestrator } = buildOrchestrator();
       const first = await orchestrator.registerAndExecute(
         { ...dto },
@@ -452,7 +486,6 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
       );
       expect(first.replayed).toBe(false);
 
-      providerQueue = [() => Promise.reject(new Error('no debería llamarse'))];
       const again = await orchestrator.registerAndExecute(
         { ...dto },
         actor,
@@ -461,7 +494,6 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
 
       expect(again.replayed).toBe(true);
       expect(again.situation.id).toBe(first.situation.id);
-      expect(await sessionCount(first.situation.id)).toBe(1);
       expect(await countByKey(KEY)).toBe(1);
     });
 
@@ -516,24 +548,6 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
       expect(await countByKey(KEY)).toBe(1);
     });
 
-    it('fallo de Gemini en registro nuevo: la fila se borra y la misma clave puede registrar de nuevo', async () => {
-      const { orchestrator } = buildOrchestrator();
-      providerQueue = [() => Promise.reject(new Error('Gemini caído'))];
-
-      await expect(
-        orchestrator.registerAndExecute({ ...dto }, actor, KEY),
-      ).rejects.toThrow('La situación no fue registrada');
-      expect(await countByKey(KEY)).toBe(0);
-
-      const retry = await orchestrator.registerAndExecute(
-        { ...dto },
-        actor,
-        KEY,
-      );
-      expect(retry.replayed).toBe(false);
-      expect(await countByKey(KEY)).toBe(1);
-    });
-
     it('claves distintas del mismo usuario son intentos independientes', async () => {
       const { orchestrator } = buildOrchestrator();
 
@@ -545,139 +559,102 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
     });
   });
 
-  describe('recuperación de situaciones sin análisis', () => {
-    /** Simula una instancia que murió después de insertar la fila y antes del análisis. */
-    async function insertOrphan(key: string): Promise<string> {
-      const { situationsService } = buildOrchestrator();
-      const created = await situationsService.create({ ...dto }, actor, {
-        clientRequestId: key,
-        requestFingerprint: 'huella-orfana',
-      });
-      return created.id;
-    }
-
-    it('un reintento con la misma clave reanuda sobre la fila huérfana sin crear otra', async () => {
-      const orphanId = await insertOrphan(KEY);
+  describe('análisis bajo demanda: reclamo con lease y confirmación protegida', () => {
+    it('confirma una sesión y libera el reclamo', async () => {
+      const id = await registerSituation();
       const { orchestrator } = buildOrchestrator();
-      // La huella del reintento debe coincidir con la almacenada.
-      await query(
-        'UPDATE situations SET request_fingerprint = $2 WHERE id = $1',
-        [orphanId, fingerprintOf(dto)],
-      );
 
-      const result = await orchestrator.registerAndExecute(
-        { ...dto },
-        actor,
-        KEY,
-      );
+      const result = await orchestrator.execute(id, actor);
 
-      expect(result.replayed).toBe(false);
-      expect(result.situation.id).toBe(orphanId);
-      expect(await countByKey(KEY)).toBe(1);
-      expect(await sessionCount(orphanId)).toBe(1);
-      const row = await situationByKey(KEY);
-      expect(row.analysis_claim_token).toBeNull();
+      expect(result.analysisVersion).toBe(1);
+      expect(await sessionCount(id)).toBe(1);
+      expect(await claimOf(id)).toBeNull();
     });
 
-    it('dos reintentos simultáneos sobre una huérfana ejecutan un solo análisis', async () => {
-      const orphanId = await insertOrphan(KEY);
-      await query(
-        'UPDATE situations SET request_fingerprint = $2 WHERE id = $1',
-        [orphanId, fingerprintOf(dto)],
-      );
+    it('dos análisis simultáneos: uno confirma y el otro recibe 409 ANALYSIS_IN_PROGRESS', async () => {
+      const id = await registerSituation();
       const { orchestrator } = buildOrchestrator();
 
-      await Promise.allSettled([
-        orchestrator.registerAndExecute({ ...dto }, actor, KEY),
-        orchestrator.registerAndExecute({ ...dto }, actor, KEY),
+      const outcomes = await Promise.allSettled([
+        orchestrator.execute(id, actor),
+        orchestrator.execute(id, actor),
       ]);
 
-      expect(await sessionCount(orphanId)).toBe(1);
-      expect(await countByKey(KEY)).toBe(1);
+      expect(outcomes.filter((o) => o.status === 'fulfilled')).toHaveLength(1);
+      const rejected = outcomes.find(
+        (o): o is PromiseRejectedResult => o.status === 'rejected',
+      );
+      expect(
+        (rejected?.reason as ConflictException).getResponse(),
+      ).toMatchObject({ code: 'ANALYSIS_IN_PROGRESS' });
+      expect(await sessionCount(id)).toBe(1);
     });
 
-    it('una huérfana con reclamo vigente responde 409 sin analizar', async () => {
-      const orphanId = await insertOrphan(KEY);
+    it('con un reclamo vigente de otro intento responde 409 sin llamar a Gemini', async () => {
+      const id = await registerSituation();
       await query(
-        `UPDATE situations SET request_fingerprint = $2,
-                analysis_claim_token = gen_random_uuid(),
+        `UPDATE situations SET analysis_claim_token = gen_random_uuid(),
                 analysis_claim_expires_at = now() + interval '5 minutes'
           WHERE id = $1`,
-        [orphanId, fingerprintOf(dto)],
+        [id],
       );
       const { orchestrator } = buildOrchestrator();
 
-      await expect(
-        orchestrator.registerAndExecute({ ...dto }, actor, KEY),
-      ).rejects.toMatchObject({
-        response: { code: 'REGISTRATION_IN_PROGRESS', situationId: orphanId },
+      await expect(orchestrator.execute(id, actor)).rejects.toMatchObject({
+        response: { code: 'ANALYSIS_IN_PROGRESS' },
       });
-      expect(await sessionCount(orphanId)).toBe(0);
+      expect(await sessionCount(id)).toBe(0);
+      expect(providerCalls).toBe(0);
     });
 
-    it('recuperación que vuelve a fallar en Gemini: conserva la fila', async () => {
-      const orphanId = await insertOrphan(KEY);
-      await query(
-        'UPDATE situations SET request_fingerprint = $2 WHERE id = $1',
-        [orphanId, fingerprintOf(dto)],
-      );
+    it('un fallo de Gemini conserva la situación y libera el reclamo', async () => {
+      const id = await registerSituation();
       const { orchestrator } = buildOrchestrator();
       providerQueue = [() => Promise.reject(new Error('Gemini caído'))];
 
-      await expect(
-        orchestrator.registerAndExecute({ ...dto }, actor, KEY),
-      ).rejects.toThrow('La situación quedó registrada');
+      await expect(orchestrator.execute(id, actor)).rejects.toBeInstanceOf(
+        ServiceUnavailableException,
+      );
 
-      expect(await countByKey(KEY)).toBe(1);
-      const row = await situationByKey(KEY);
-      expect(row.analysis_claim_token).toBeNull();
+      expect(await countByKey(OTHER_KEY)).toBe(1);
+      expect(await sessionCount(id)).toBe(0);
+      expect(await claimOf(id)).toBeNull();
     });
 
-    it('un reclamo vencido puede tomarse; el intento anterior no confirma ni borra después', async () => {
+    it('un reclamo vencido puede tomarse; el intento anterior no confirma después', async () => {
+      const id = await registerSituation();
       const { orchestrator } = buildOrchestrator();
 
-      // El intento A obtiene el análisis pero Gemini tarda; su reclamo vence.
+      // El intento A toma el reclamo pero Gemini tarda; su reclamo vence.
       let releaseA: (value: unknown) => void = () => undefined;
       const gateA = new Promise((resolve) => {
         releaseA = resolve;
       });
       providerQueue = [() => gateA.then(() => okAnalysis)];
       const attemptA = orchestrator
-        .registerAndExecute({ ...dto }, actor, KEY)
+        .execute(id, actor)
         .catch((error: unknown) => error);
 
-      // Espera a que A tenga el reclamo y lo vence artificialmente.
-      for (let i = 0; i < 50; i += 1) {
-        const row = await situationByKey(KEY);
-        if (row?.analysis_claim_token) break;
-        await delay(20);
-      }
-      await query(
-        `UPDATE situations SET analysis_claim_expires_at = now() - interval '1 second'
-          WHERE client_request_id = $1`,
-        [KEY],
-      );
+      await waitForClaim(id);
+      await expireClaim(id);
 
-      // El intento B reanuda: toma el reclamo, analiza y confirma.
-      const attemptB = await orchestrator.registerAndExecute(
-        { ...dto },
-        actor,
-        KEY,
-      );
-      expect(attemptB.replayed).toBe(false);
+      // El intento B toma el reclamo vencido, analiza y confirma.
+      const attemptB = await orchestrator.execute(id, actor);
+      expect(attemptB.analysisVersion).toBe(1);
 
-      // A termina ahora: su token ya no es el vigente, no debe confirmar.
+      // A termina ahora: su token ya no es el vigente, no confirma.
       releaseA(undefined);
       const resultA = await attemptA;
 
       expect(resultA).toBeInstanceOf(ConflictException);
-      const row = await situationByKey(KEY);
-      expect(row).toBeDefined();
-      expect(await sessionCount(row.id)).toBe(1);
-      expect(await countByKey(KEY)).toBe(1);
+      expect((resultA as ConflictException).getResponse()).toMatchObject({
+        code: 'ANALYSIS_CLAIM_LOST',
+      });
+      expect(await sessionCount(id)).toBe(1);
     });
 
-    it('un intento antiguo que falla después de la recuperación no borra la situación recuperada', async () => {
+    it('un intento antiguo que falla tarde no borra la situación ni el análisis vigente', async () => {
+      const id = await registerSituation();
       const { orchestrator } = buildOrchestrator();
 
       let failA: (reason: Error) => void = () => undefined;
@@ -686,50 +663,42 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
       });
       providerQueue = [() => gateA];
       const attemptA = orchestrator
-        .registerAndExecute({ ...dto }, actor, KEY)
+        .execute(id, actor)
         .catch((error: unknown) => error);
 
-      for (let i = 0; i < 50; i += 1) {
-        const row = await situationByKey(KEY);
-        if (row?.analysis_claim_token) break;
-        await delay(20);
-      }
-      await query(
-        `UPDATE situations SET analysis_claim_expires_at = now() - interval '1 second'
-          WHERE client_request_id = $1`,
-        [KEY],
-      );
+      await waitForClaim(id);
+      await expireClaim(id);
 
-      const recovered = await orchestrator.registerAndExecute(
-        { ...dto },
-        actor,
-        KEY,
-      );
-      expect(recovered.replayed).toBe(false);
+      await orchestrator.execute(id, actor);
 
-      // A falla tarde. Su borrado debe quedar sin efecto porque ya no posee el token.
       failA(new Error('Gemini tardío'));
       await attemptA;
 
-      expect(await countByKey(KEY)).toBe(1);
-      const row = await situationByKey(KEY);
-      expect(await sessionCount(row.id)).toBe(1);
+      expect(await countByKey(OTHER_KEY)).toBe(1);
+      expect(await sessionCount(id)).toBe(1);
+    });
+
+    it('no analiza un caso cerrado: 409 SITUATION_CLOSED sin llamar a Gemini', async () => {
+      const id = await registerSituation();
+      const { orchestrator, situationsService } = buildOrchestrator();
+      await situationsService.resolve(id, { learning: 'Cerrado' }, actor);
+
+      await expect(orchestrator.execute(id, analyst)).rejects.toMatchObject({
+        response: { code: 'SITUATION_CLOSED' },
+      });
+      expect(providerCalls).toBe(0);
+      expect(await claimOf(id)).toBeNull();
     });
   });
 
   describe('evidencias con identidad estable', () => {
     it('el índice por situación y clave rechaza una segunda nota con la misma clave', async () => {
-      const { orchestrator } = buildOrchestrator();
-      const created = await orchestrator.registerAndExecute(
-        { ...dto },
-        actor,
-        OTHER_KEY,
-      );
+      const id = await registerSituation();
       const insert = () =>
         ds.query(
           `INSERT INTO situation_evidences (situation_id, uploaded_by_user_id, type, title, description, client_key)
            VALUES ($1, $2, 'NOTE', 'Notas adicionales', 'a', 'capture:notes')`,
-          [created.situation.id, creatorId],
+          [id, creatorId],
         );
 
       await insert();
@@ -737,129 +706,103 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
     });
 
     it('evidencias legítimas con el mismo título coexisten cuando no comparten clave', async () => {
-      const { orchestrator } = buildOrchestrator();
-      const created = await orchestrator.registerAndExecute(
-        { ...dto },
-        actor,
-        OTHER_KEY,
-      );
+      const id = await registerSituation();
       await query(
         `INSERT INTO situation_evidences (situation_id, uploaded_by_user_id, type, title, description)
          VALUES ($1, $2, 'NOTE', 'Notas adicionales', 'manual del usuario')`,
-        [created.situation.id, creatorId],
+        [id, creatorId],
       );
       await query(
         `INSERT INTO situation_evidences (situation_id, uploaded_by_user_id, type, title, description, client_key)
          VALUES ($1, $2, 'NOTE', 'Notas adicionales', 'nota de captura', 'capture:notes')`,
-        [created.situation.id, creatorId],
+        [id, creatorId],
       );
 
       const [total] = await query<{ total: number }>(
         `SELECT COUNT(*)::int AS total FROM situation_evidences
           WHERE situation_id = $1 AND title = 'Notas adicionales'`,
-        [created.situation.id],
+        [id],
       );
       expect(total.total).toBe(2);
     });
   });
 
-  describe('cierre de situaciones', () => {
-    async function registerForClosure(): Promise<string> {
-      const { orchestrator } = buildOrchestrator();
-      const created = await orchestrator.registerAndExecute(
-        { ...dto, title: `Cierre ${Date.now()}` },
-        actor,
-        KEY,
-      );
-      return created.situation.id;
-    }
-
-    it('OPEN → IN_PROGRESS → CLOSED con motivo, asigna responsable y fija cierre', async () => {
+  describe('atención y cierre con aprendizaje', () => {
+    it('OPEN → IN_PROGRESS (PATCH) → CLOSED (resolución): asigna, fija cierre y guarda el aprendizaje', async () => {
       const { situationsService } = buildOrchestrator();
-      const id = await registerForClosure();
+      const id = await registerSituation(KEY);
 
       await situationsService.update(
         id,
-        { status: 'IN_PROGRESS' as never },
+        { status: SituationStatus.IN_PROGRESS },
         actor,
       );
-      const closed = await situationsService.update(
+      const closed = await situationsService.resolve(
         id,
-        {
-          status: 'CLOSED' as never,
-          statusComment: 'Resuelto con reinicio de switch',
-        },
+        { learning: 'Resuelto con reinicio de switch' },
         actor,
       );
 
-      expect(closed.status).toBe('CLOSED');
+      expect(closed.status).toBe(SituationStatus.CLOSED);
       expect(closed.closedAt).not.toBeNull();
-      expect(closed.lastStatusComment).toBe('Resuelto con reinicio de switch');
+      expect(closed.resolution?.learning).toBe(
+        'Resuelto con reinicio de switch',
+      );
+      expect(closed.lastStatusComment).toBeNull();
       expect(closed.assignedUserId).toBe(creatorId);
     });
 
-    it('no permite cerrar sin motivo', async () => {
+    it('el PATCH no cierra, tampoco aportando un motivo (403)', async () => {
       const { situationsService } = buildOrchestrator();
-      const id = await registerForClosure();
+      const id = await registerSituation(KEY);
       await situationsService.update(
         id,
-        { status: 'IN_PROGRESS' as never },
+        { status: SituationStatus.IN_PROGRESS },
         actor,
       );
 
       await expect(
-        situationsService.update(id, { status: 'CLOSED' as never }, actor),
-      ).rejects.toBeInstanceOf(BadRequestException);
-    });
-
-    it('no permite saltar de OPEN a CLOSED', async () => {
-      const { situationsService } = buildOrchestrator();
-      const id = await registerForClosure();
-
-      await expect(
         situationsService.update(
           id,
-          { status: 'CLOSED' as never, statusComment: 'motivo' },
+          { status: SituationStatus.CLOSED, statusComment: 'motivo' },
           actor,
         ),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
-    it('una situación cerrada no admite más cambios de estado', async () => {
+    it('una situación cerrada no admite modificaciones ordinarias (409)', async () => {
       const { situationsService } = buildOrchestrator();
-      const id = await registerForClosure();
-      await situationsService.update(
-        id,
-        { status: 'IN_PROGRESS' as never },
-        actor,
-      );
-      await situationsService.update(
-        id,
-        { status: 'CLOSED' as never, statusComment: 'motivo' },
-        actor,
-      );
-
-      await expect(
-        situationsService.update(id, { status: 'IN_PROGRESS' as never }, actor),
-      ).rejects.toBeInstanceOf(BadRequestException);
-    });
-
-    it('un analista que no es creador ni coordinador propietario recibe 403', async () => {
-      const { situationsService } = buildOrchestrator();
-      const id = await registerForClosure();
+      const id = await registerSituation(KEY);
+      await situationsService.resolve(id, { learning: 'motivo' }, actor);
 
       await expect(
         situationsService.update(
           id,
-          { status: 'IN_PROGRESS' as never },
+          { status: SituationStatus.IN_PROGRESS },
+          actor,
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+      await expect(
+        situationsService.update(id, { title: 'Retoque' }, actor),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('un analista que no es autor ni de Coordinación General no avanza el caso (403)', async () => {
+      const { situationsService } = buildOrchestrator();
+      const id = await registerSituation(KEY);
+
+      await expect(
+        situationsService.update(
+          id,
+          { status: SituationStatus.IN_PROGRESS },
           analyst,
         ),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
-    it('un coordinador de otra coordinación no ve la situación: 404', async () => {
+    it('un coordinador de otra coordinación no puede editar el caso: 404', async () => {
       const { situationsService } = buildOrchestrator();
-      const id = await registerForClosure();
+      const id = await registerSituation(KEY);
       const outsider: AuthPayload = {
         ...actor,
         sub: analystId,
@@ -867,29 +810,20 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
       };
 
       await expect(
-        situationsService.update(
-          id,
-          { status: 'IN_PROGRESS' as never },
-          outsider,
-        ),
+        situationsService.update(id, { title: 'Intrusión' }, outsider),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('el cierre no altera el reclamo ni la idempotencia del registro', async () => {
+    it('el cierre no altera la idempotencia del alta', async () => {
       const { orchestrator, situationsService } = buildOrchestrator();
       const created = await orchestrator.registerAndExecute(
         { ...dto, title: 'Registro cerrado' },
         actor,
         OTHER_KEY,
       );
-      await situationsService.update(
+      await situationsService.resolve(
         created.situation.id,
-        { status: 'IN_PROGRESS' as never },
-        actor,
-      );
-      await situationsService.update(
-        created.situation.id,
-        { status: 'CLOSED' as never, statusComment: 'motivo' },
+        { learning: 'motivo' },
         actor,
       );
 
@@ -899,17 +833,23 @@ describe('Registro idempotente y reclamo de análisis con PostgreSQL real', () =
         OTHER_KEY,
       );
       expect(replay.replayed).toBe(true);
-      expect(replay.situation.status).toBe('CLOSED');
+      expect(replay.situation.status).toBe(SituationStatus.CLOSED);
       expect(await countByKey(OTHER_KEY)).toBe(1);
     });
   });
 
   describe('migraciones', () => {
-    it('revertir todas las migraciones nuevas elimina índices y columnas; reaplicar las restaura', async () => {
-      // Migraciones posteriores a la base de la fase: 5 en total.
-      for (let i = 0; i < 5; i += 1) {
+    it('revertir hasta las migraciones de idempotencia elimina índices y columnas; reaplicar las restaura', async () => {
+      // Revierte de la más reciente hacia atrás hasta deshacer la primera del
+      // bloque de idempotencia. Ejercita también los down() posteriores.
+      for (let guard = 0; guard < 40; guard += 1) {
+        const [last] = await query<{ name: string }>(
+          'SELECT name FROM typeorm_migrations ORDER BY id DESC LIMIT 1',
+        );
         await ds.undoLastMigration();
+        if (last.name === FIRST_IDEMPOTENCY_MIGRATION) break;
       }
+
       const indexesAfterUndo = await query(
         'SELECT 1 FROM pg_indexes WHERE indexname = ANY($1)',
         [[INDEX_NAME, EVIDENCE_INDEX_NAME]],

@@ -1,7 +1,22 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { UserStatus } from '../../common/enums/identity.enums';
 import type { AuthPayload } from '../contracts/auth-payload.contract';
-import { OperationalScopeService } from './operational-scope.service';
+import {
+  OperationalScopeService,
+  type SituationOwnership,
+} from './operational-scope.service';
+
+/**
+ * Caso con TODOS los datos de propiedad (incluida la autoría). Las reglas de
+ * avance y resolución reciben solo una parte; pasar el caso completo permite
+ * comprobar que la autoría NO concede resolver, sin casts.
+ */
+function caso(
+  input: Pick<SituationOwnership, 'coordinationId'> &
+    Partial<SituationOwnership>,
+): SituationOwnership {
+  return { affectedCoordinationId: null, createdByUserId: 'x', ...input };
+}
 
 /**
  * LECTURA DE REPORTES PROPIOS ENTRE COORDINACIONES (fase 2).
@@ -27,16 +42,16 @@ describe('OperationalScopeService · reportes propios', () => {
   };
 
   /** Reporte MÍO, alojado en un área que no es la mía. */
-  const miReporteEnOtraArea = {
+  const miReporteEnOtraArea = caso({
     coordinationId: AREA_AJENA,
     createdByUserId: 'yo',
-  };
+  });
 
   /** Reporte AJENO en un área que no es la mía. */
-  const reporteAjeno = {
+  const reporteAjeno = caso({
     coordinationId: AREA_AJENA,
     createdByUserId: 'otra-persona',
-  };
+  });
 
   describe('lectura', () => {
     it('puedo LEER mi propio reporte alojado en otra coordinación', () => {
@@ -92,10 +107,13 @@ describe('OperationalScopeService · reportes propios', () => {
 
     it('sí puedo resolver un problema de MI área aunque lo reportara otro', () => {
       expect(
-        service.canResolveSituation(coordinador, {
-          coordinationId: AREA_PROPIA,
-          createdByUserId: 'otra-persona',
-        }),
+        service.canResolveSituation(
+          coordinador,
+          caso({
+            coordinationId: AREA_PROPIA,
+            createdByUserId: 'otra-persona',
+          }),
+        ),
       ).toBe(true);
     });
 

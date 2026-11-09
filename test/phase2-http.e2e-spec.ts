@@ -174,12 +174,14 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     ids.coordB = await crearUsuario('coord.b@t.co', 'COORDINADOR', ids.areaB);
     ids.admin = await crearUsuario('admin@t.co', 'ADMIN', null);
     ids.analista = await crearUsuario('analista@t.co', 'ANALISTA', null);
+    ids.director = await crearUsuario('director@t.co', 'DIRECTOR', null);
 
     for (const email of [
       'coord.a@t.co',
       'coord.b@t.co',
       'admin@t.co',
       'analista@t.co',
+      'director@t.co',
     ]) {
       const res = await request(app.getHttpServer())
         .post('/api/v1/auth/email')
@@ -213,17 +215,28 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
   }
 
   describe('reportar entre coordinaciones', () => {
-    it.each([
-      ['admin@t.co', 'ADMIN'],
-      ['analista@t.co', 'ANALISTA'],
-    ])('%s registra en un área ajena (%s)', async (email) => {
-      const res = await reportar(email, ids.areaA);
+    it('el ANALISTA registra en cualquier coordinación', async () => {
+      const res = await reportar('analista@t.co', ids.areaA);
       expect(res.status).toBe(201);
       // La coordinación SELECCIONADA se conserva, no se sustituye.
       expect((res.body as ReportBody).situation.coordinationId).toBe(ids.areaA);
       // Y la autoría queda registrada aparte.
-      expect((res.body as ReportBody).situation.createdByUserName).toBe(email);
+      expect((res.body as ReportBody).situation.createdByUserName).toBe(
+        'analista@t.co',
+      );
     });
+
+    it.each([
+      ['admin@t.co', 'ADMIN'],
+      ['director@t.co', 'DIRECTOR'],
+    ])(
+      '%s no registra problemas (%s, sin SITUATIONS_CREATE)',
+      async (email) => {
+        // Migración 1788200000000: ADMIN y DIRECTOR consultan, no reportan.
+        const res = await reportar(email, ids.areaA);
+        expect(res.status).toBe(403);
+      },
+    );
 
     it('un COORDINADOR no registra un INTERNAL en un área ajena (403)', async () => {
       // Decisión INTERNAL vivo: el INTERNAL de un coordinador es de SU área;
@@ -235,7 +248,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     it('rechaza una coordinación inexistente', async () => {
       const res = await request(app.getHttpServer())
         .post('/api/v1/situations/register-with-analysis')
-        .set(auth('admin@t.co'))
+        .set(auth('analista@t.co'))
         .send({
           title: 'Coordinación fantasma',
           description: 'Descripción de prueba.',
@@ -250,6 +263,33 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
   });
 
   describe('«mis reportes» y lectura de lo propio', () => {
+    let reporteAjenoDeA = '';
+
+    beforeAll(async () => {
+      // Un coordinador reporta en otra área como DEPENDENCIA INTER desde la
+      // suya (afectada B, responsable A) y un INTERNAL en su propia área.
+      await request(app.getHttpServer())
+        .post('/api/v1/situations/register-with-analysis')
+        .set(auth('coord.b@t.co'))
+        .send({
+          title: 'Dependencia de coord.b hacia A (mis reportes)',
+          description: 'Descripción de prueba suficientemente larga.',
+          reportKind: 'INTER_COORDINATION',
+          coordinationId: ids.areaA,
+          affectedCoordinationId: ids.areaB,
+          affectedProcess: 'Proceso de B que se retrasa',
+          pendingDelivery: 'Entrega pendiente de A',
+          severity: 'HIGH',
+          occurredAt: new Date(Date.now() - 3600_000).toISOString(),
+        })
+        .expect(201);
+      const propio = await reportar('coord.b@t.co', ids.areaB);
+      expect(propio.status).toBe(201);
+      // Reporte AJENO en el área A: lo registra el ANALISTA.
+      const ajeno = await reportar('analista@t.co', ids.areaA);
+      reporteAjenoDeA = (ajeno.body as ReportBody).situation.id;
+    });
+
     it('devuelve solo los reportes del autor, de cualquier área', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/situations?mine=true&limit=50')
@@ -288,14 +328,8 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     });
 
     it('NO puede leer un reporte AJENO de otra área', async () => {
-      const delAdmin = await request(app.getHttpServer())
-        .get('/api/v1/situations?mine=true&limit=50')
-        .set(auth('admin@t.co'))
-        .expect(200);
-      const id = (delAdmin.body as ListBody).items[0].id;
-
       await request(app.getHttpServer())
-        .get(`/api/v1/situations/${id}`)
+        .get(`/api/v1/situations/${reporteAjenoDeA}`)
         .set(auth('coord.b@t.co'))
         .expect(404);
     });
@@ -369,7 +403,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     });
 
     it('NO incluye los reportes ajenos de esa coordinación', async () => {
-      const ajeno = await reportar('admin@t.co', ids.areaA);
+      const ajeno = await reportar('analista@t.co', ids.areaA);
 
       const res = await request(app.getHttpServer())
         .get(`/api/v1/situations?coordinationId=${ids.areaA}&limit=50`)
@@ -422,7 +456,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     let problemaDeA = '';
 
     beforeAll(async () => {
-      const res = await reportar('admin@t.co', ids.areaA);
+      const res = await reportar('analista@t.co', ids.areaA);
       problemaDeA = (res.body as ReportBody).situation.id;
     });
 
@@ -435,8 +469,12 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     });
 
     it.each([
-      ['admin@t.co', 'ADMIN, aunque lo reportó él'],
-      ['analista@t.co', 'ANALISTA'],
+      ['admin@t.co', 'ADMIN, sin SITUATIONS_CLOSE'],
+      ['director@t.co', 'DIRECTOR, sin SITUATIONS_CLOSE'],
+      [
+        'analista@t.co',
+        'ANALISTA, aunque lo reportó él: la responsable no es Coordinación General',
+      ],
       ['coord.b@t.co', 'COORDINADOR de otra área'],
     ])('rechaza a %s (%s)', async (email) => {
       const res = await request(app.getHttpServer())
@@ -492,7 +530,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     });
 
     it('el PATCH genérico no permite cerrar por otra vía', async () => {
-      const otro = await reportar('admin@t.co', ids.areaA);
+      const otro = await reportar('analista@t.co', ids.areaA);
       const id = (otro.body as ReportBody).situation.id;
 
       const res = await request(app.getHttpServer())
@@ -510,7 +548,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
 
     it('un problema sin aprendizaje anterior sigue siendo legible', async () => {
       // Se cierra uno por SQL, como estaban los históricos, y se lee por HTTP.
-      const creado = await reportar('admin@t.co', ids.areaA);
+      const creado = await reportar('analista@t.co', ids.areaA);
       const id = (creado.body as ReportBody).situation.id;
       await ds.query(
         `UPDATE situations SET status='CLOSED', closed_at=now(), resolved_at=now() WHERE id=$1`,

@@ -1,3 +1,4 @@
+import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import {
   BadRequestException,
   ConflictException,
@@ -49,7 +50,9 @@ describe('UsersService admin registration', () => {
     };
   };
 
-  const adminActor = {
+  // Tipado como AuthPayload (no `as const`): los servicios reciben listas de
+  // permisos mutables, como las que resuelve el guard en cada petición.
+  const adminActor: AuthPayload = {
     sub: 'admin-1',
     email: 'admin@cun.edu.co',
     roleId: 'role-admin',
@@ -57,7 +60,7 @@ describe('UsersService admin registration', () => {
     coordinationId: null,
     permissions: ['USERS_CREATE', 'USERS_UPDATE'],
     status: UserStatus.ACTIVE,
-  } as const;
+  };
 
   const role = {
     id: 'role-coord',

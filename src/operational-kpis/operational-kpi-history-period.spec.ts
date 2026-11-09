@@ -85,12 +85,12 @@ function setup() {
       (_id: string, buckets: readonly KpiHistoryBucket[]) =>
         Promise.resolve(new Map(buckets.map((b) => [b.end, 1]))),
     ),
-    aggregateEventMetric: jest.fn(
-      (
-        _id: string,
-        _metric: OperationalKpiHistoryMetric,
-        buckets: readonly KpiHistoryBucket[],
-      ) => Promise.resolve(new Map(buckets.map((b) => [b.end, 2]))),
+    // Firma del repositorio real: las pruebas leen también el filtro (4.º arg).
+    aggregateEventMetric: jest.fn<
+      Promise<Map<string, number>>,
+      Parameters<OperationalKpiHistoryRepository['aggregateEventMetric']>
+    >((_id, _metric, buckets) =>
+      Promise.resolve(new Map(buckets.map((b) => [b.end, 2]))),
     ),
   };
   const categoriesRepository = {
@@ -107,6 +107,8 @@ function setup() {
     categoriesRepository as never,
     {} as never,
     {} as never,
+    // Resolución sin cierres: el servicio la exige desde que se añadió el KPI.
+    emptyResolutionRepository() as never,
   );
   return { service, historyRepository };
 }

@@ -25,6 +25,7 @@ import { OperationalKpiBreakdownDimension } from './dto/operational-kpi-breakdow
 import { OperationalKpiBreakdownRepository } from './operational-kpi-breakdown.repository';
 import { OperationalKpiHistoryRepository } from './operational-kpi-history.repository';
 import { OperationalKpiService } from './operational-kpi.service';
+import { emptyResolutionRepository } from './testing/empty-resolution-repository';
 import { KPI_UNCATEGORIZED_CATEGORY_ID } from './domain/kpi-uncategorized-category';
 import { SituationReportKind } from '../common/enums/situation.enums';
 import { IncidentCategory } from '../intelligence/entities/incident-category.entity';
@@ -89,6 +90,8 @@ function buildService(
     categoriesRepository as never,
     {} as never,
     {} as never,
+    // Resolución sin cierres: el servicio la exige desde que se añadió el KPI.
+    emptyResolutionRepository() as never,
   );
 }
 

@@ -88,7 +88,9 @@ describe('GeminiProvider timeout and error handling', () => {
 
     const result = await provider.executeAnalysis(context, prompt);
 
-    expect(result.summary).toBe('ok');
+    // La respuesta llegada antes del timeout se devuelve tal cual (campo del
+    // contrato AIAnalysisResult).
+    expect(result.analyzedAt).toBe('2026-01-01T00:00:00.000Z');
     expect(generateContent).toHaveBeenCalledTimes(1);
     const [[callArgs]] = generateContent.mock.calls as Array<
       [{ config?: { abortSignal?: AbortSignal } }]

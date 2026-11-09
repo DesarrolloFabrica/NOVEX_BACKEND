@@ -1,7 +1,22 @@
 import { ForbiddenException } from '@nestjs/common';
 import { UserStatus } from '../../common/enums/identity.enums';
 import type { AuthPayload } from '../contracts/auth-payload.contract';
-import { OperationalScopeService } from './operational-scope.service';
+import {
+  OperationalScopeService,
+  type SituationOwnership,
+} from './operational-scope.service';
+
+/**
+ * Caso con TODOS los datos de propiedad (incluida la autoría). Las reglas de
+ * avance y resolución reciben solo una parte; pasar el caso completo permite
+ * comprobar que la autoría NO concede resolver, sin casts.
+ */
+function caso(
+  input: Pick<SituationOwnership, 'coordinationId'> &
+    Partial<SituationOwnership>,
+): SituationOwnership {
+  return { affectedCoordinationId: null, createdByUserId: 'x', ...input };
+}
 
 /**
  * POLÍTICA REAL, SIN DOBLES.
@@ -90,10 +105,10 @@ describe('OperationalScopeService · reportar y solucionar', () => {
   });
 
   describe('solucionar: coordinador del área responsable', () => {
-    const problemaDeA = {
+    const problemaDeA = caso({
       coordinationId: AREA_A,
       createdByUserId: 'otra-persona',
-    };
+    });
 
     it('el COORDINADOR del área responsable puede', () => {
       const who = actor({
@@ -153,10 +168,13 @@ describe('OperationalScopeService · reportar y solucionar', () => {
         permissions: CLOSE,
       });
       expect(
-        service.canResolveSituation(autor, {
-          coordinationId: AREA_A,
-          createdByUserId: 'autor-1',
-        }),
+        service.canResolveSituation(
+          autor,
+          caso({
+            coordinationId: AREA_A,
+            createdByUserId: 'autor-1',
+          }),
+        ),
       ).toBe(false);
     });
 
@@ -167,10 +185,13 @@ describe('OperationalScopeService · reportar y solucionar', () => {
         permissions: CLOSE,
       });
       expect(
-        service.canResolveSituation(coordinadorDeAfectada, {
-          coordinationId: AREA_A,
-          createdByUserId: 'x',
-        }),
+        service.canResolveSituation(
+          coordinadorDeAfectada,
+          caso({
+            coordinationId: AREA_A,
+            createdByUserId: 'x',
+          }),
+        ),
       ).toBe(false);
     });
 
@@ -181,10 +202,13 @@ describe('OperationalScopeService · reportar y solucionar', () => {
         permissions: CLOSE,
       });
       expect(
-        service.canResolveSituation(coordinadorPadre, {
-          coordinationId: AREA_A,
-          createdByUserId: 'x',
-        }),
+        service.canResolveSituation(
+          coordinadorPadre,
+          caso({
+            coordinationId: AREA_A,
+            createdByUserId: 'x',
+          }),
+        ),
       ).toBe(false);
     });
 
@@ -207,10 +231,13 @@ describe('OperationalScopeService · reportar y solucionar', () => {
         permissions: CLOSE,
       });
       expect(
-        service.canResolveSituation(who, {
-          coordinationId: null,
-          createdByUserId: 'x',
-        }),
+        service.canResolveSituation(
+          who,
+          caso({
+            coordinationId: null,
+            createdByUserId: 'x',
+          }),
+        ),
       ).toBe(false);
     });
 
@@ -245,14 +272,14 @@ describe('OperationalScopeService · reportar y solucionar', () => {
       expect(
         service.canResolveSituation(
           analista,
-          { coordinationId: GENERAL, createdByUserId: 'x' },
+          caso({ coordinationId: GENERAL, createdByUserId: 'x' }),
           GENERAL,
         ),
       ).toBe(true);
       expect(() =>
         service.assertCanResolveSituation(
           analista,
-          { coordinationId: GENERAL, createdByUserId: 'x' },
+          caso({ coordinationId: GENERAL, createdByUserId: 'x' }),
           GENERAL,
         ),
       ).not.toThrow();
@@ -262,11 +289,11 @@ describe('OperationalScopeService · reportar y solucionar', () => {
       expect(
         service.canResolveSituation(
           analista,
-          {
+          caso({
             coordinationId: GENERAL,
             affectedCoordinationId: AREA_B,
             createdByUserId: 'x',
-          },
+          }),
           GENERAL,
         ),
       ).toBe(true);
@@ -276,22 +303,22 @@ describe('OperationalScopeService · reportar y solucionar', () => {
       expect(
         service.canResolveSituation(
           analista,
-          {
+          caso({
             coordinationId: AREA_B,
             affectedCoordinationId: GENERAL,
             createdByUserId: 'x',
-          },
+          }),
           GENERAL,
         ),
       ).toBe(false);
       expect(() =>
         service.assertCanResolveSituation(
           analista,
-          {
+          caso({
             coordinationId: AREA_B,
             affectedCoordinationId: GENERAL,
             createdByUserId: 'x',
-          },
+          }),
           GENERAL,
         ),
       ).toThrow(/Coordinación General/);
@@ -301,11 +328,11 @@ describe('OperationalScopeService · reportar y solucionar', () => {
       expect(
         service.canResolveSituation(
           { ...analista, sub: 'autor-ana' },
-          {
+          caso({
             coordinationId: AREA_B,
             affectedCoordinationId: GENERAL,
             createdByUserId: 'autor-ana',
-          },
+          }),
           GENERAL,
         ),
       ).toBe(false);
@@ -315,7 +342,7 @@ describe('OperationalScopeService · reportar y solucionar', () => {
       expect(
         service.canResolveSituation(
           analista,
-          { coordinationId: AREA_B, createdByUserId: 'x' },
+          caso({ coordinationId: AREA_B, createdByUserId: 'x' }),
           GENERAL,
         ),
       ).toBe(false);
@@ -325,7 +352,7 @@ describe('OperationalScopeService · reportar y solucionar', () => {
       expect(
         service.canResolveSituation(
           analista,
-          { coordinationId: GENERAL, createdByUserId: 'x' },
+          caso({ coordinationId: GENERAL, createdByUserId: 'x' }),
           null,
         ),
       ).toBe(false);
@@ -335,7 +362,7 @@ describe('OperationalScopeService · reportar y solucionar', () => {
       expect(
         service.canResolveSituation(
           { ...analista, sub: 'autor-2' },
-          { coordinationId: GENERAL, createdByUserId: 'autor-2' },
+          caso({ coordinationId: GENERAL, createdByUserId: 'autor-2' }),
           GENERAL,
         ),
       ).toBe(true);
@@ -348,16 +375,22 @@ describe('OperationalScopeService · reportar y solucionar', () => {
         AREA_A,
       );
       expect(
-        service.canUpdateSituation(analista, {
-          coordinationId: AREA_A,
-          createdByUserId: 'otro',
-        }),
+        service.canUpdateSituation(
+          analista,
+          caso({
+            coordinationId: AREA_A,
+            createdByUserId: 'otro',
+          }),
+        ),
       ).toBe(false);
       expect(
-        service.canResolveSituation(analista, {
-          coordinationId: AREA_A,
-          createdByUserId: 'otro',
-        }),
+        service.canResolveSituation(
+          analista,
+          caso({
+            coordinationId: AREA_A,
+            createdByUserId: 'otro',
+          }),
+        ),
       ).toBe(false);
     });
   });
@@ -436,10 +469,13 @@ describe('OperationalScopeService · reportar y solucionar', () => {
         ),
       ).toBe(false);
       expect(
-        service.canUpdateSituation(autor, {
-          coordinationId: AREA_B,
-          createdByUserId: 'ana-autor',
-        }),
+        service.canUpdateSituation(
+          autor,
+          caso({
+            coordinationId: AREA_B,
+            createdByUserId: 'ana-autor',
+          }),
+        ),
       ).toBe(true);
     });
 

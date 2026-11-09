@@ -1,7 +1,22 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { UserStatus } from '../../common/enums/identity.enums';
 import { AuthPayload } from '../contracts/auth-payload.contract';
-import { OperationalScopeService } from './operational-scope.service';
+import {
+  OperationalScopeService,
+  type SituationOwnership,
+} from './operational-scope.service';
+
+/**
+ * Caso con TODOS los datos de propiedad (incluida la autoría). Las reglas de
+ * avance y resolución reciben solo una parte; pasar el caso completo permite
+ * comprobar que la autoría NO concede resolver, sin casts.
+ */
+function caso(
+  input: Pick<SituationOwnership, 'coordinationId'> &
+    Partial<SituationOwnership>,
+): SituationOwnership {
+  return { affectedCoordinationId: null, createdByUserId: 'x', ...input };
+}
 
 describe('OperationalScopeService', () => {
   const service = new OperationalScopeService();
@@ -77,10 +92,10 @@ describe('OperationalScopeService', () => {
     ],
   };
 
-  const situationOfCoordination = {
+  const situationOfCoordination = caso({
     coordinationId: 'coord-b2b',
     createdByUserId: 'another-coordinator',
-  };
+  });
 
   it('permite al analista registrar sin coordinación', () => {
     expect(service.resolveCreateCoordinationId(analyst)).toBeNull();
@@ -149,7 +164,7 @@ describe('OperationalScopeService', () => {
     expect(
       service.canResolveSituation(
         { ...coordinator, roleCode: '', permissions: ['SITUATIONS_CLOSE'] },
-        { coordinationId: 'coord-b2b', createdByUserId: 'x' },
+        caso({ coordinationId: 'coord-b2b', createdByUserId: 'x' }),
       ),
     ).toBe(false);
   });
@@ -162,10 +177,13 @@ describe('OperationalScopeService', () => {
 
   it('permite al analista actualizar solo las situaciones que registró', () => {
     expect(() =>
-      service.assertCanUpdateSituation(analyst, {
-        coordinationId: 'coord-b2b',
-        createdByUserId: analyst.sub,
-      }),
+      service.assertCanUpdateSituation(
+        analyst,
+        caso({
+          coordinationId: 'coord-b2b',
+          createdByUserId: analyst.sub,
+        }),
+      ),
     ).not.toThrow();
 
     expect(() =>
@@ -181,10 +199,13 @@ describe('OperationalScopeService', () => {
 
   it('impide intervenir un caso de otra coordinación aunque tenga el permiso', () => {
     expect(() =>
-      service.assertCanOperateSituation(coordinator, {
-        coordinationId: 'other-coord',
-        createdByUserId: 'someone-else',
-      }),
+      service.assertCanOperateSituation(
+        coordinator,
+        caso({
+          coordinationId: 'other-coord',
+          createdByUserId: 'someone-else',
+        }),
+      ),
     ).toThrow(ForbiddenException);
   });
 
