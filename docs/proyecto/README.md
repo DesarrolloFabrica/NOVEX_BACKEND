@@ -26,8 +26,8 @@ Ciclo: reportar → seguir → resolver con aprendizaje.
 
 | Capa | Carpeta | Rama de trabajo |
 |---|---|---|
-| API | `NOVEX_BACKEND/` | `refactor/novex-consolidacion` @ `6408bc4` (01A + 01B.1 + **01B.2**; **no** es `main`/prod) |
-| SPA | `NOVEX_FRONTEND/` | `refactor/novex-consolidacion` @ `e38bca1` (K-01/K-03; **sin** UI anular/trasladar) |
+| API | `NOVEX_BACKEND/` | `refactor/novex-consolidacion` (código 01B.2 @ `6408bc4` + docs versionados; **no** es `main`/prod) |
+| SPA | `NOVEX_FRONTEND/` | `refactor/novex-consolidacion` (código 01B.2 @ `e38bca1` + puntero; **sin** UI anular/trasladar) |
 | Prod | tags `novex-circo-prod-20261027` | BE `5ffc65f` · FE `b726c47` |
 
 **Regla:** push a `main` = despliegue automático. No migrar ni tocar Cloud SQL sin autorización.  

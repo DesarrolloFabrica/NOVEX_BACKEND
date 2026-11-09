@@ -10,8 +10,8 @@ Esta carpeta (`NOVEX_BACKEND/docs/proyecto/`) es la **copia versionada** de la d
 
 | Capa | Repo | Rama | SHA de sincronización |
 |---|---|---|---|
-| API | `NOVEX_BACKEND` | `refactor/novex-consolidacion` | `66b5a06` (código 01B.2 en `6408bc4` + docs versionados) |
-| SPA | `NOVEX_FRONTEND` | `refactor/novex-consolidacion` | `e144454` (código 01B.2 en `e38bca1` + puntero de continuidad) |
+| API | `NOVEX_BACKEND` | `refactor/novex-consolidacion` | tip de la rama (código 01B.2 = `6408bc4`; luego solo docs de continuidad) |
+| SPA | `NOVEX_FRONTEND` | `refactor/novex-consolidacion` | tip de la rama (código 01B.2 = `e38bca1`; luego solo docs de continuidad) |
 | Prod | tags `novex-circo-prod-20261027` | `main` | BE `5ffc65f` · FE `b726c47` |
 
 Fases **cerradas en código, sin desplegar a Cloud SQL / `main`:**
@@ -91,13 +91,13 @@ cd NOVEX_BACKEND
 git fetch origin
 git checkout refactor/novex-consolidacion
 git pull --ff-only origin refactor/novex-consolidacion
-git log -1 --oneline   # esperado: 66b5a06 (o tip posterior solo de docs)
+git log -1 --oneline   # debe incluir docs(proyecto); código 01B.2 en 6408bc4
 
 cd ../NOVEX_FRONTEND
 git fetch origin
 git checkout refactor/novex-consolidacion
 git pull --ff-only origin refactor/novex-consolidacion
-git log -1 --oneline   # esperado: e144454
+git log -1 --oneline   # debe incluir docs de continuidad; código 01B.2 en e38bca1
 ```
 
 ### Opción B — clon fresco
