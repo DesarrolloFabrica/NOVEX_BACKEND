@@ -259,7 +259,10 @@ describe('SituationAdministrationService · traslado de coordinación', () => {
   });
 
   it('INTERNAL: traslada responsable Y afectada (invariante), con registro, evento y auditoría', async () => {
-    const h = administrationHarness({ status: SituationStatus.IN_PROGRESS });
+    const h = administrationHarness({
+      status: SituationStatus.IN_PROGRESS,
+      assignedUserId: 'previous-assignee',
+    });
 
     await h.service.transferCoordination(SIT, dto(COORD_B), admin);
 
@@ -267,7 +270,12 @@ describe('SituationAdministrationService · traslado de coordinación', () => {
     expect(h.manager.update).toHaveBeenCalledWith(
       Situation,
       { id: SIT },
-      { coordinationId: COORD_B, affectedCoordinationId: COORD_B },
+      {
+        coordinationId: COORD_B,
+        affectedCoordinationId: COORD_B,
+        status: SituationStatus.OPEN,
+        assignedUserId: null,
+      },
     );
     expect(h.manager.insert).toHaveBeenCalledWith(
       SituationCoordinationTransfer,
@@ -275,6 +283,8 @@ describe('SituationAdministrationService · traslado de coordinación', () => {
         fromCoordinationId: COORD_A,
         toCoordinationId: COORD_B,
         statusAtTransfer: SituationStatus.IN_PROGRESS,
+        previousAssignedUserId: 'previous-assignee',
+        nextAssignedUserId: null,
         reportKind: SituationReportKind.INTERNAL,
         transferredByUserId: admin.sub,
       }),
@@ -295,6 +305,9 @@ describe('SituationAdministrationService · traslado de coordinación', () => {
         metadata: expect.objectContaining({
           previousCoordinationId: COORD_A,
           nextCoordinationId: COORD_B,
+          nextStatus: SituationStatus.OPEN,
+          previousAssignedUserId: 'previous-assignee',
+          nextAssignedUserId: null,
           previousAffectedCoordinationId: COORD_A,
           nextAffectedCoordinationId: COORD_B,
         }) as unknown,
@@ -315,7 +328,37 @@ describe('SituationAdministrationService · traslado de coordinación', () => {
     expect(h.manager.update).toHaveBeenCalledWith(
       Situation,
       { id: SIT },
-      { coordinationId: COORD_B },
+      {
+        coordinationId: COORD_B,
+        status: SituationStatus.OPEN,
+        assignedUserId: null,
+      },
+    );
+  });
+
+  it('OPEN conserva el estado y la asignación existentes', async () => {
+    const h = administrationHarness({
+      status: SituationStatus.OPEN,
+      assignedUserId: 'legacy-assignee',
+    });
+    await h.service.transferCoordination(SIT, dto(COORD_B), admin);
+    expect(h.manager.update).toHaveBeenCalledWith(
+      Situation,
+      { id: SIT },
+      {
+        coordinationId: COORD_B,
+        affectedCoordinationId: COORD_B,
+        status: SituationStatus.OPEN,
+        assignedUserId: 'legacy-assignee',
+      },
+    );
+    expect(h.manager.insert).toHaveBeenCalledWith(
+      SituationCoordinationTransfer,
+      expect.objectContaining({
+        statusAtTransfer: SituationStatus.OPEN,
+        previousAssignedUserId: 'legacy-assignee',
+        nextAssignedUserId: 'legacy-assignee',
+      }),
     );
   });
 

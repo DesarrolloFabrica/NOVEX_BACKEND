@@ -181,10 +181,9 @@ export class SituationAdministrationService {
    *   - INTER: solo cambia la responsable y debe seguir siendo distinta de la
    *     afectada (400 TRANSFER_DESTINATION_IS_AFFECTED).
    *
-   * Se conservan autor, fecha de registro, fecha de ocurrencia, severidad,
-   * vencimiento (`due_at`: la promesa SLA nace con el reporte), estado y
-   * persona asignada. Ver docs/seguridad-y-permisos.md para los efectos sobre
-   * indicadores y alcance, y la decisión pendiente sobre casos IN_PROGRESS.
+   * Se conservan autor, fechas y severidad. Si estaba IN_PROGRESS, vuelve a
+   * OPEN y se retira la asignación; ambos valores quedan en el historial.
+   * `due_at` se conserva porque la promesa SLA nace con el reporte.
    */
   async transferCoordination(
     id: string,
@@ -262,6 +261,17 @@ export class SituationAdministrationService {
           })
         : null;
 
+      const previousStatus = situation.status;
+      const previousAssignedUserId = situation.assignedUserId ?? null;
+      const nextStatus =
+        previousStatus === SituationStatus.IN_PROGRESS
+          ? SituationStatus.OPEN
+          : previousStatus;
+      const nextAssignedUserId =
+        previousStatus === SituationStatus.IN_PROGRESS
+          ? null
+          : previousAssignedUserId;
+
       // Escritura PARCIAL bajo el bloqueo: sin evento UPDATED duplicado.
       await manager.update(
         Situation,
@@ -270,8 +280,14 @@ export class SituationAdministrationService {
           ? {
               coordinationId: destination.id,
               affectedCoordinationId: destination.id,
+              status: nextStatus,
+              assignedUserId: nextAssignedUserId,
             }
-          : { coordinationId: destination.id },
+          : {
+              coordinationId: destination.id,
+              status: nextStatus,
+              assignedUserId: nextAssignedUserId,
+            },
       );
 
       await manager.insert(SituationCoordinationTransfer, {
@@ -281,6 +297,8 @@ export class SituationAdministrationService {
         reason,
         statusAtTransfer: situation.status,
         reportKind: situation.reportKind,
+        previousAssignedUserId,
+        nextAssignedUserId,
         transferredByUserId: actor.sub,
       });
 
@@ -296,6 +314,9 @@ export class SituationAdministrationService {
             toCoordinationId: destination.id,
             reportKind: situation.reportKind,
             statusAtTransfer: situation.status,
+            nextStatus,
+            previousAssignedUserId,
+            nextAssignedUserId,
           },
         },
         manager,
@@ -316,6 +337,9 @@ export class SituationAdministrationService {
               : situation.affectedCoordinationId,
             reportKind: situation.reportKind,
             statusAtTransfer: situation.status,
+            nextStatus,
+            previousAssignedUserId,
+            nextAssignedUserId,
             reasonLength: reason.length,
           },
         },
