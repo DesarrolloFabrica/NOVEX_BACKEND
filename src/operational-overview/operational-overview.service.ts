@@ -47,6 +47,10 @@ export class OperationalOverviewService {
 
   async getOverview(actor: AuthPayload): Promise<OperationalOverviewDto> {
     this.scopeService.assertPermission(actor, 'SITUATIONS_VIEW');
+    // A2 (Fase 01A): un COORDINADOR sin coordinación asignada no usa funciones
+    // operativas. 403 COORDINATION_REQUIRED ANTES de cualquier consulta. Los
+    // roles institucionales (ADMIN, DIRECTOR, ANALISTA) no cambian.
+    this.scopeService.assertCoordinatorHasCoordination(actor);
 
     const generatedAt = new Date().toISOString();
 
