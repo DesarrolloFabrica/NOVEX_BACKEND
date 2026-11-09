@@ -194,9 +194,13 @@ describe('Institutional audit trail', () => {
       relatedCoordinations: [],
     };
 
+    // El PATCH lee la fila bloqueada dentro de la transacción (F-01).
     const situationsRepository = {
       findByIdWithRelations: jest.fn().mockResolvedValue(situation),
       save: jest.fn().mockResolvedValue(situation),
+      manager: transactionalManager(
+        createManagerMock({ findOneResult: { ...situation } }),
+      ),
     };
     const usersRepository = {
       findOne: jest

@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { UserStatus } from '../common/enums/identity.enums';
 import { SituationStatus } from '../common/enums/situation.enums';
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
@@ -12,73 +17,92 @@ import {
   transactionalManager,
 } from './testing/situations-service.test-kit-spec';
 
-describe('SituationsService status transitions', () => {
+describe('SituationsService PATCH (transacción, bloqueo y reglas de edición)', () => {
   const analystActor: AuthPayload = {
     sub: 'user-1',
-    email: 'analyst@cun.edu.co',
+    email: 'analyst@test.novex.invalid',
     roleId: 'role-analyst',
     roleCode: 'ANALISTA',
-    coordinationId: 'coord-general',
+    coordinationId: null,
     permissions: ['SITUATIONS_VIEW', 'SITUATIONS_UPDATE'],
     status: UserStatus.ACTIVE,
   };
 
-  const createService = () => {
+  /** Fila tal como la devuelve la lectura BLOQUEADA (sin relaciones eager). */
+  const lockedRow = (overrides: Record<string, unknown> = {}) => ({
+    id: 'sit-1',
+    title: 'Incidente',
+    description: 'Desc',
+    reportKind: 'INTERNAL',
+    coordinationId: 'c1',
+    affectedCoordinationId: 'c1',
+    createdByUserId: 'user-1',
+    assignedUserId: null,
+    categoryId: 'cat',
+    severity: 'HIGH',
+    reportedSeverity: 'HIGH',
+    status: SituationStatus.OPEN,
+    lastStatusComment: null,
+    resolvedAt: null,
+    closedAt: null,
+    dueAt: new Date('2026-07-31T10:00:00.000Z'),
+    slaBreachedAt: null,
+    occurredAt: new Date('2026-07-28T10:00:00.000Z'),
+    createdAt: new Date('2026-07-28T10:00:00.000Z'),
+    updatedAt: new Date('2026-07-28T10:00:00.000Z'),
+    ...overrides,
+  });
+
+  /** Detalle completo que devuelve `getById` tras el commit. */
+  const detail = (overrides: Record<string, unknown> = {}) => ({
+    ...lockedRow(overrides),
+    coordination: { code: 'coord', name: 'Coord' },
+    affectedCoordination: { code: 'coord', name: 'Coord' },
+    createdByUser: { fullName: 'Creador' },
+    assignedUser: null,
+    category: { code: 'TECH', name: 'Tech' },
+    relatedCoordinations: [],
+    ...overrides,
+  });
+
+  const createService = (row: Record<string, unknown> = lockedRow()) => {
+    const manager = createManagerMock({ findOneResult: row });
     const situationsRepository = {
-      findByIdWithRelations: jest.fn(),
-      save: jest.fn((entity: unknown) => Promise.resolve(entity)),
-      create: jest.fn((input: unknown) => input),
-      search: jest.fn(),
+      findByIdWithRelations: jest.fn().mockResolvedValue(detail()),
+      save: jest.fn(),
+      manager: transactionalManager(manager),
     };
-    const coordinationsRepository = { findOne: jest.fn() };
-    const categoriesRepository = { findOne: jest.fn() };
     const usersRepository = {
       findOne: jest.fn().mockResolvedValue({
         id: 'user-1',
         fullName: 'Juan Pérez',
       }),
     };
-    const timelineService = {
-      createEntry: jest.fn().mockResolvedValue({}),
-    };
+    const timelineService = { createEntry: jest.fn().mockResolvedValue({}) };
     const scopeService = {
       assertPermission: jest.fn(),
-      resolveSituationListCoordinationId: jest.fn(
-        (_actor: AuthPayload, requested?: string) => requested,
-      ),
-      assertSituationInScope: jest.fn(),
       assertCanUpdateSituation: jest.fn(),
-      resolveCreateCoordinationId: jest.fn(
-        (_actor: AuthPayload, requested: string) => requested,
-      ),
+      assertCanAdvanceSituationToInProgress: jest.fn(),
       isCoordinationScoped: jest.fn().mockReturnValue(false),
-      // `toResponse` consulta la política de resolución para poblar
-      // `canResolve`. Este actor es ANALISTA, que nunca resuelve.
       canResolveSituation: jest.fn().mockReturnValue(false),
       canUpdateSituation: jest.fn().mockReturnValue(true),
-      canAdvanceSituationToInProgress: jest.fn().mockReturnValue(true),
-      assertCanAdvanceSituationToInProgress: jest.fn(),
+      canAdvanceSituationToInProgress: jest.fn().mockReturnValue(false),
       canAddConsequence: jest.fn().mockReturnValue(false),
-      // `getById` lee con la regla ampliada (alcance O reporte propio).
       assertSituationReadable: jest.fn(),
     };
-
-    const auditLogService = {
-      record: jest.fn().mockResolvedValue(null),
-    };
-    const detail = emptyDetailRepositories();
+    const auditLogService = { record: jest.fn().mockResolvedValue(null) };
+    const detailRepos = emptyDetailRepositories();
 
     const service = new SituationsService(
       situationsRepository as never,
-      coordinationsRepository as never,
-      categoriesRepository as never,
-      usersRepository as never,
-      { create: jest.fn((input: unknown) => input) } as never,
-      // Repositorio de resoluciones: inerte. Estos casos cubren las
-      // transiciones del PATCH, no la operación de resolución.
+      // Coordinación General: el avance la consulta (aquí no existe).
+      { findOne: jest.fn().mockResolvedValue(null) } as never,
       {} as never,
-      detail.severityChangesRepository as never,
-      detail.consequencesRepository as never,
+      usersRepository as never,
+      {} as never,
+      {} as never,
+      detailRepos.severityChangesRepository as never,
+      detailRepos.consequencesRepository as never,
       timelineService as never,
       scopeService as never,
       auditLogService as never,
@@ -87,301 +111,332 @@ describe('SituationsService status transitions', () => {
 
     return {
       service,
+      manager,
       situationsRepository,
-      usersRepository,
       timelineService,
       scopeService,
       auditLogService,
     };
   };
 
-  const baseSituation = {
-    id: 'sit-1',
-    title: 'Incidente',
-    description: 'Desc',
-    coordinationId: 'c1',
-    coordination: { code: 'coord', name: 'Coord' },
-    createdByUserId: 'creator',
-    createdByUser: { fullName: 'Creador' },
-    assignedUserId: null,
-    assignedUser: null,
-    categoryId: 'cat',
-    category: { code: 'TECH', name: 'Tech' },
-    severity: 'HIGH',
-    status: SituationStatus.OPEN,
-    lastStatusComment: null,
-    resolvedAt: null,
-    closedAt: null,
-    occurredAt: new Date('2026-07-28T10:00:00.000Z'),
-    createdAt: new Date('2026-07-28T10:00:00.000Z'),
-    updatedAt: new Date('2026-07-28T10:00:00.000Z'),
-    relatedCoordinations: [],
-  };
+  const errorOf = async (promise: Promise<unknown>) =>
+    promise.then(
+      () => {
+        throw new Error('se esperaba un error');
+      },
+      (error: unknown) => error,
+    );
 
-  it('avanza OPEN → IN_PROGRESS y asigna responsable automático', async () => {
-    const { service, situationsRepository, timelineService, scopeService } =
-      createService();
-    situationsRepository.findByIdWithRelations
-      .mockResolvedValueOnce({ ...baseSituation })
-      .mockResolvedValueOnce({
-        ...baseSituation,
-        status: SituationStatus.IN_PROGRESS,
-        assignedUserId: 'user-1',
-        assignedUser: { fullName: 'Juan Pérez' },
+  describe('F-01 · concurrencia', () => {
+    it('lee la fila con pessimistic_write dentro de la transacción y guarda con el mismo manager', async () => {
+      const { service, manager, situationsRepository } = createService();
+
+      await service.update(
+        'sit-1',
+        { title: 'Título corregido' },
+        analystActor,
+      );
+
+      expect(situationsRepository.manager.transaction).toHaveBeenCalledTimes(1);
+      expect(manager.findOne).toHaveBeenCalledWith(Situation, {
+        where: { id: 'sit-1' },
+        loadEagerRelations: false,
+        lock: { mode: 'pessimistic_write' },
       });
+      expect(manager.save).toHaveBeenCalledWith(
+        Situation,
+        expect.objectContaining({ title: 'Título corregido' }),
+      );
+      // Nunca el `save` del repositorio, que escribía la entidad leída SIN
+      // bloqueo y revertía columnas cambiadas por otra petición.
+      expect(situationsRepository.save).not.toHaveBeenCalled();
+    });
 
-    const result = await service.update(
-      'sit-1',
-      { status: SituationStatus.IN_PROGRESS },
-      analystActor,
-    );
-
-    expect(situationsRepository.save).toHaveBeenCalled();
-    expect(timelineService.createEntry).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userId: 'user-1',
-        title: 'Estado actualizado',
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        metadata: expect.objectContaining({
-          previousValue: SituationStatus.OPEN,
-          newValue: SituationStatus.IN_PROGRESS,
-          assignedUserName: 'Juan Pérez',
-          evidenceIds: [],
+    it('si un cierre confirmó antes, el PATCH lo ve bajo bloqueo y no lo revierte', async () => {
+      // La resolución ganó el bloqueo: al leer, la fila ya está CLOSED.
+      const { service, manager } = createService(
+        lockedRow({
+          status: SituationStatus.CLOSED,
+          closedAt: new Date('2026-07-29T10:00:00.000Z'),
         }),
-      }),
-    );
-    expect(result.status).toBe(SituationStatus.IN_PROGRESS);
-    expect(result.canUpdate).toBe(true);
-    expect(result.canAdvanceToInProgress).toBe(false);
-    expect(result.canResolve).toBe(false);
-    expect(result.assignedUserName).toBe('Juan Pérez');
-    expect(
-      scopeService.assertCanAdvanceSituationToInProgress,
-    ).toHaveBeenCalled();
-    expect(scopeService.assertCanUpdateSituation).not.toHaveBeenCalled();
+      );
+
+      const error = await errorOf(
+        service.update(
+          'sit-1',
+          { status: SituationStatus.IN_PROGRESS },
+          analystActor,
+        ),
+      );
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it('conserva las marcas SLA y de análisis de la fila bloqueada', async () => {
+      const breachedAt = new Date('2026-07-31T10:00:00.000Z');
+      const { service, manager } = createService(
+        lockedRow({
+          slaBreachedAt: breachedAt,
+          analysisClaimToken: 'claim-vigente',
+        }),
+      );
+
+      await service.update('sit-1', { title: 'Nuevo título' }, analystActor);
+
+      expect(manager.save).toHaveBeenCalledWith(
+        Situation,
+        expect.objectContaining({
+          slaBreachedAt: breachedAt,
+          analysisClaimToken: 'claim-vigente',
+          status: SituationStatus.OPEN,
+        }),
+      );
+    });
   });
 
-  it('rechaza OPEN → IN_PROGRESS si assertCanAdvance lo deniega', async () => {
-    const { service, situationsRepository, scopeService, timelineService } =
-      createService();
-    situationsRepository.findByIdWithRelations.mockResolvedValue({
-      ...baseSituation,
+  describe('avance OPEN → IN_PROGRESS', () => {
+    it('usa la política de avance, asigna a quien avanza y registra la línea de tiempo en la transacción', async () => {
+      const { service, manager, timelineService, scopeService } =
+        createService();
+
+      await service.update(
+        'sit-1',
+        { status: SituationStatus.IN_PROGRESS },
+        analystActor,
+      );
+
+      expect(
+        scopeService.assertCanAdvanceSituationToInProgress,
+      ).toHaveBeenCalled();
+      expect(scopeService.assertCanUpdateSituation).not.toHaveBeenCalled();
+      expect(manager.save).toHaveBeenCalledWith(
+        Situation,
+        expect.objectContaining({
+          status: SituationStatus.IN_PROGRESS,
+          assignedUserId: 'user-1',
+        }),
+      );
+      expect(timelineService.createEntry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Estado actualizado',
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          metadata: expect.objectContaining({
+            previousValue: SituationStatus.OPEN,
+            newValue: SituationStatus.IN_PROGRESS,
+            assignedUserName: 'Juan Pérez',
+          }),
+        }),
+        manager,
+      );
     });
-    scopeService.assertCanAdvanceSituationToInProgress.mockImplementation(
-      () => {
-        throw new ForbiddenException('Solo puede pasar a «En atención»…');
+
+    it('rechaza el avance si la política lo deniega, sin escribir', async () => {
+      const { service, manager, scopeService, timelineService } =
+        createService();
+      scopeService.assertCanAdvanceSituationToInProgress.mockImplementation(
+        () => {
+          throw new ForbiddenException('Solo puede pasar a «En atención»…');
+        },
+      );
+
+      await expect(
+        service.update(
+          'sit-1',
+          { status: SituationStatus.IN_PROGRESS },
+          analystActor,
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+
+      expect(manager.save).not.toHaveBeenCalled();
+      expect(timelineService.createEntry).not.toHaveBeenCalled();
+    });
+
+    it('admite un comentario de transición junto al avance', async () => {
+      const { service, manager } = createService();
+
+      await service.update(
+        'sit-1',
+        { status: SituationStatus.IN_PROGRESS, statusComment: 'Lo tomo yo.' },
+        analystActor,
+      );
+
+      expect(manager.save).toHaveBeenCalledWith(
+        Situation,
+        expect.objectContaining({ lastStatusComment: 'Lo tomo yo.' }),
+      );
+    });
+
+    it.each([
+      ['title', { title: 'Otro título' }],
+      ['description', { description: 'Otra descripción' }],
+      ['occurredAt', { occurredAt: '2026-07-27T10:00:00.000Z' }],
+    ])(
+      'O1 · avance + %s → 400 ADVANCE_WITH_FIELD_CHANGES, sin escribir ni auditar',
+      async (_field, extra) => {
+        const { service, manager, auditLogService } = createService();
+
+        const error = await errorOf(
+          service.update(
+            'sit-1',
+            { status: SituationStatus.IN_PROGRESS, ...extra },
+            analystActor,
+          ),
+        );
+
+        expect(error).toBeInstanceOf(BadRequestException);
+        expect((error as BadRequestException).getResponse()).toMatchObject({
+          code: 'ADVANCE_WITH_FIELD_CHANGES',
+        });
+        expect(manager.save).not.toHaveBeenCalled();
+        expect(auditLogService.record).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  describe('N1 / N2 · la coordinación responsable no se cambia por PATCH', () => {
+    it.each([
+      ['INTERNAL', { reportKind: 'INTERNAL', affectedCoordinationId: 'c1' }],
+      [
+        'INTER_COORDINATION',
+        { reportKind: 'INTER_COORDINATION', affectedCoordinationId: 'c9' },
+      ],
+    ])(
+      'un autor ANALISTA no reasigna un %s (403 COORDINATION_TRANSFER_NOT_ALLOWED)',
+      async (_kind, overrides) => {
+        const { service, manager } = createService(lockedRow(overrides));
+
+        const error = await errorOf(
+          service.update(
+            'sit-1',
+            // Destino coord-general (N1) o la propia afectada (N2).
+            { coordinationId: 'c9' },
+            analystActor,
+          ),
+        );
+
+        expect(error).toBeInstanceOf(ForbiddenException);
+        expect((error as ForbiddenException).getResponse()).toMatchObject({
+          code: 'COORDINATION_TRANSFER_NOT_ALLOWED',
+        });
+        expect(manager.save).not.toHaveBeenCalled();
       },
     );
 
-    await expect(
-      service.update(
-        'sit-1',
-        { status: SituationStatus.IN_PROGRESS },
-        analystActor,
-      ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    it('tampoco combinada con el avance (variante O1 de N1)', async () => {
+      const { service, manager } = createService();
 
-    expect(situationsRepository.save).not.toHaveBeenCalled();
-    expect(timelineService.createEntry).not.toHaveBeenCalled();
-    expect(scopeService.assertCanUpdateSituation).not.toHaveBeenCalled();
-  });
+      const error = await errorOf(
+        service.update(
+          'sit-1',
+          { status: SituationStatus.IN_PROGRESS, coordinationId: 'c9' },
+          analystActor,
+        ),
+      );
 
-  it('el PATCH genérico NO puede cerrar desde IN_PROGRESS', async () => {
-    // Verdad nueva: cerrar dejó de ser una transición más del PATCH. Antes esto
-    // solo exigía un motivo; ahora la ruta entera está cerrada, porque
-    // `assertCanUpdateSituation` autoriza por AUTORÍA o por área y eso es más
-    // amplio que la regla de resolución. El cierre vive en
-    // POST /situations/:id/resolution.
-    const { service, situationsRepository, timelineService } = createService();
-    situationsRepository.findByIdWithRelations.mockResolvedValue({
-      ...baseSituation,
-      status: SituationStatus.IN_PROGRESS,
-      assignedUserId: 'user-1',
-      assignedUser: { fullName: 'Juan Pérez' },
+      expect(error).toBeInstanceOf(ForbiddenException);
+      expect(manager.save).not.toHaveBeenCalled();
     });
-
-    await expect(
-      service.update('sit-1', { status: SituationStatus.CLOSED }, analystActor),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-
-    expect(timelineService.createEntry).not.toHaveBeenCalled();
   });
 
-  it('el PATCH tampoco cierra aportando un motivo', async () => {
-    // El motivo de transición no es un sustituto del aprendizaje: aportar texto
-    // no reabre esta vía.
-    const {
-      service,
-      situationsRepository,
-      situationsRepository: repo,
-    } = createService();
-    void repo;
-    situationsRepository.findByIdWithRelations.mockResolvedValue({
-      ...baseSituation,
-      status: SituationStatus.IN_PROGRESS,
-      assignedUserId: 'user-1',
-      assignedUser: { fullName: 'Juan Pérez' },
-    });
-
-    await expect(
-      service.update(
-        'sit-1',
-        {
-          status: SituationStatus.CLOSED,
-          statusComment: 'Caso documentado y cerrado.',
-        },
-        analystActor,
-      ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-
-    expect(situationsRepository.save).not.toHaveBeenCalled();
-  });
-
-  it('el PATCH conserva las transiciones que NO son el cierre', async () => {
-    // Se bloqueó el DESTINO `CLOSED`, no el endpoint: el resto del ciclo sigue
-    // funcionando por esta vía. Lo cubre la prueba OPEN → IN_PROGRESS de arriba;
-    // aquí se comprueba que un cambio de campo sin estado tampoco se ve
-    // afectado.
-    const { service, situationsRepository } = createService();
-    situationsRepository.findByIdWithRelations
-      .mockResolvedValueOnce({ ...baseSituation, status: SituationStatus.OPEN })
-      .mockResolvedValueOnce({
-        ...baseSituation,
-        status: SituationStatus.OPEN,
-        title: 'Título corregido',
+  describe('O2 · CLOSED es inmutable para operaciones ordinarias', () => {
+    const closed = () =>
+      lockedRow({
+        status: SituationStatus.CLOSED,
+        closedAt: new Date('2026-07-29T10:00:00.000Z'),
       });
 
-    const result = await service.update(
-      'sit-1',
-      { title: 'Título corregido' },
-      analystActor,
-    );
+    it.each([
+      ['título', { title: 'Retoque' }],
+      ['descripción', { description: 'Retoque' }],
+      ['fecha', { occurredAt: '2026-07-27T10:00:00.000Z' }],
+      ['comentario', { statusComment: 'Nota tardía' }],
+      ['estado', { status: SituationStatus.IN_PROGRESS }],
+    ])('rechaza editar %s de un caso cerrado (409)', async (_label, dto) => {
+      const { service, manager } = createService(closed());
 
-    expect(result.title).toBe('Título corregido');
-    expect(situationsRepository.save).toHaveBeenCalled();
-  });
+      const error = await errorOf(service.update('sit-1', dto, analystActor));
 
-  it('PATCH MIXTO: estado + título auditan las dos cosas', async () => {
-    const { service, situationsRepository, auditLogService } = createService();
-    situationsRepository.findByIdWithRelations
-      .mockResolvedValueOnce({ ...baseSituation })
-      .mockResolvedValueOnce({
-        ...baseSituation,
-        status: SituationStatus.IN_PROGRESS,
-        title: 'Título corregido',
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        code: 'SITUATION_CLOSED',
+      });
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it('decide el alcance ANTES que el estado: fuera de alcance responde 404, no 409', async () => {
+      const { service, scopeService } = createService(closed());
+      scopeService.assertCanUpdateSituation.mockImplementation(() => {
+        throw new NotFoundException('Situación no encontrada.');
       });
 
-    await service.update(
-      'sit-1',
-      { status: SituationStatus.IN_PROGRESS, title: 'Título corregido' },
-      analystActor,
+      await expect(
+        service.update('sit-1', { title: 'x' }, analystActor),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('cierre fuera del PATCH', () => {
+    it.each([
+      ['IN_PROGRESS', SituationStatus.IN_PROGRESS],
+      ['RESOLVED (legado)', SituationStatus.RESOLVED],
+    ])(
+      'no cierra desde %s, ni aportando un motivo (403)',
+      async (_label, status) => {
+        const { service, manager } = createService(lockedRow({ status }));
+
+        await expect(
+          service.update(
+            'sit-1',
+            { status: SituationStatus.CLOSED, statusComment: 'Motivo' },
+            analystActor,
+          ),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+        expect(manager.save).not.toHaveBeenCalled();
+      },
     );
 
-    const actions = auditLogService.record.mock.calls.map(
-      ([input]: [{ action: string; metadata: unknown }]) => input,
-    );
-    expect(actions.map((a) => a.action)).toEqual([
-      'SITUATION_STATUS_CHANGED',
-      'SITUATION_UPDATED',
-    ]);
-    expect(actions[1].metadata).toEqual({ changedFields: ['title'] });
+    it('rechaza saltos de estado distintos del cierre (400)', async () => {
+      const { service } = createService();
+
+      await expect(
+        service.update(
+          'sit-1',
+          { status: SituationStatus.RESOLVED },
+          analystActor,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
   });
 
-  it('reasignar la coordinación de un INTERNAL reasigna también la afectada', async () => {
-    const { service, situationsRepository } = createService();
-    const other = { id: 'c2', code: 'coord-2', name: 'Otra', isActive: true };
-    (
-      service as unknown as {
-        coordinationsRepository: { findOne: jest.Mock };
-      }
-    ).coordinationsRepository.findOne.mockResolvedValue(other);
-    situationsRepository.findByIdWithRelations.mockResolvedValue({
-      ...baseSituation,
-      reportKind: 'INTERNAL',
-      affectedCoordinationId: 'c1',
+  describe('edición ordinaria', () => {
+    it('edita el título con la política de edición y lo audita tras el commit', async () => {
+      const { service, scopeService, auditLogService } = createService();
+
+      await service.update(
+        'sit-1',
+        { title: 'Título corregido' },
+        analystActor,
+      );
+
+      expect(scopeService.assertCanUpdateSituation).toHaveBeenCalled();
+      expect(auditLogService.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'SITUATION_UPDATED',
+          metadata: { changedFields: ['title'] },
+        }),
+      );
     });
 
-    await service.update('sit-1', { coordinationId: 'c2' }, analystActor);
+    it('un caso inexistente responde 404 sin escribir', async () => {
+      const { service, manager } = createService();
+      manager.findOne.mockResolvedValueOnce(null);
 
-    const saved = situationsRepository.save.mock.calls[0][0] as {
-      coordinationId: string;
-      affectedCoordinationId: string;
-    };
-    expect(saved.coordinationId).toBe('c2');
-    expect(saved.affectedCoordinationId).toBe('c2');
-  });
-
-  it('rechaza saltos de estado y retrocesos', async () => {
-    // El ejemplo histórico de este caso era OPEN -> CLOSED. Ese salto ahora se
-    // detiene ANTES, al bloquearse el destino CLOSED en el PATCH, así que se
-    // comprueban las dos verdades por separado: el salto a CLOSED da
-    // ForbiddenException y cualquier otro salto sigue dando BadRequestException.
-    const { service, situationsRepository } = createService();
-    situationsRepository.findByIdWithRelations.mockResolvedValue({
-      ...baseSituation,
-      status: SituationStatus.OPEN,
+      await expect(
+        service.update('sit-1', { title: 'x' }, analystActor),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(manager.save).not.toHaveBeenCalled();
     });
-
-    await expect(
-      service.update(
-        'sit-1',
-        { status: SituationStatus.CLOSED, statusComment: 'Motivo' },
-        analystActor,
-      ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-
-    await expect(
-      service.update(
-        'sit-1',
-        { status: SituationStatus.RESOLVED },
-        analystActor,
-      ),
-    ).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  it('bloquea cambios cuando la situación está CLOSED', async () => {
-    const { service, situationsRepository } = createService();
-    situationsRepository.findByIdWithRelations.mockResolvedValue({
-      ...baseSituation,
-      status: SituationStatus.CLOSED,
-      closedAt: new Date(),
-    });
-
-    await expect(
-      service.update(
-        'sit-1',
-        { status: SituationStatus.IN_PROGRESS },
-        analystActor,
-      ),
-    ).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  it('una fila RESOLVED legada tampoco se cierra por el PATCH', async () => {
-    // Verdad nueva: RESOLVED sigue siendo un valor legado y cerrable, pero solo
-    // desde la operación de resolución, que exige aprendizaje y coordinador
-    // responsable. El historial de cierre lo escribe ahora esa operación.
-    const { service, situationsRepository, timelineService } = createService();
-    situationsRepository.findByIdWithRelations.mockResolvedValue({
-      ...baseSituation,
-      status: SituationStatus.RESOLVED,
-      assignedUserId: 'user-1',
-      assignedUser: { fullName: 'Juan Pérez' },
-      resolvedAt: new Date(),
-    });
-
-    await expect(
-      service.update(
-        'sit-1',
-        {
-          status: SituationStatus.CLOSED,
-          statusComment: 'Validación final realizada.',
-          evidenceIds: [],
-        },
-        analystActor,
-      ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-
-    expect(timelineService.createEntry).not.toHaveBeenCalled();
   });
 });
 

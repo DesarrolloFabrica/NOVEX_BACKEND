@@ -14,6 +14,7 @@ import { AuditLogService } from '../audit/audit-log.service';
 import {
   GENERAL_OPERATIONS_COORDINATION_CODE,
   OperationalScopeService,
+  SITUATION_CLOSED_CODE,
 } from '../auth/services/operational-scope.service';
 import { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { TimelineEventType } from '../common/enums/situation-timeline.enums';
@@ -78,6 +79,25 @@ import {
  * filas históricas que quedaron en él puedan cerrarse. No se reactiva como paso
  * del flujo: nada lo produce.
  */
+/** Código de negocio: el PATCH no traslada la coordinación responsable. */
+export const COORDINATION_TRANSFER_NOT_ALLOWED_CODE =
+  'COORDINATION_TRANSFER_NOT_ALLOWED';
+
+/** Código de negocio: el avance a «En atención» no admite otros cambios. */
+export const ADVANCE_WITH_FIELD_CHANGES_CODE = 'ADVANCE_WITH_FIELD_CHANGES';
+
+/**
+ * Campos que un avance OPEN → IN_PROGRESS NO puede llevar (O1). El avance se
+ * autoriza con su propia política, más estrecha que la de edición; si
+ * aceptara estos campos, serviría de vía para editar sin permiso de edición.
+ */
+const ADVANCE_FORBIDDEN_FIELDS = [
+  'title',
+  'description',
+  'occurredAt',
+  'coordinationId',
+] as const satisfies ReadonlyArray<keyof UpdateSituationDto>;
+
 const RESOLVABLE_STATUSES: readonly SituationStatus[] = [
   SituationStatus.OPEN,
   SituationStatus.IN_PROGRESS,
@@ -696,177 +716,213 @@ export class SituationsService implements OnModuleInit {
     };
   }
 
+  /**
+   * PATCH DE UNA SITUACIÓN (edición ordinaria y avance a «En atención»).
+   *
+   * TRANSACCIÓN + BLOQUEO (F-01). La fila se lee con `pessimistic_write`
+   * DENTRO de la transacción, y permisos y estado se deciden sobre esa lectura
+   * bloqueada. Antes se leía sin bloqueo y se guardaba la entidad completa:
+   * TypeORM escribe toda columna que difiera de la base, así que un PATCH que
+   * leyó `OPEN` podía devolver a `OPEN` un caso que otra petición acababa de
+   * cerrar, o borrar `sla_breached_at` / `analysis_claim_*` escritos en medio.
+   * Con el bloqueo, resolución, barrido SLA y reclamo IA esperan a este commit
+   * (o este PATCH espera al suyo y ve el estado nuevo).
+   *
+   * REGLAS:
+   *   - CLOSED es inmutable para operaciones ordinarias (O2) → 409.
+   *   - La coordinación responsable NO se cambia por PATCH (N1, N2): el traslado
+   *     es una acción administrativa explícita (ADMIN, motivo, auditoría) que
+   *     todavía no existe → 403 `COORDINATION_TRANSFER_NOT_ALLOWED`. Como no
+   *     cambia la responsable, los invariantes INTERNAL (afectada = responsable)
+   *     e INTER (afectada ≠ responsable) no pueden romperse por esta vía.
+   *   - El avance OPEN → IN_PROGRESS tiene política propia y solo admite
+   *     `status`, `statusComment` y `evidenceIds`; mezclarlo con otros campos
+   *     → 400 `ADVANCE_WITH_FIELD_CHANGES` (O1).
+   *   - El cierre se registra en `POST /situations/:id/resolution` → 403.
+   *
+   * Orden: alcance y permiso (404/403) antes que estado (409), para no revelar
+   * el estado de un caso ajeno.
+   */
   async update(
     id: string,
     dto: UpdateSituationDto,
     actor: AuthPayload,
   ): Promise<SituationDetailResponseDto> {
-    const situation = await this.situationsRepository.findByIdWithRelations(id);
-    if (!situation) {
-      throw new NotFoundException(`Situación no encontrada: ${id}`);
-    }
+    const generalCoordinationId = await this.ensureGeneralCoordinationId();
 
-    /*
-     * AVANCE OPEN → IN_PROGRESS: política propia (`canAdvance…`), más
-     * estrecha que `canUpdate` (autoría u otras ediciones). El resto del
-     * PATCH sigue con `assertCanUpdateSituation`.
-     */
-    const advancesToInProgress =
-      dto.status === SituationStatus.IN_PROGRESS &&
-      situation.status === SituationStatus.OPEN;
+    const outcome = await this.situationsRepository.manager.transaction(
+      async (manager: EntityManager) => {
+        // Fila desnuda: con relaciones eager, PostgreSQL rechaza FOR UPDATE
+        // (ver `resolve`).
+        const situation = await manager.findOne(Situation, {
+          where: { id },
+          loadEagerRelations: false,
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!situation) {
+          throw new NotFoundException(`Situación no encontrada: ${id}`);
+        }
 
-    if (advancesToInProgress) {
-      this.scopeService.assertCanAdvanceSituationToInProgress(
-        actor,
-        situation,
-        await this.ensureGeneralCoordinationId(),
-      );
-    } else {
-      this.scopeService.assertCanUpdateSituation(actor, situation);
-    }
+        const advancesToInProgress =
+          dto.status === SituationStatus.IN_PROGRESS &&
+          situation.status === SituationStatus.OPEN;
 
-    /*
-     * CIERRE FUERA DE ESTA RUTA.
-     *
-     * Cerrar un problema es ahora una operación con reglas propias —solo el
-     * coordinador del área responsable, y siempre con aprendizaje— y esas
-     * reglas no se pueden aplicar desde aquí, porque `assertCanUpdateSituation`
-     * autoriza por AUTORÍA o por área, que es un criterio más amplio. Si el
-     * PATCH genérico siguiera admitiendo `CLOSED`, el autor de un reporte
-     * podría cerrarlo sin ser coordinador y sin registrar ningún aprendizaje.
-     *
-     * Se bloquea el DESTINO, no el endpoint: el resto de campos y la transición
-     * a `IN_PROGRESS` siguen funcionando igual que antes.
-     */
-    if (dto.status === SituationStatus.CLOSED) {
-      throw new ForbiddenException(
-        'El cierre se registra en POST /situations/:id/resolution, con el aprendizaje correspondiente.',
-      );
-    }
+        if (advancesToInProgress) {
+          this.scopeService.assertCanAdvanceSituationToInProgress(
+            actor,
+            situation,
+            generalCoordinationId,
+          );
+        } else {
+          this.scopeService.assertCanUpdateSituation(actor, situation);
+        }
 
-    if (
-      situation.status === SituationStatus.CLOSED &&
-      dto.status !== undefined
-    ) {
-      throw new BadRequestException(
-        'La situación está cerrada y no admite nuevas modificaciones de estado.',
-      );
-    }
+        if (dto.status === SituationStatus.CLOSED) {
+          throw new ForbiddenException(
+            'El cierre se registra en POST /situations/:id/resolution, con el aprendizaje correspondiente.',
+          );
+        }
 
-    if (dto.coordinationId !== undefined) {
-      if (this.scopeService.isCoordinationScoped(actor)) {
-        throw new ForbiddenException(
-          'No puede reasignar la coordinación de la situación.',
-        );
-      }
+        if (situation.status === SituationStatus.CLOSED) {
+          throw new ConflictException({
+            code: SITUATION_CLOSED_CODE,
+            message:
+              'El problema está cerrado y no admite modificaciones ordinarias.',
+          });
+        }
 
-      const coordination = await this.ensureCoordination(dto.coordinationId);
-      situation.coordinationId = coordination.id;
-      situation.coordination = coordination;
-      // En INTERNAL la afectada ES la responsable: si se reasigna una, se
-      // reasigna la otra. Antes quedaban desincronizadas en silencio.
-      if (situation.reportKind === SituationReportKind.INTERNAL) {
-        situation.affectedCoordinationId = coordination.id;
-        situation.affectedCoordination = coordination;
-      }
-    }
+        if (dto.coordinationId !== undefined) {
+          throw new ForbiddenException({
+            code: COORDINATION_TRANSFER_NOT_ALLOWED_CODE,
+            message:
+              'La coordinación responsable no se modifica desde la edición. El traslado es una acción administrativa con motivo y auditoría.',
+          });
+        }
 
-    // `categoryId` y `severity` ya no llegan por aquí: el DTO no los declara y
-    // la validación global los rechaza. La categoría es inmutable y la
-    // severidad solo la cambia el sistema, con historial.
+        if (advancesToInProgress) {
+          const extraFields = ADVANCE_FORBIDDEN_FIELDS.filter(
+            (field) => dto[field] !== undefined,
+          );
+          if (extraFields.length > 0) {
+            throw new BadRequestException({
+              code: ADVANCE_WITH_FIELD_CHANGES_CODE,
+              message:
+                'Pasar a «En atención» no admite cambios en otros campos. Envíe la edición por separado.',
+              fields: extraFields,
+            });
+          }
+        }
 
-    if (dto.title !== undefined) {
-      situation.title = dto.title.trim();
-    }
-    if (dto.description !== undefined) {
-      situation.description = dto.description.trim();
-    }
-    if (dto.occurredAt !== undefined) {
-      const occurredAt = new Date(dto.occurredAt);
-      if (Number.isNaN(occurredAt.getTime())) {
-        throw new BadRequestException('La fecha de ocurrencia no es válida.');
-      }
-      if (isFutureOccurredAt(occurredAt)) {
-        throw new BadRequestException(
-          'La fecha de ocurrencia no puede ser futura.',
-        );
-      }
-      situation.occurredAt = occurredAt;
-    }
+        if (dto.title !== undefined) {
+          situation.title = dto.title.trim();
+        }
+        if (dto.description !== undefined) {
+          situation.description = dto.description.trim();
+        }
+        if (dto.occurredAt !== undefined) {
+          const occurredAt = new Date(dto.occurredAt);
+          if (Number.isNaN(occurredAt.getTime())) {
+            throw new BadRequestException(
+              'La fecha de ocurrencia no es válida.',
+            );
+          }
+          if (isFutureOccurredAt(occurredAt)) {
+            throw new BadRequestException(
+              'La fecha de ocurrencia no puede ser futura.',
+            );
+          }
+          situation.occurredAt = occurredAt;
+        }
 
-    const previousStatus = situation.status;
-    const changedFields = this.collectChangedFields(dto);
-    let statusTransitionApplied = false;
-    let statusComment: string | null = null;
+        const previousStatus = situation.status;
+        const changedFields = this.collectChangedFields(dto);
+        let statusTransitionApplied = false;
+        let statusComment: string | null = null;
 
-    if (dto.status !== undefined && dto.status !== previousStatus) {
-      this.assertValidStatusTransition(previousStatus, dto.status);
-      statusComment = this.resolveStatusComment(dto.status, dto.statusComment);
-      await this.applyStatusTransition(
-        situation,
-        dto.status,
-        statusComment,
-        actor.sub,
-      );
-      statusTransitionApplied = true;
-    } else if (dto.statusComment !== undefined) {
-      situation.lastStatusComment = dto.statusComment.trim();
-    }
+        if (dto.status !== undefined && dto.status !== previousStatus) {
+          this.assertValidStatusTransition(previousStatus, dto.status);
+          statusComment = this.resolveStatusComment(
+            dto.status,
+            dto.statusComment,
+          );
+          await this.applyStatusTransition(
+            situation,
+            dto.status,
+            statusComment,
+            actor.sub,
+          );
+          statusTransitionApplied = true;
+        } else if (dto.statusComment !== undefined) {
+          situation.lastStatusComment = dto.statusComment.trim();
+        }
 
-    await this.situationsRepository.save(situation);
+        // Mismo `manager`: el subscriber de la línea de tiempo escribe los
+        // cambios de campo dentro de esta transacción, y TypeORM calcula el
+        // diff contra la fila ya bloqueada (no contra una lectura vieja).
+        await manager.save(Situation, situation);
 
-    if (statusTransitionApplied) {
-      await this.recordStatusTransitionTimeline({
-        situationId: situation.id,
-        actorUserId: actor.sub,
-        previousStatus,
-        nextStatus: situation.status,
-        statusComment,
-        assignedUserName: situation.assignedUser?.fullName ?? null,
-        evidenceIds: dto.evidenceIds ?? [],
-        dueAt: situation.dueAt,
-        slaBreachedAt: situation.slaBreachedAt,
-        closedOnTime:
-          situation.status === SituationStatus.CLOSED
-            ? wasClosedOnTime(situation.dueAt, situation.closedAt)
-            : null,
-      });
+        if (statusTransitionApplied) {
+          await this.recordStatusTransitionTimeline(
+            {
+              situationId: situation.id,
+              actorUserId: actor.sub,
+              previousStatus,
+              nextStatus: situation.status,
+              statusComment,
+              assignedUserName: situation.assignedUser?.fullName ?? null,
+              evidenceIds: dto.evidenceIds ?? [],
+              dueAt: situation.dueAt,
+              slaBreachedAt: situation.slaBreachedAt,
+              closedOnTime: null,
+            },
+            manager,
+          );
+        }
 
+        return {
+          previousStatus,
+          nextStatus: situation.status,
+          statusTransitionApplied,
+          statusComment,
+          changedFields,
+          dueAt: situation.dueAt,
+          slaBreachedAt: situation.slaBreachedAt,
+        };
+      },
+    );
+
+    // La auditoría va después del commit, como en el resto del dominio.
+    if (outcome.statusTransitionApplied) {
       await this.auditLogService.record({
         actor,
         action: AuditAction.SITUATION_STATUS_CHANGED,
         resourceType: AuditResourceType.SITUATION,
-        resourceId: situation.id,
+        resourceId: id,
         metadata: {
-          previousStatus,
-          nextStatus: situation.status,
-          statusComment,
-          dueAt: situation.dueAt,
-          slaBreachedAt: situation.slaBreachedAt,
-          closedOnTime:
-            situation.status === SituationStatus.CLOSED
-              ? wasClosedOnTime(situation.dueAt, situation.closedAt)
-              : null,
+          previousStatus: outcome.previousStatus,
+          nextStatus: outcome.nextStatus,
+          statusComment: outcome.statusComment,
+          dueAt: outcome.dueAt,
+          slaBreachedAt: outcome.slaBreachedAt,
+          closedOnTime: null,
         },
       });
     }
 
     /*
-     * PATCH MIXTO. Antes, si la petición cambiaba el estado Y otros campos, solo
-     * se auditaba el cambio de estado (un `else if`) y el subscriber descartaba
-     * los campos: ese cambio se perdía en ambos registros. Ahora los campos se
-     * auditan siempre que los haya; el comentario de estado ya viaja en el
-     * evento de transición y no se repite.
+     * PATCH MIXTO (edición + comentario). Los campos se auditan siempre que los
+     * haya; el comentario de estado ya viaja en el evento de transición y no
+     * se repite.
      */
-    const fieldChanges = statusTransitionApplied
-      ? changedFields.filter((field) => field !== 'statusComment')
-      : changedFields;
+    const fieldChanges = outcome.statusTransitionApplied
+      ? outcome.changedFields.filter((field) => field !== 'statusComment')
+      : outcome.changedFields;
     if (fieldChanges.length > 0) {
       await this.auditLogService.record({
         actor,
         action: AuditAction.SITUATION_UPDATED,
         resourceType: AuditResourceType.SITUATION,
-        resourceId: situation.id,
+        resourceId: id,
         metadata: { changedFields: fieldChanges },
       });
     }
@@ -1128,18 +1184,21 @@ export class SituationsService implements OnModuleInit {
     }
   }
 
-  private async recordStatusTransitionTimeline(input: {
-    situationId: string;
-    actorUserId: string | null;
-    previousStatus: SituationStatus;
-    nextStatus: SituationStatus;
-    statusComment: string | null;
-    assignedUserName: string | null;
-    evidenceIds: string[];
-    dueAt: Date | null;
-    slaBreachedAt: Date | null;
-    closedOnTime: boolean | null;
-  }): Promise<void> {
+  private async recordStatusTransitionTimeline(
+    input: {
+      situationId: string;
+      actorUserId: string | null;
+      previousStatus: SituationStatus;
+      nextStatus: SituationStatus;
+      statusComment: string | null;
+      assignedUserName: string | null;
+      evidenceIds: string[];
+      dueAt: Date | null;
+      slaBreachedAt: Date | null;
+      closedOnTime: boolean | null;
+    },
+    manager?: EntityManager,
+  ): Promise<void> {
     const fromLabel = SITUATION_STATUS_LABEL_ES[input.previousStatus];
     const toLabel = SITUATION_STATUS_LABEL_ES[input.nextStatus];
     const eventType =
@@ -1165,30 +1224,33 @@ export class SituationsService implements OnModuleInit {
       descriptionParts.push(`${commentLabel}: ${input.statusComment}`);
     }
 
-    await this.timelineService.createEntry({
-      situationId: input.situationId,
-      userId: input.actorUserId,
-      eventType,
-      title,
-      description: descriptionParts.join(' '),
-      metadata: {
-        field: 'status',
-        previousValue: input.previousStatus,
-        newValue: input.nextStatus,
-        previousLabel: fromLabel,
-        newLabel: toLabel,
-        statusComment: input.statusComment,
-        commentKind:
-          input.nextStatus === SituationStatus.CLOSED ? 'closure' : 'note',
-        assignedUserName: input.assignedUserName,
-        /** Estructura preparada para evidencias futuras. */
-        evidenceIds: input.evidenceIds,
-        evidencesAttached: false,
-        dueAt: input.dueAt,
-        closedOnTime: input.closedOnTime,
-        slaBreachedAt: input.slaBreachedAt,
+    await this.timelineService.createEntry(
+      {
+        situationId: input.situationId,
+        userId: input.actorUserId,
+        eventType,
+        title,
+        description: descriptionParts.join(' '),
+        metadata: {
+          field: 'status',
+          previousValue: input.previousStatus,
+          newValue: input.nextStatus,
+          previousLabel: fromLabel,
+          newLabel: toLabel,
+          statusComment: input.statusComment,
+          commentKind:
+            input.nextStatus === SituationStatus.CLOSED ? 'closure' : 'note',
+          assignedUserName: input.assignedUserName,
+          /** Estructura preparada para evidencias futuras. */
+          evidenceIds: input.evidenceIds,
+          evidencesAttached: false,
+          dueAt: input.dueAt,
+          closedOnTime: input.closedOnTime,
+          slaBreachedAt: input.slaBreachedAt,
+        },
       },
-    });
+      manager,
+    );
   }
 
   private async ensureCoordination(id: string): Promise<Coordination> {
