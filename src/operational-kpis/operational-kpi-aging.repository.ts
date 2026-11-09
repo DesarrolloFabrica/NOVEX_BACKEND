@@ -9,6 +9,7 @@ import {
 import { Situation } from '../situations/entities/situation.entity';
 import { KPI_HISTORY_TIMEZONE } from './domain/kpi-history-buckets';
 import { activeAtCutCte, activeAtCutParams } from './domain/kpi-active-at-cut';
+import { kpiEffectiveEndSql } from './domain/kpi-population';
 
 /** Tope del ranking ejecutivo de ANTIGÜEDAD (casos extremos, no una lista). */
 export const KPI_AGING_TOP_LIMIT = 5;
@@ -128,7 +129,7 @@ export class OperationalKpiAgingRepository {
         u.severity AS severity,
         u.status AS status,
         u.report_kind AS "reportKind",
-        u.closed_at AS "closedAt",
+        ${kpiEffectiveEndSql('u')} AS "closedAt",
         u.due_at AS "dueAt",
         u.category_id AS "categoryId",
         c.name AS "categoryName",

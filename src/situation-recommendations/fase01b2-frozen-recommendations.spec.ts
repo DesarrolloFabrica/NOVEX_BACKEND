@@ -89,7 +89,10 @@ describe('Fase 01B.2 · recomendaciones de casos congelados', () => {
     expect((error as ConflictException).getResponse()).toMatchObject({ code });
     expect(save).not.toHaveBeenCalled();
     expect(findOne).toHaveBeenCalledWith(
-      expect.objectContaining({ lock: { mode: 'pessimistic_read' } }),
+      expect.objectContaining({
+        lock: { mode: 'pessimistic_read' },
+        loadEagerRelations: false,
+      }),
     );
   });
 

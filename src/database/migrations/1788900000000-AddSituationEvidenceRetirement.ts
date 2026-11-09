@@ -45,6 +45,7 @@ export class AddSituationEvidenceRetirement1788900000000 implements MigrationInt
           OR (
             "retired_at" IS NOT NULL
             AND "retired_by_user_id" IS NOT NULL
+            AND "retirement_reason" IS NOT NULL
             AND char_length(btrim("retirement_reason")) BETWEEN 10 AND 1000
           )
         )

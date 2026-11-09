@@ -48,6 +48,8 @@ export class NormalizeLegacyResolvedSituations1788800000000 implements Migration
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       DO $novex$
+      DECLARE
+        already_applied boolean := false;
       BEGIN
         IF NOT EXISTS (
           SELECT 1 FROM pg_enum e
@@ -56,10 +58,13 @@ export class NormalizeLegacyResolvedSituations1788800000000 implements Migration
         ) THEN
           RAISE EXCEPTION 'Precondición: situations_status_enum no tiene CLOSED';
         END IF;
-        IF to_regclass('public.legacy_resolved_normalizations') IS NOT NULL
-           AND EXISTS (
-             SELECT 1 FROM legacy_resolved_normalizations WHERE outcome = 'NORMALIZED'
-           ) THEN
+        -- SQL dinámico: la tabla puede no existir todavía y PL/pgSQL planifica
+        -- las consultas estáticas aunque la condición previa sea falsa.
+        IF to_regclass('public.legacy_resolved_normalizations') IS NOT NULL THEN
+          EXECUTE 'SELECT EXISTS (SELECT 1 FROM legacy_resolved_normalizations WHERE outcome = ''NORMALIZED'')'
+            INTO already_applied;
+        END IF;
+        IF already_applied THEN
           RAISE EXCEPTION 'Precondición: la normalización ya se aplicó; revise legacy_resolved_normalizations';
         END IF;
       END

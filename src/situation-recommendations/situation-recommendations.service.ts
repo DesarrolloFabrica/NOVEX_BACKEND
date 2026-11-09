@@ -338,6 +338,8 @@ export class SituationRecommendationsService {
       const situation = await manager.getRepository(Situation).findOne({
         where: { id: situationId },
         select: { id: true, status: true },
+        // Sin relaciones eager: FOR SHARE no admite el lado nulo de un JOIN.
+        loadEagerRelations: false,
         lock: { mode: 'pessimistic_read' },
       });
       if (!situation) {
