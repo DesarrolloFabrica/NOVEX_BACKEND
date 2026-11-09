@@ -56,7 +56,7 @@ Contra Cloud SQL (`DB_CLOUD=true` o `DB_HOST=/cloudsql/…`): las semillas de ar
    - **Integración:** `npx jest --config ./test/jest-integration.json`. Recrea el esquema: ejecútala **al final** o vuelve a crear los fixtures.
 6. `docker stop` del contenedor al terminar.
 
-La e2e real del frontend (`NOVEX_FRONTEND/e2e-real/run.mjs`) tiene su propio aislamiento (contenedor `novex-e2e-pg`, base `novex_e2e_test`) y necesita el puerto 3001 libre.
+La e2e real del frontend (`NOVEX_FRONTEND/e2e-real/run.mjs`) crea por ejecución un contenedor PostgreSQL nuevo con tmpfs, puerto aleatorio ligado a loopback y base marcada `novex:disposable-test-db`; el preparador exige la guarda central antes de recrear el esquema. El contenedor se detiene al terminar. La aplicación e2e necesita el puerto 3001 libre.
 
 ## Docs operativos en este repo
 

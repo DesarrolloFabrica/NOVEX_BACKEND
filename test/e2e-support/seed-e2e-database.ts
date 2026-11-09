@@ -3,13 +3,15 @@
  * coordinaciones desde los catálogos de datos del proyecto, y usuarios de prueba.
  *
  * Seguridad: no carga `.env`. Solo opera si TEST_DB_NAME contiene "test".
- * Variables: TEST_DB_HOST, TEST_DB_PORT, TEST_DB_USER, TEST_DB_PASSWORD, TEST_DB_NAME.
- *
  * Uso: npx ts-node -P tsconfig.typeorm.json test/e2e-support/seed-e2e-database.ts
+ * Requiere NOVEX_DESTRUCTIVE_TESTS=1 y las variables NOVEX_TEST_DB_* / DB_*.
  */
 import { join } from 'node:path';
 import { DataSource } from 'typeorm';
-import { disposableTargetProblems } from '../support/disposable-database.guard';
+import {
+  assertDisposableDatabaseConnection,
+  verifyDisposableDatabase,
+} from '../support/disposable-database.guard';
 import { Coordination } from '../../src/coordinations/entities/coordination.entity';
 import { OPERACIONES_COORDINATIONS } from '../../src/database/seeds/seed-operaciones';
 import { Permission } from '../../src/permissions/entities/permission.entity';
@@ -29,42 +31,6 @@ export const E2E_COORDINATOR_EMAIL = 'coordinadora.e2e@cun.edu.co';
 export const E2E_ANALYST_EMAIL = 'analista.e2e@cun.edu.co';
 /** Lectura de Dirección (KPIs y panel Director); sin coordinación propia. */
 export const E2E_DIRECTOR_EMAIL = 'director.e2e@cun.edu.co';
-
-function requireTestDatabaseEnv() {
-  const names = [
-    'TEST_DB_HOST',
-    'TEST_DB_PORT',
-    'TEST_DB_USER',
-    'TEST_DB_PASSWORD',
-    'TEST_DB_NAME',
-  ] as const;
-  const missing = names.filter((name) => !process.env[name]);
-  if (missing.length > 0) {
-    throw new Error(`Faltan variables: ${missing.join(', ')}`);
-  }
-  const database = process.env.TEST_DB_NAME as string;
-  if (!database.toLowerCase().includes('test')) {
-    throw new Error(
-      `Por seguridad, TEST_DB_NAME debe contener "test". Valor: ${database}`,
-    );
-  }
-  // Reglas compartidas con la guarda central: solo loopback y nombre con
-  // patrón desechable (nunca snapshot/local/prod/backup).
-  const problems = disposableTargetProblems({
-    host: process.env.TEST_DB_HOST as string,
-    database,
-  });
-  if (problems.length > 0) {
-    throw new Error(`Semilla E2E abortada: ${problems.join('; ')}`);
-  }
-  return {
-    host: process.env.TEST_DB_HOST as string,
-    port: Number(process.env.TEST_DB_PORT),
-    username: process.env.TEST_DB_USER as string,
-    password: process.env.TEST_DB_PASSWORD as string,
-    database,
-  };
-}
 
 interface HasCode {
   id: string;
@@ -88,10 +54,17 @@ async function upsertByCode<T extends HasCode>(
   return repository.save(repository.create({ code, ...fields }));
 }
 
-async function main(): Promise<void> {
+export async function seedE2eDatabase(): Promise<void> {
+  // Barrera 1 y probe de marca: aborta antes de crear el DataSource que hará
+  // cambios si falta autorización, el destino no coincide o no es desechable.
+  const target = await verifyDisposableDatabase('seed-e2e-database');
   const ds = new DataSource({
     type: 'postgres',
-    ...requireTestDatabaseEnv(),
+    host: target.host,
+    port: target.port,
+    username: target.username,
+    password: target.password,
+    database: target.database,
     synchronize: false,
     entities: [join(ROOT, 'src/**/*.entity.ts')],
     migrations: [join(ROOT, 'src/database/migrations/*.ts')],
@@ -102,6 +75,9 @@ async function main(): Promise<void> {
   await ds.initialize();
 
   try {
+    // Barrera 2 sobre la conexión exacta que ejecutará las migraciones y el
+    // DROP, por si el destino efectivo no es el del probe previo.
+    await assertDisposableDatabaseConnection('seed-e2e-database', ds, target);
     await ds.query('DROP SCHEMA IF EXISTS public CASCADE');
     await ds.query('CREATE SCHEMA public');
     await ds.runMigrations();
@@ -213,7 +189,9 @@ async function main(): Promise<void> {
   }
 }
 
-void main().catch((error: unknown) => {
-  console.error(error);
-  process.exit(1);
-});
+if (require.main === module) {
+  void seedE2eDatabase().catch((error: unknown) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
