@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { AuditAction, AuditResourceType } from '../audit/audit-action.enum';
@@ -12,12 +16,16 @@ import { Situation } from '../situations/entities/situation.entity';
 import { SituationTimelineService } from '../situation-timeline/situation-timeline.service';
 import {
   CreateSituationEvidenceDto,
+  RetireSituationEvidenceDto,
   SituationEvidenceResponseDto,
   SituationEvidencesListResponseDto,
 } from './dto/situation-evidence.dto';
 import { SituationEvidence } from './entities/situation-evidence.entity';
 import { SituationEvidenceRepository } from './repositories/situation-evidence.repository';
 import { EvidenceStorageService } from './storage/evidence-storage.service';
+
+/** 409 al retirar una evidencia ya retirada. */
+export const EVIDENCE_ALREADY_RETIRED_CODE = 'EVIDENCE_ALREADY_RETIRED';
 
 @Injectable()
 export class SituationEvidenceService {
@@ -142,10 +150,14 @@ export class SituationEvidenceService {
 
   async findBySituation(
     situationId: string,
+    options: { includeRetired?: boolean } = {},
   ): Promise<SituationEvidencesListResponseDto> {
     await this.ensureSituationExists(situationId);
 
-    const items = await this.evidenceRepository.findBySituationId(situationId);
+    const items = await this.evidenceRepository.findBySituationId(
+      situationId,
+      options,
+    );
 
     return {
       situationId,
@@ -163,35 +175,73 @@ export class SituationEvidenceService {
   }
 
   /**
-   * BORRADO DE EVIDENCIA (Fase 01B.1). Sigue siendo físico (comportamiento
-   * vigente), pero ahora solo en casos activos, bajo bloqueo compartido de la
-   * situación y con auditoría obligatoria en la misma transacción: el registro
-   * conserva qué evidencia era, de qué tipo y quién la había subido.
+   * RETIRO DE EVIDENCIA (Fase 01B.2). Sustituye al borrado físico: la fila se
+   * conserva con fecha, autor y motivo. En una transacción:
+   *   1. la situación se lee con bloqueo compartido (FOR SHARE);
+   *   2. la evidencia se bloquea (FOR UPDATE): dos retiros concurrentes no
+   *      pueden ganar ambos; una ya retirada responde 409;
+   *   3. solo un caso activo admite retiros (CLOSED / CANCELLED / RESOLVED
+   *      legado: 409), igual que las altas;
+   *   4. retiro, línea de tiempo y auditoría obligatoria se confirman juntas.
+   *      Ni la línea de tiempo ni la auditoría guardan el texto del motivo.
    */
-  async delete(
+  async retire(
     situationId: string,
     evidenceId: string,
+    dto: RetireSituationEvidenceDto,
     actor: AuthPayload,
-  ): Promise<void> {
+  ): Promise<SituationEvidenceResponseDto> {
     await this.evidenceRepository.manager.transaction(async (manager) => {
       const situation = await this.lockSituation(manager, situationId);
 
       const evidence = await manager.findOne(SituationEvidence, {
         where: { id: evidenceId, situationId },
         loadEagerRelations: false,
+        lock: { mode: 'pessimistic_write' },
       });
       if (!evidence) {
         throw new NotFoundException(`Evidencia no encontrada: ${evidenceId}`);
       }
+      if (evidence.retiredAt) {
+        throw new ConflictException({
+          code: EVIDENCE_ALREADY_RETIRED_CODE,
+          message: 'La evidencia ya fue retirada.',
+        });
+      }
 
       this.scopeService.assertSituationWorkable(situation);
 
-      await manager.remove(SituationEvidence, evidence);
+      const reason = dto.reason.trim();
+      await manager.update(
+        SituationEvidence,
+        { id: evidenceId, situationId },
+        {
+          retiredAt: new Date(),
+          retiredByUserId: actor.sub,
+          retirementReason: reason,
+        },
+      );
+
+      await this.timelineService.createEntry(
+        {
+          situationId,
+          userId: actor.sub,
+          eventType: TimelineEventType.ATTACHMENT_RETIRED,
+          title: 'Evidencia retirada',
+          description: `Se retiró la evidencia "${evidence.title}" (${evidence.type}).`,
+          metadata: {
+            evidenceId,
+            type: evidence.type,
+            reasonLength: reason.length,
+          },
+        },
+        manager,
+      );
 
       await this.auditLogService.recordCritical(
         {
           actor,
-          action: AuditAction.SITUATION_EVIDENCE_DELETED,
+          action: AuditAction.SITUATION_EVIDENCE_RETIRED,
           resourceType: AuditResourceType.SITUATION,
           resourceId: situationId,
           metadata: {
@@ -200,11 +250,21 @@ export class SituationEvidenceService {
             hadFile: evidence.fileName !== null,
             uploadedByUserId: evidence.uploadedByUserId,
             createdAt: evidence.createdAt,
+            reasonLength: reason.length,
           },
         },
         manager,
       );
     });
+
+    const retired = await this.evidenceRepository.findByIdAndSituationId(
+      evidenceId,
+      situationId,
+    );
+    if (!retired) {
+      throw new NotFoundException(`Evidencia no encontrada: ${evidenceId}`);
+    }
+    return this.toResponse(retired);
   }
 
   /** Situación con bloqueo compartido; 404 si no existe. */
@@ -307,6 +367,15 @@ export class SituationEvidenceService {
       mimeType: evidence.mimeType,
       fileSize: evidence.fileSize !== null ? Number(evidence.fileSize) : null,
       createdAt: evidence.createdAt,
+      status: evidence.retiredAt ? 'RETIRED' : 'ACTIVE',
+      retirement:
+        evidence.retiredAt && evidence.retiredByUserId
+          ? {
+              retiredAt: evidence.retiredAt,
+              retiredByUserId: evidence.retiredByUserId,
+              reason: evidence.retirementReason ?? '',
+            }
+          : null,
     };
   }
 }

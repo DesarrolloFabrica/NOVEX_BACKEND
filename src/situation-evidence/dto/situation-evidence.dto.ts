@@ -1,5 +1,6 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsEnum,
   IsInt,
   IsOptional,
@@ -70,6 +71,33 @@ export class CreateSituationEvidenceDto {
   fileSize?: number;
 }
 
+/** Retiro de una evidencia (Fase 01B.2): motivo obligatorio. */
+export class RetireSituationEvidenceDto {
+  @IsString()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @MinLength(10)
+  @MaxLength(1000)
+  reason!: string;
+}
+
+export class ListSituationEvidencesQueryDto {
+  /** Historial completo, incluidas las retiradas (acceso controlado). */
+  @IsOptional()
+  @Transform(
+    ({ value }: { value: unknown }) => value === 'true' || value === true,
+  )
+  @IsBoolean()
+  includeRetired?: boolean;
+}
+
+export class SituationEvidenceRetirementDto {
+  retiredAt!: Date;
+  retiredByUserId!: string;
+  reason!: string;
+}
+
 export class SituationEvidenceResponseDto {
   id!: string;
   situationId!: string;
@@ -83,6 +111,10 @@ export class SituationEvidenceResponseDto {
   mimeType!: string | null;
   fileSize!: number | null;
   createdAt!: Date;
+  /** Fase 01B.2: ACTIVE o RETIRED (aditivo). */
+  status!: 'ACTIVE' | 'RETIRED';
+  /** Solo en evidencias retiradas; null en las activas. */
+  retirement!: SituationEvidenceRetirementDto | null;
 }
 
 export class SituationEvidencesListResponseDto {

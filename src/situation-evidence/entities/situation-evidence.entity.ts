@@ -71,4 +71,19 @@ export class SituationEvidence {
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt!: Date;
+
+  /**
+   * RETIRO (Fase 01B.2). Una evidencia retirada no se borra: deja de estar
+   * activa, no se envía a Gemini y conserva fecha, autor y motivo. Las tres
+   * columnas son nulas o todas presentes (CHECK) y el retiro es definitivo
+   * (trigger).
+   */
+  @Column({ type: 'timestamptz', name: 'retired_at', nullable: true })
+  retiredAt!: Date | null;
+
+  @Column({ type: 'uuid', name: 'retired_by_user_id', nullable: true })
+  retiredByUserId!: string | null;
+
+  @Column({ type: 'text', name: 'retirement_reason', nullable: true })
+  retirementReason!: string | null;
 }

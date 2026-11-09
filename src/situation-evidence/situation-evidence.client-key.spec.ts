@@ -35,6 +35,9 @@ const existing = {
   uploadedByUserId: 'otro',
   createdAt: new Date('2026-10-22T10:00:00Z'),
   uploadedByUser: { fullName: 'Coordinador' },
+  retiredAt: null as Date | null,
+  retiredByUserId: null as string | null,
+  retirementReason: null as string | null,
 };
 
 /**
@@ -67,6 +70,7 @@ function createService(
         Promise.resolve({ ...value, id: 'ev-new' }),
       ),
     remove: jest.fn().mockResolvedValue(undefined),
+    update: jest.fn().mockResolvedValue({ affected: 1 }),
   };
   const evidenceRepository = {
     manager: {
@@ -220,55 +224,125 @@ describe('SituationEvidenceService con clave estable', () => {
   });
 });
 
-describe('SituationEvidenceService · borrado auditado', () => {
-  it('borra y audita en la misma transacción qué evidencia era', async () => {
-    const { service, manager, auditLogService } = createService({
-      evidenceByKey: existing,
-    });
+describe('Fase 01B.2 · retiro de evidencias (soft delete)', () => {
+  const REASON = 'Archivo equivocado, se adjunta el correcto';
 
-    await service.delete(situationId, 'ev-1', actor);
+  it('retira sin borrar: fecha, autor y motivo, con línea de tiempo y auditoría en la misma transacción', async () => {
+    const { service, manager, auditLogService, timelineService } =
+      createService({ evidenceByKey: existing });
 
-    expect(manager.remove).toHaveBeenCalledWith(SituationEvidence, existing);
-    expect(auditLogService.recordCritical).toHaveBeenCalledWith(
+    await service.retire(situationId, 'ev-1', { reason: REASON }, actor);
+
+    expect(manager.remove).not.toHaveBeenCalled();
+    expect(manager.update).toHaveBeenCalledWith(
+      SituationEvidence,
+      { id: 'ev-1', situationId },
       expect.objectContaining({
-        action: 'SITUATION_EVIDENCE_DELETED',
-        metadata: expect.objectContaining({
-          evidenceId: 'ev-1',
-          type: EvidenceType.NOTE,
-          uploadedByUserId: 'otro',
-        }) as unknown,
+        retiredByUserId: actor.sub,
+        retirementReason: REASON,
+        retiredAt: expect.any(Date) as unknown,
       }),
+    );
+    expect(timelineService.createEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'ATTACHMENT_RETIRED' }),
       manager,
     );
+    const audit = auditLogService.recordCritical.mock.calls[0] as [
+      { action: string; metadata: Record<string, unknown> },
+      unknown,
+    ];
+    expect(audit[0].action).toBe('SITUATION_EVIDENCE_RETIRED');
+    expect(audit[0].metadata).toMatchObject({
+      evidenceId: 'ev-1',
+      reasonLength: REASON.length,
+    });
+    // El texto del motivo no viaja a auditoría ni a la línea de tiempo.
+    expect(JSON.stringify(audit[0].metadata)).not.toContain(REASON);
+    expect(
+      JSON.stringify(timelineService.createEntry.mock.calls),
+    ).not.toContain(REASON);
+    expect(audit[1]).toBe(manager);
   });
 
-  it('no borra evidencias de un caso cerrado o anulado (409)', async () => {
+  it('bloquea la evidencia FOR UPDATE: una ya retirada responde 409', async () => {
     const { service, manager } = createService({
-      status: SituationStatus.CANCELLED,
+      evidenceByKey: { ...existing, retiredAt: new Date() },
+    });
+
+    const error = await service
+      .retire(situationId, 'ev-1', { reason: REASON }, actor)
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ConflictException);
+    expect((error as ConflictException).getResponse()).toMatchObject({
+      code: 'EVIDENCE_ALREADY_RETIRED',
+    });
+    expect(manager.findOne).toHaveBeenCalledWith(
+      SituationEvidence,
+      expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+    );
+    expect(manager.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [SituationStatus.CLOSED, 'SITUATION_CLOSED'],
+    [SituationStatus.CANCELLED, 'SITUATION_CANCELLED'],
+  ])('no retira evidencias de un caso %s (409 %s)', async (status, code) => {
+    const { service, manager } = createService({
+      status,
       evidenceByKey: existing,
     });
 
-    await expect(
-      service.delete(situationId, 'ev-1', actor),
-    ).rejects.toBeInstanceOf(ConflictException);
-    expect(manager.remove).not.toHaveBeenCalled();
+    const error = await service
+      .retire(situationId, 'ev-1', { reason: REASON }, actor)
+      .catch((caught: unknown) => caught);
+
+    expect((error as ConflictException).getResponse()).toMatchObject({ code });
+    expect(manager.update).not.toHaveBeenCalled();
   });
 
   it('una evidencia inexistente responde 404', async () => {
     const { service } = createService();
     await expect(
-      service.delete(situationId, 'ev-x', actor),
+      service.retire(situationId, 'ev-x', { reason: REASON }, actor),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('si la auditoría obligatoria falla, el borrado no se confirma (error propagado)', async () => {
+  it('si la auditoría obligatoria falla, el retiro no se confirma (error propagado)', async () => {
     const { service, auditLogService } = createService({
       evidenceByKey: existing,
     });
     auditLogService.recordCritical.mockRejectedValue(new Error('audit down'));
 
-    await expect(service.delete(situationId, 'ev-1', actor)).rejects.toThrow(
-      'audit down',
+    await expect(
+      service.retire(situationId, 'ev-1', { reason: REASON }, actor),
+    ).rejects.toThrow('audit down');
+  });
+
+  it('la respuesta de una retirada la marca RETIRED con su retiro', async () => {
+    const { service, evidenceRepository } = createService({
+      evidenceByKey: existing,
+    });
+    const retiredAt = new Date('2026-11-09T12:00:00Z');
+    evidenceRepository.findByIdAndSituationId.mockResolvedValue({
+      ...existing,
+      retiredAt,
+      retiredByUserId: actor.sub,
+      retirementReason: REASON,
+    });
+
+    const response = await service.retire(
+      situationId,
+      'ev-1',
+      { reason: REASON },
+      actor,
     );
+
+    expect(response.status).toBe('RETIRED');
+    expect(response.retirement).toEqual({
+      retiredAt,
+      retiredByUserId: actor.sub,
+      reason: REASON,
+    });
   });
 });
