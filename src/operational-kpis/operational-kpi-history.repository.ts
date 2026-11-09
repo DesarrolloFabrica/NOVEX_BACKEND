@@ -15,6 +15,12 @@ import {
 import { activeAtCutCondition } from './domain/kpi-active-at-cut';
 import { OperationalKpiHistoryMetric } from './dto/operational-kpi-history-query.dto';
 import { kpiNotCancelledSql } from './domain/kpi-excluded-statuses';
+import {
+  kpiActiveAtCutWindowSql,
+  kpiExternalKindSql,
+  kpiInterSelfDependencySql,
+  kpiOwnKindSql,
+} from './domain/kpi-population';
 import { responsibleCoordinationAtSql } from './domain/kpi-responsibility-at';
 
 /**
@@ -161,8 +167,7 @@ export class OperationalKpiHistoryRepository {
       FROM (VALUES ${valueTuples.join(', ')}) AS b(end_exclusive, key)
       LEFT JOIN situations s
         ON ${join.clause}
-        AND s.created_at < b.end_exclusive
-        AND (s.closed_at IS NULL OR s.closed_at >= b.end_exclusive)
+        AND ${kpiActiveAtCutWindowSql('s', 'b.end_exclusive')}
         AND ${kpiNotCancelledSql()}
       GROUP BY b.key, b.end_exclusive
       ORDER BY b.end_exclusive
@@ -219,8 +224,8 @@ export class OperationalKpiHistoryRepository {
     const sql = `
       SELECT
         b.key AS key,
-        COUNT(s.id) FILTER (WHERE s.report_kind = $${internal})::int AS internal,
-        COUNT(s.id) FILTER (WHERE s.report_kind = $${external})::int AS external
+        COUNT(s.id) FILTER (WHERE ${kpiOwnKindSql('s', `$${owner}`)})::int AS internal,
+        COUNT(s.id) FILTER (WHERE ${kpiExternalKindSql('s', `$${owner}`)})::int AS external
       FROM (VALUES ${cut.values}) AS b(end_exclusive, key)
       LEFT JOIN situations s
         ON ${activeAtCutCondition({
@@ -272,9 +277,8 @@ export class OperationalKpiHistoryRepository {
       FROM (VALUES ${cut.values}) AS b(end_exclusive, key)
       INNER JOIN situations s
         ON ${responsibleCoordinationAtSql('s', 'b.end_exclusive', 'exclusive-cut')} = $${cut.next}
-        AND s.report_kind = $${cut.next + 1}
-        AND s.created_at < b.end_exclusive
-        AND (s.closed_at IS NULL OR s.closed_at >= b.end_exclusive)
+        AND (s.report_kind = $${cut.next + 1} OR ${kpiInterSelfDependencySql('s', `$${cut.next}`)})
+        AND ${kpiActiveAtCutWindowSql('s', 'b.end_exclusive')}
         AND ${kpiNotCancelledSql()}
       LEFT JOIN incident_categories c ON c.id = s.category_id
       GROUP BY b.key, s.category_id, c.code, c.name, c.is_selectable
@@ -331,8 +335,7 @@ export class OperationalKpiHistoryRepository {
         ON ${responsibleCoordinationAtSql('s', 'b.end_exclusive', 'exclusive-cut')} = $${owner}
         AND s.report_kind = $${owner + 1}
         AND s.affected_coordination_id IS DISTINCT FROM $${owner}
-        AND s.created_at < b.end_exclusive
-        AND (s.closed_at IS NULL OR s.closed_at >= b.end_exclusive)
+        AND ${kpiActiveAtCutWindowSql('s', 'b.end_exclusive')}
         AND ${kpiNotCancelledSql()}
       LEFT JOIN coordinations c ON c.id = s.affected_coordination_id
       GROUP BY b.key, s.affected_coordination_id, c.code, c.name, c.short_name
@@ -402,7 +405,12 @@ export class OperationalKpiHistoryRepository {
       `${responsibleCoordinationAtSql('s', responsibleAt, boundary)} = $${ownerParam}`,
     ];
 
-    if (filter.reportKind) {
+    if (filter.reportKind === SituationReportKind.INTERNAL) {
+      // K-06: una INTER consigo misma es propia, como un interno.
+      parts.push(`AND ${kpiOwnKindSql('s', `$${ownerParam}`)}`);
+    } else if (filter.reportKind === SituationReportKind.INTER_COORDINATION) {
+      parts.push(`AND ${kpiExternalKindSql('s', `$${ownerParam}`)}`);
+    } else if (filter.reportKind) {
       parts.push(`AND s.report_kind = $${index}`);
       params.push(filter.reportKind);
       index += 1;

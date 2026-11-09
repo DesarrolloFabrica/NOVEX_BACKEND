@@ -1,4 +1,5 @@
 import { emptyResolutionRepository } from './testing/empty-resolution-repository';
+import { kpiActiveAtCutWindowSql } from './domain/kpi-population';
 import { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { OperationalScopeService } from '../auth/services/operational-scope.service';
 import { UserStatus } from '../common/enums/identity.enums';
@@ -65,6 +66,7 @@ type Fixture = {
   title?: string;
   createdAt: string;
   closedAt?: string | null;
+  resolvedAt?: string | null;
   status?: SituationStatus;
   severity?: SituationSeverity;
   dueAt?: string | null;
@@ -77,13 +79,21 @@ type Fixture = {
 const ms = (iso: string) => Date.parse(iso);
 const owner = (s: Fixture) => s.coordinationId ?? AREA;
 const kindOf = (s: Fixture) => s.reportKind ?? SituationReportKind.INTERNAL;
-const activeAt = (s: Fixture, cut: number) =>
-  ms(s.createdAt) < cut && (!s.closedAt || ms(s.closedAt) >= cut);
-/** Universo de Carga: INTERNAL o INTER con afectada ≠ responsable. */
-const inLoadUniverse = (s: Fixture, id: string) =>
-  owner(s) === id &&
-  (kindOf(s) === SituationReportKind.INTERNAL ||
-    (s.affectedCoordinationId ?? null) !== id);
+/** Fase 01B.2 · K-02: fin REAL; un congelado sin fecha no cuenta. */
+const isFrozen = (s: Fixture) =>
+  s.status === SituationStatus.RESOLVED || s.status === SituationStatus.CLOSED;
+const effectiveEnd = (s: Fixture) =>
+  isFrozen(s) ? (s.closedAt ?? s.resolvedAt ?? null) : (s.closedAt ?? null);
+const activeAt = (s: Fixture, cut: number) => {
+  if (isFrozen(s) && !effectiveEnd(s)) return false;
+  const end = effectiveEnd(s);
+  return ms(s.createdAt) < cut && (!end || ms(end) >= cut);
+};
+/** Universo de Carga (K-06): todo lo que X debe resolver, INTER consigo misma incluida. */
+const inLoadUniverse = (s: Fixture, id: string) => owner(s) === id;
+const isOwnKind = (s: Fixture) =>
+  kindOf(s) === SituationReportKind.INTERNAL ||
+  (s.affectedCoordinationId ?? null) === owner(s);
 
 function bogotaYmd(iso: string): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -132,12 +142,8 @@ function inMemoryHistory(situations: Fixture[]) {
             return [
               bucket.end,
               {
-                internal: mine.filter(
-                  (s) => kindOf(s) === SituationReportKind.INTERNAL,
-                ).length,
-                external: mine.filter(
-                  (s) => kindOf(s) === SituationReportKind.INTER_COORDINATION,
-                ).length,
+                internal: mine.filter(isOwnKind).length,
+                external: mine.filter((s) => !isOwnKind(s)).length,
               },
             ] as const;
           }),
@@ -236,7 +242,7 @@ function inMemorySnapshot(situations: Fixture[]) {
       const sev = (v: SituationSeverity) =>
         pop.filter((s) => (s.severity ?? SituationSeverity.MEDIUM) === v)
           .length;
-      const still = pop.filter((s) => !s.closedAt);
+      const still = pop.filter((s) => !effectiveEnd(s));
       const status = (s: Fixture) => s.status ?? SituationStatus.OPEN;
       return Promise.resolve({
         activeCount: pop.length,
@@ -248,14 +254,14 @@ function inMemorySnapshot(situations: Fixture[]) {
         },
         attention: {
           open: still.filter((s) => status(s) === SituationStatus.OPEN).length,
-          inProgress: still.filter((s) =>
-            [SituationStatus.IN_PROGRESS, SituationStatus.RESOLVED].includes(
-              status(s),
-            ),
+          inProgress: still.filter(
+            (s) => status(s) === SituationStatus.IN_PROGRESS,
           ).length,
-          closedAfterCut: pop.filter((s) => s.closedAt).length,
+          closedAfterCut: pop.filter((s) => effectiveEnd(s)).length,
           unclassified: still.filter(
-            (s) => status(s) === SituationStatus.CLOSED,
+            (s) =>
+              status(s) !== SituationStatus.OPEN &&
+              status(s) !== SituationStatus.IN_PROGRESS,
           ).length,
         },
       });
@@ -369,12 +375,11 @@ describe('SQL de Antigüedad (repositorio)', () => {
       expect(sql).toContain('tr.transferred_at >= $2::timestamptz');
       expect(sql).toContain('ELSE s.coordination_id END) = $1');
       expect(sql).toContain('s.created_at < $2::timestamptz');
-      expect(sql).toContain(
-        '(s.closed_at IS NULL OR s.closed_at >= $2::timestamptz)',
-      );
-      expect(sql).toContain('s.report_kind = $4');
-      expect(sql).toContain('s.affected_coordination_id IS DISTINCT FROM $1');
-      expect(sql).not.toMatch(/s\.status\s*(=|IN)/i);
+      expect(sql).toContain(kpiActiveAtCutWindowSql('s', '$2::timestamptz'));
+      // Fase 01B.2 · K-06: INTER consigo misma cuenta como propia.
+      expect(sql).toContain('s.report_kind IN ($4, $5)');
+      // K-02: el status solo fija el fin real de los congelados.
+      expect(sql).not.toMatch(/s\.status\s*=\s/i);
       expect(params).toEqual([
         AREA,
         '2026-11-01T05:00:00.000Z',
@@ -647,12 +652,25 @@ describe('ANTIGÜEDAD · scope COORDINACIÓN (GET /operational-kpis/state → ag
     });
   });
 
-  it('4 · RESOLVED heredado sin closed_at sigue activo', async () => {
+  it('4 · K-02: RESOLVED heredado sin fechas reales no cuenta como activo', async () => {
     const r = await agingFor([
       { ...OLD_OPEN, status: SituationStatus.RESOLVED },
     ]);
-    expect(r.activeCount).toBe(1);
-    expect(r.oldest[0].status).toBe('IN_PROGRESS');
+    expect(r.activeCount).toBe(0);
+  });
+
+  it('4b · K-02: RESOLVED heredado deja de estar activo en su resolved_at real', async () => {
+    const resolved = {
+      ...OLD_OPEN,
+      status: SituationStatus.RESOLVED,
+      resolvedAt: '2026-09-15T10:00:00-05:00',
+    };
+    expect((await agingFor([resolved])).activeCount).toBe(0);
+    const sep = await agingFor(
+      [resolved],
+      query(WEEK, '2026-09-07', '2026-09-13', '2026-09-13'),
+    );
+    expect(sep.activeCount).toBe(1);
   });
 
   it('5 · INTER donde X es solo afectada queda excluido', async () => {

@@ -1,4 +1,5 @@
 import { buildEstadoEvolutionBuckets } from './domain/kpi-estado-evolution-buckets';
+import { kpiActiveAtCutWindowSql } from './domain/kpi-population';
 import { KPI_UNCATEGORIZED_CATEGORY_ID } from './domain/kpi-uncategorized-category';
 import { OperationalKpiHistoryRepository } from './operational-kpi-history.repository';
 
@@ -25,9 +26,7 @@ describe('OperationalKpiHistoryRepository.aggregateBacklog', () => {
 
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('s.created_at < b.end_exclusive');
-    expect(sql).toContain(
-      '(s.closed_at IS NULL OR s.closed_at >= b.end_exclusive)',
-    );
+    expect(sql).toContain(kpiActiveAtCutWindowSql('s', 'b.end_exclusive'));
     expect(sql).not.toMatch(/<=\s*b\./);
     expect(params.slice(0, 4)).toEqual([
       '2026-10-06T05:00:00.000Z',
@@ -73,9 +72,7 @@ describe('OperationalKpiHistoryRepository · carga activa (SQL set-based)', () =
     expect(query).toHaveBeenCalledTimes(1);
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('s.created_at < b.end_exclusive');
-    expect(sql).toContain(
-      '(s.closed_at IS NULL OR s.closed_at >= b.end_exclusive)',
-    );
+    expect(sql).toContain(kpiActiveAtCutWindowSql('s', 'b.end_exclusive'));
     expect(sql).toContain('situation_coordination_transfers tr');
     expect(sql).toContain('ELSE s.coordination_id END) = $9');
     expect(sql).toMatch(/s\.affected_coordination_id IS DISTINCT FROM \$\d+/);

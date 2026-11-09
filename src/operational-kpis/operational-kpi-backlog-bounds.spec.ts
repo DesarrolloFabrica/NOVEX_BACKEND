@@ -1,4 +1,5 @@
 import { OperationalKpiBreakdownRepository } from './operational-kpi-breakdown.repository';
+import { kpiActiveAtCutWindowSql } from './domain/kpi-population';
 import { OperationalKpiRelationsRepository } from './operational-kpi-relations.repository';
 import { OperationalKpiHistoryMetric } from './dto/operational-kpi-history-query.dto';
 
@@ -55,7 +56,7 @@ describe('backlog semiabierto · breakdown (INTERNOS)', () => {
 
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('s.created_at < $3');
-    expect(sql).toContain('(s.closed_at IS NULL OR s.closed_at >= $3)');
+    expect(sql).toContain(kpiActiveAtCutWindowSql('s', '$3'));
     expect(sql).not.toMatch(/<=\s*\$3|>\s*\$3/);
     expect(params[2]).toBe('2026-10-06T05:00:00.000Z');
   });
@@ -78,7 +79,7 @@ describe('backlog semiabierto · relations (DEPENDENCIAS)', () => {
 
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('s.created_at < $3');
-    expect(sql).toContain('(s.closed_at IS NULL OR s.closed_at >= $3)');
+    expect(sql).toContain(kpiActiveAtCutWindowSql('s', '$3'));
     expect(params[2]).toBe('2026-10-06T05:00:00.000Z');
     expect(params[1]).toBe('INTER_COORDINATION');
   });

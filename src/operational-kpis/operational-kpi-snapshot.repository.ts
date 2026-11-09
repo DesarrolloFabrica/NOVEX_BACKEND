@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Situation } from '../situations/entities/situation.entity';
 import { activeAtCutCte, activeAtCutParams } from './domain/kpi-active-at-cut';
 import { KPI_HISTORY_TIMEZONE } from './domain/kpi-history-buckets';
+import { kpiEffectiveEndSql } from './domain/kpi-population';
 
 export type KpiSnapshotCompositionRow = {
   activeCount: number;
@@ -39,6 +40,9 @@ export class OperationalKpiSnapshotRepository {
     coordinationId: string,
     refDate: string,
   ): Promise<KpiSnapshotCompositionRow> {
+    // K-02: «cerrado después del corte» usa el fin real (closed_at o, en un
+    // RESOLVED legado, resolved_at); RESOLVED ya no se presenta como en atención.
+    const END = kpiEffectiveEndSql('universe');
     const sql = `
       ${activeAtCutCte(KPI_HISTORY_TIMEZONE)}
       SELECT
@@ -47,13 +51,13 @@ export class OperationalKpiSnapshotRepository {
         COUNT(*) FILTER (WHERE severity = 'MEDIUM')::int AS sev_medium,
         COUNT(*) FILTER (WHERE severity = 'HIGH')::int AS sev_high,
         COUNT(*) FILTER (WHERE severity = 'CRITICAL')::int AS sev_critical,
-        COUNT(*) FILTER (WHERE closed_at IS NULL AND status = 'OPEN')::int AS att_open,
+        COUNT(*) FILTER (WHERE ${END} IS NULL AND status = 'OPEN')::int AS att_open,
         COUNT(*) FILTER (
-          WHERE closed_at IS NULL AND status IN ('IN_PROGRESS', 'RESOLVED')
+          WHERE ${END} IS NULL AND status = 'IN_PROGRESS'
         )::int AS att_in_progress,
-        COUNT(*) FILTER (WHERE closed_at IS NOT NULL)::int AS att_closed_after_cut,
+        COUNT(*) FILTER (WHERE ${END} IS NOT NULL)::int AS att_closed_after_cut,
         COUNT(*) FILTER (
-          WHERE closed_at IS NULL AND status NOT IN ('OPEN', 'IN_PROGRESS', 'RESOLVED')
+          WHERE ${END} IS NULL AND status NOT IN ('OPEN', 'IN_PROGRESS')
         )::int AS att_unclassified
       FROM universe
     `;

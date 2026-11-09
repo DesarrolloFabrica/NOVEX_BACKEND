@@ -199,7 +199,10 @@ export class OperationalOverviewRepository extends Repository<Situation> {
       .andWhere('situation.reportKind = :kind', {
         kind: SituationReportKind.INTER_COORDINATION,
       })
-      .andWhere('situation.affectedCoordinationId IS NOT NULL');
+      .andWhere('situation.affectedCoordinationId IS NOT NULL')
+      // K-06: una INTER consigo misma ya cuenta como problema propio; no es
+      // dependencia entrante (antes sumaba también a total y criticalTotal).
+      .andWhere(external);
     this.applyAffectedScope(qb, scope);
     const rows = await qb
       .groupBy('situation.affectedCoordinationId')
@@ -276,7 +279,11 @@ export class OperationalOverviewRepository extends Repository<Situation> {
       .andWhere('situation.reportKind = :kind', {
         kind: SituationReportKind.INTER_COORDINATION,
       })
-      .andWhere('situation.coordinationId IS NOT NULL');
+      .andWhere('situation.coordinationId IS NOT NULL')
+      // K-06: no es saliente si la afectada es la propia responsable.
+      .andWhere(
+        'situation.affectedCoordinationId IS DISTINCT FROM situation.coordinationId',
+      );
     this.applyOwnerScope(qb, scope);
     const rows = await qb
       .groupBy('situation.coordinationId')

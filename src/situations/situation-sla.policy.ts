@@ -105,11 +105,10 @@ export function computeSlaHealth(
   return 'on_track';
 }
 
+/** Fase 01B.2 · K-02: RESOLVED legado no es activo (igual que la integridad). */
 export function isActiveSituationStatus(status: SituationStatus): boolean {
   return (
-    status === SituationStatus.OPEN ||
-    status === SituationStatus.IN_PROGRESS ||
-    status === SituationStatus.RESOLVED
+    status === SituationStatus.OPEN || status === SituationStatus.IN_PROGRESS
   );
 }
 

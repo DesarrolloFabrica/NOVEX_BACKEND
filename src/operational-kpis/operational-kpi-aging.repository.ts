@@ -43,7 +43,7 @@ export type KpiAgingOldestRow = {
  * ACTIVOS al corte T de la coordinación RESPONSABLE seleccionada, con la MISMA
  * población que Carga, Severidad y Atención (ver kpi-active-at-cut).
  * No filtra por status: el status es el ACTUAL y no reconstruye el pasado
- * (RESOLVED legado sin closed_at sigue activo, como en Carga).
+ * (Fase 01B.2 · K-02: los congelados terminan en su fecha real; sin fecha no cuentan).
  *
  * Edad = refDate − fecha local Bogotá de created_at, en días calendario
  * enteros (0 = registrado ese mismo día). Se mide desde el REGISTRO en NOVEX,

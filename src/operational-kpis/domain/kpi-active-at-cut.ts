@@ -2,21 +2,27 @@ import { SituationReportKind } from '../../common/enums/situation.enums';
 import { bogotaDayEndExclusiveIso } from './kpi-history-buckets';
 import { kpiNotCancelledSql } from './kpi-excluded-statuses';
 import { responsibleCoordinationAtSql } from './kpi-responsibility-at';
+import { kpiActiveAtCutWindowSql } from './kpi-population';
 
 /**
  * ACTIVE_AT_CUT · la población única de las lecturas de STOCK de ESTADO.
  *
  * Para una coordinación X y un corte exclusivo T:
- *   responsable X
- *   AND created_at < T AND (closed_at IS NULL OR closed_at >= T)
- *   AND (INTERNAL OR (INTER AND afectada ≠ X))
+ *   responsable X (historial de traslados)
+ *   AND no anulado
+ *   AND created_at < T AND fin real ≥ T (kpiActiveAtCutWindowSql, K-02)
+ *   AND (INTERNAL OR INTER)
+ *
+ * Fase 01B.2 · K-06: una INTER con afectada = X ya no se excluye: cuenta como
+ * problema propio de X, igual que en overview e integridad. Lo que nunca es es
+ * una dependencia (ver kpi-population.ts).
  *
  * Carga (último punto), Severidad, Atención y Antigüedad son vistas de esta
  * MISMA población de la coordinación seleccionada; por eso cuadran entre sí.
  * Movimiento NO: es flujo (created_at / closed_at dentro del bucket).
  *
- * No se filtra por `status`: es el valor ACTUAL y no reconstruye el pasado
- * (RESOLVED legado sin closed_at sigue activo).
+ * No se filtra por `status` actual (no reconstruye el pasado), salvo para
+ * fijar el fin real de los estados congelados (RESOLVED/CLOSED, K-02).
  */
 export function activeAtCutCondition(input: {
   /** Alias SQL de `situations`. */
@@ -33,15 +39,8 @@ export function activeAtCutCondition(input: {
   const { alias: s, owner, cut, internal, inter } = input;
   return `${responsibleCoordinationAtSql(s, cut, 'exclusive-cut')} = ${owner}
         AND ${kpiNotCancelledSql(s)}
-        AND ${s}.created_at < ${cut}
-        AND (${s}.closed_at IS NULL OR ${s}.closed_at >= ${cut})
-        AND (
-          ${s}.report_kind = ${internal}
-          OR (
-            ${s}.report_kind = ${inter}
-            AND ${s}.affected_coordination_id IS DISTINCT FROM ${owner}
-          )
-        )`;
+        AND ${kpiActiveAtCutWindowSql(s, cut)}
+        AND ${s}.report_kind IN (${internal}, ${inter})`;
 }
 
 /**

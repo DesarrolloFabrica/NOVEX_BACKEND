@@ -15,6 +15,10 @@ import {
 } from './domain/kpi-uncategorized-category';
 import { OperationalKpiHistoryMetric } from './dto/operational-kpi-history-query.dto';
 import { kpiNotCancelledSql } from './domain/kpi-excluded-statuses';
+import {
+  kpiActiveAtCutWindowSql,
+  kpiInterSelfDependencySql,
+} from './domain/kpi-population';
 import { responsibleCoordinationAtSql } from './domain/kpi-responsibility-at';
 
 export type KpiBreakdownCategoryRow = {
@@ -114,10 +118,9 @@ export class OperationalKpiBreakdownRepository {
       FROM situations s
       LEFT JOIN incident_categories c ON c.id = s.category_id
       WHERE ${responsibleCoordinationAtSql('s', '$3::timestamptz', 'exclusive-cut')} = $1
-        AND s.report_kind = $2
+        AND (s.report_kind = $2 OR ${kpiInterSelfDependencySql('s', '$1')})
         AND ${kpiNotCancelledSql()}
-        AND s.created_at < $3
-        AND (s.closed_at IS NULL OR s.closed_at >= $3)
+        AND ${kpiActiveAtCutWindowSql('s', '$3')}
       GROUP BY s.category_id, c.code, c.name, c.is_selectable
       ORDER BY value DESC, COALESCE(c.name, $4) ASC
     `;

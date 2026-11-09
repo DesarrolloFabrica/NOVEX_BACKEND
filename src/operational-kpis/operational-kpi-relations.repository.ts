@@ -10,6 +10,7 @@ import {
 } from './domain/kpi-history-buckets';
 import { OperationalKpiHistoryMetric } from './dto/operational-kpi-history-query.dto';
 import { kpiNotCancelledSql } from './domain/kpi-excluded-statuses';
+import { kpiActiveAtCutWindowSql } from './domain/kpi-population';
 import { responsibleCoordinationAtSql } from './domain/kpi-responsibility-at';
 
 export type KpiRelationRow = {
@@ -104,8 +105,7 @@ export class OperationalKpiRelationsRepository {
           AND s.report_kind = $2
           AND ${partnerColumn} IS NOT NULL
           AND ${partnerColumn} IS DISTINCT FROM $1
-          AND s.created_at < $3
-          AND (s.closed_at IS NULL OR s.closed_at >= $3)
+          AND ${kpiActiveAtCutWindowSql('s', '$3')}
         GROUP BY ${partnerColumn}, c.code, c.name, c.short_name
         ORDER BY value DESC, c.short_name ASC
       `;

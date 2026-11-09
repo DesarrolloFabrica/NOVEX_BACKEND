@@ -20,11 +20,12 @@ export const SITUATION_SWEEP_LOCK_KEY = 726_100_417;
 /** Mínimo entre avisos SLA de la misma situación. */
 export const SLA_REMINDER_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 
-const SLA_ACTIVE_STATUSES = [
-  SituationStatus.OPEN,
-  SituationStatus.IN_PROGRESS,
-  SituationStatus.RESOLVED,
-];
+/**
+ * Fase 01B.2 · K-02: RESOLVED es legado y no es activo en cartas, vidas ni
+ * integridad; el barrido ya no lo marca vencido ni le envía avisos. La
+ * política de plazos (due_at) no cambia.
+ */
+const SLA_ACTIVE_STATUSES = [SituationStatus.OPEN, SituationStatus.IN_PROGRESS];
 const ESCALATION_ACTIVE_STATUSES = [
   SituationStatus.OPEN,
   SituationStatus.IN_PROGRESS,
