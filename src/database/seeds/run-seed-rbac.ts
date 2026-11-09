@@ -1,3 +1,4 @@
+import { assertLocalDatabaseProfile } from '../../configuration/resolve-database-env';
 import dataSource from '../data-source';
 import { Permission } from '../../permissions/entities/permission.entity';
 import { RolePermission } from '../../permissions/entities/role-permission.entity';
@@ -13,6 +14,9 @@ import { Role } from '../../roles/entities/role.entity';
  * alinear la matriz de permisos de un entorno ya desplegado.
  */
 async function main(): Promise<void> {
+  // Reescribe y BORRA asignaciones de role_permissions: solo en local, salvo
+  // confirmación explícita (en producción, RBAC cambia por migración).
+  assertLocalDatabaseProfile('seed:rbac');
   await dataSource.initialize();
 
   try {

@@ -1,5 +1,6 @@
 import {
   applyResolvedDatabaseEnv,
+  assertCloudDatabaseCliAllowed,
   postgresSslOption,
   resolveDatabaseEnv,
 } from '../configuration/resolve-database-env';
@@ -43,6 +44,23 @@ export function buildDataSourceOptions(
   };
 }
 
-const dataSource = new DataSource(buildDataSourceOptions());
+/**
+ * DATA SOURCE DEL CLI (`migration:*`) y de los seeds locales.
+ *
+ * Valida el destino al CONECTAR, no al importar: el CLI de TypeORM llama a
+ * `initialize()` antes de migrar, y así los scripts que importan este módulo
+ * pero abren su propia conexión explícita a la nube (`cloud:sql`,
+ * sincronización de usuarios) no se ven afectados. Contra Cloud SQL exige
+ * `ALLOW_CLOUD_MIGRATIONS=true` en la invocación; antes no había ninguna
+ * barrera y `DB_CLOUD=true` bastaba para migrar o revertir producción.
+ */
+class GuardedCliDataSource extends DataSource {
+  override async initialize(): Promise<this> {
+    assertCloudDatabaseCliAllowed('Conexión del CLI de base de datos');
+    return super.initialize();
+  }
+}
+
+const dataSource = new GuardedCliDataSource(buildDataSourceOptions());
 
 export default dataSource;

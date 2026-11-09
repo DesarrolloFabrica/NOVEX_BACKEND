@@ -115,9 +115,49 @@ export function postgresSslOption(
   return resolved.ssl ? { rejectUnauthorized: false } : false;
 }
 
+/**
+ * ¿Apunta esta configuración a Cloud SQL? No basta con el perfil: producción
+ * (Cloud Run) NO define `DB_CLOUD` y se conecta por el socket
+ * `DB_HOST=/cloudsql/<instancia>`, que el perfil resuelve como «local».
+ */
+export function isCloudDatabaseTarget(resolved: ResolvedDatabaseEnv): boolean {
+  return resolved.profile === 'cloud' || resolved.host.startsWith('/cloudsql/');
+}
+
+/**
+ * Igual que `isCloudDatabaseTarget`, leyendo el entorno. Si la configuración
+ * está incompleta (no se puede resolver), se considera NO local: quien llama
+ * debe fallar cerrado.
+ */
+export function isCloudDatabaseEnv(source: EnvSource = process.env): boolean {
+  try {
+    return isCloudDatabaseTarget(resolveDatabaseEnv(source));
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Guarda del CLI de TypeORM (`migration:run`, `migration:revert`,
+ * `migration:show`) y de los seeds que usan el data source por defecto.
+ * Contra Cloud SQL exige la confirmación explícita `ALLOW_CLOUD_MIGRATIONS=true`
+ * en la propia invocación. Sin ella, aborta antes de conectar.
+ */
+export function assertCloudDatabaseCliAllowed(
+  action: string,
+  source: EnvSource = process.env,
+): void {
+  if (!isCloudDatabaseEnv(source)) return;
+  if (read(source, 'ALLOW_CLOUD_MIGRATIONS') === 'true') return;
+
+  throw new Error(
+    `${action} abortado: la configuración apunta a Cloud SQL (DB_CLOUD=true o DB_HOST=/cloudsql/…). ` +
+      `Para una operación intencional y autorizada, defina ALLOW_CLOUD_MIGRATIONS=true solo en esa invocación.`,
+  );
+}
+
 export function assertLocalDatabaseProfile(action: string): void {
-  const resolved = resolveDatabaseEnv(process.env);
-  if (resolved.profile !== 'cloud') return;
+  if (!isCloudDatabaseEnv(process.env)) return;
   if (process.env.ALLOW_CLOUD_SEED === 'true') return;
 
   throw new Error(

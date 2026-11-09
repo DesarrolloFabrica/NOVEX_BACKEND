@@ -8,6 +8,7 @@ import {
   logLifecycleStart,
 } from '../../common/bootstrap-observability';
 import { UserStatus } from '../../common/enums/identity.enums';
+import { isCloudDatabaseEnv } from '../../configuration/resolve-database-env';
 import { Coordination } from '../../coordinations/entities/coordination.entity';
 import { Role } from '../../roles/entities/role.entity';
 import { UsersRepository } from '../repositories/users.repository';
@@ -36,6 +37,15 @@ export class DevelopmentUserSeedService implements OnApplicationBootstrap {
       logLifecycleFinish(
         'DevelopmentUserSeedService',
         'skipped: not development',
+      );
+      return;
+    }
+
+    // Crea un ADMIN: jamás contra Cloud SQL, aunque NODE_ENV sea development.
+    if (isCloudDatabaseEnv()) {
+      logLifecycleFinish(
+        'DevelopmentUserSeedService',
+        'skipped: database target is Cloud SQL',
       );
       return;
     }

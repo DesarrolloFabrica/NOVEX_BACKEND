@@ -175,7 +175,9 @@ async function syncReferencedCoordinations(
 
 export async function syncUsersFromCloud(): Promise<SyncUsersFromCloudResult> {
   const cloudDataSource = new DataSource(buildCloudDataSourceOptions());
-  const localDataSource = new DataSource(buildDataSourceOptions());
+  // Destino FIJO local: con perfil 'auto' y DB_CLOUD=true, el «local» era
+  // también Cloud SQL y la sincronización escribía sobre la propia nube.
+  const localDataSource = new DataSource(buildDataSourceOptions('local'));
 
   await cloudDataSource.initialize();
   await localDataSource.initialize();
