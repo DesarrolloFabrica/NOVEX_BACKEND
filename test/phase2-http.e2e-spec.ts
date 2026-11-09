@@ -4,6 +4,7 @@ import request from 'supertest';
 import { DataSource } from 'typeorm';
 import {
   assertDisposableDatabaseConnection,
+  truncateDisposableFixtures,
   assertDisposableDatabaseEnv,
 } from './support/disposable-database.guard';
 import { AppModule } from '../src/app.module';
@@ -131,9 +132,16 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
      * La base es desechable, pero puede conservar datos de una ejecución
      * anterior. Se vacía lo que esta prueba escribe, en orden de dependencia.
      */
-    await ds.query(
-      'TRUNCATE situation_resolutions, situation_timeline_entries, situations, coordinations, incident_categories, audit_logs RESTART IDENTITY CASCADE',
-    );
+    // Fase 01B.2: el historial institucional rechaza TRUNCATE por trigger;
+    // el vaciado de fixtures usa el helper verificado de la guarda.
+    await truncateDisposableFixtures('phase2-http', ds, target, [
+      'situation_resolutions',
+      'situation_timeline_entries',
+      'situations',
+      'coordinations',
+      'incident_categories',
+      'audit_logs',
+    ]);
     await ds.query("DELETE FROM users WHERE email LIKE '%@t.co'");
 
     const uno = async (sql: string, params: unknown[] = []) =>

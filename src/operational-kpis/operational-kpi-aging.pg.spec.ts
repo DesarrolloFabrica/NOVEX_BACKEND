@@ -95,6 +95,7 @@ suite('Antigüedad · SQL real (Postgres)', () => {
       createdAt: string,
       extra: Partial<{
         closedAt: string;
+        resolvedAt: string;
         status: string;
         kind: string;
         coordination: string;
@@ -105,8 +106,8 @@ suite('Antigüedad · SQL real (Postgres)', () => {
       runner.query(
         `INSERT INTO situations (id, created_at, title, description, coordination_id,
            affected_coordination_id, report_kind, created_by_user_id, category_id,
-           severity, reported_severity, status, closed_at, occurred_at)
-         VALUES ($1, $2, $3, 'it', $4, $5, $6, $7, $8, 'MEDIUM', 'MEDIUM', $9, $10, $2)`,
+           severity, reported_severity, status, closed_at, occurred_at, resolved_at)
+         VALUES ($1, $2, $3, 'it', $4, $5, $6, $7, $8, 'MEDIUM', 'MEDIUM', $9, $10, $2, $11)`,
         [
           id,
           createdAt,
@@ -118,6 +119,7 @@ suite('Antigüedad · SQL real (Postgres)', () => {
           extra.category ?? null,
           extra.status ?? (extra.closedAt ? 'CLOSED' : 'OPEN'),
           extra.closedAt ?? null,
+          extra.resolvedAt ?? null,
         ],
       );
 
@@ -133,8 +135,14 @@ suite('Antigüedad · SQL real (Postgres)', () => {
     await insert(P(3), '2026-09-02T09:00:00-05:00', {
       closedAt: '2026-10-03T09:00:00-05:00',
     });
-    // RESOLVED heredado sin closed_at
-    await insert(P(4), '2026-09-05T09:00:00-05:00', { status: 'RESOLVED' });
+    // RESOLVED heredado con fecha real de resolución posterior a los cortes
+    // (Fase 01B.2 · K-02: activo hasta resolved_at).
+    await insert(P(4), '2026-09-05T09:00:00-05:00', {
+      status: 'RESOLVED',
+      resolvedAt: '2026-10-20T09:00:00-05:00',
+    });
+    // RESOLVED heredado SIN ninguna fecha real: no cuenta en ningún corte.
+    await insert(P(9), '2026-08-01T09:00:00-05:00', { status: 'RESOLVED' });
     // INTER: X responsable (compromiso) → incluido
     await insert(P(5), '2026-09-20T09:00:00-05:00', {
       kind: 'INTER_COORDINATION',
@@ -217,13 +225,20 @@ suite('Antigüedad · SQL real (Postgres)', () => {
         att.open + att.inProgress + att.closedAfterCut + att.unclassified,
       ).toBe(composition.activeCount);
     }
-    // 30 sep: P03 (cerrado 3 oct) estaba activo → «cerrado después del corte».
+    // 30 sep: P03 (cerrado 3 oct) y P04 (RESOLVED legado resuelto el 20 oct)
+    // estaban activos → «cerrados después del corte» (K-02: fin real).
     const sep = await snapshot.aggregateComposition(X, '2026-09-30');
-    expect(sep.attention.closedAfterCut).toBe(1);
-    // RESOLVED legado sin closed_at → en atención.
+    expect(sep.attention.closedAfterCut).toBe(2);
+    // K-02: RESOLVED legado resuelto después del corte → «cerrado después»,
+    // no «en atención»; el RESOLVED sin fecha no está en la población.
     const today = await snapshot.aggregateComposition(X, '2026-10-07');
-    expect(today.attention.closedAfterCut).toBe(0);
-    expect(today.attention.inProgress).toBeGreaterThanOrEqual(1);
+    expect(today.attention.closedAfterCut).toBe(1);
+    expect(today.attention.inProgress).toBe(0);
+    const oldestToday = await aging.findOldest(X, '2026-10-07');
+    expect(oldestToday.map((row) => row.title.slice(-2))).not.toContain('09');
+    expect(oldestToday.find((row) => row.title.endsWith('04'))?.closedAt).toBe(
+      '2026-10-20T14:00:00.000Z',
+    );
   });
 
   it('rangos: límites 7|8, 14|15, 30|31 en Bogotá; cada problema en una sola banda; suma = activos', async () => {

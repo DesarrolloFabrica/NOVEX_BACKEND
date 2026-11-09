@@ -4,6 +4,7 @@ import request from 'supertest';
 import { DataSource } from 'typeorm';
 import {
   assertDisposableDatabaseConnection,
+  truncateDisposableFixtures,
   assertDisposableDatabaseEnv,
 } from './support/disposable-database.guard';
 import { AppModule } from '../src/app.module';
@@ -106,9 +107,13 @@ describe('Fase 2.1 · resolución concurrente contra Nest real', () => {
 
     await new Promise((r) => setTimeout(r, 1500));
 
-    await ds.query(
-      'TRUNCATE situation_resolutions, situation_timeline_entries, situations, audit_logs RESTART IDENTITY CASCADE',
-    );
+    // Fase 01B.2: ver truncateDisposableFixtures (historial protegido).
+    await truncateDisposableFixtures('phase21-concurrency', ds, target, [
+      'situation_resolutions',
+      'situation_timeline_entries',
+      'situations',
+      'audit_logs',
+    ]);
     await ds.query("DELETE FROM users WHERE email LIKE '%@conc.co'");
     await ds.query("DELETE FROM coordinations WHERE code = 'coord-x'");
     await ds.query("DELETE FROM incident_categories WHERE code = 'CONC'");

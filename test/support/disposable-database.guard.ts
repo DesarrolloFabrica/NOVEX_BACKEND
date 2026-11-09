@@ -250,3 +250,38 @@ function connectionOptions(target: ResolvedDatabaseEnv): DataSourceOptions {
     database: target.database,
   };
 }
+
+/**
+ * Vaciado de fixtures en una base desechable YA verificada (Fase 01B.2).
+ *
+ * Desde 1788700000000 `audit_logs`, `situation_cancellations` y
+ * `situation_coordination_transfers` rechazan TRUNCATE por trigger, también
+ * por CASCADE desde `situations`. Las suites e2e necesitan empezar en limpio,
+ * así que el vaciado:
+ *   1. vuelve a comprobar la marca de desechable de la conexión real;
+ *   2. corre en una transacción con `SET LOCAL session_replication_role =
+ *      replica`, que desactiva los triggers ordinarios SOLO en esa transacción
+ *      y SOLO para un superusuario (el dueño del contenedor de pruebas).
+ * El rol de aplicación nunca puede hacerlo: en producción la protección no
+ * cambia.
+ */
+export async function truncateDisposableFixtures(
+  context: string,
+  dataSource: DataSource,
+  expected: Pick<ResolvedDatabaseEnv, 'database'>,
+  tables: readonly string[],
+): Promise<void> {
+  await assertDisposableDatabaseConnection(context, dataSource, expected);
+  const list = tables
+    .map((table) => {
+      if (!/^[a-z_][a-z0-9_]*$/.test(table)) {
+        throw new Error(`[${context}] Nombre de tabla no válido: ${table}`);
+      }
+      return `"${table}"`;
+    })
+    .join(', ');
+  await dataSource.transaction(async (manager) => {
+    await manager.query(`SET LOCAL session_replication_role = replica`);
+    await manager.query(`TRUNCATE ${list} RESTART IDENTITY CASCADE`);
+  });
+}

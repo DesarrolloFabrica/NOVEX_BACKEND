@@ -57,6 +57,7 @@ const OTHER_KEY = '7a2d3c4f-9e5b-4d4c-8f50-223344556677';
 const INDEX_NAME = 'uq_situations_creator_client_request';
 const EVIDENCE_INDEX_NAME = 'uq_situation_evidences_client_key';
 /** Primera migración del bloque de idempotencia que la prueba revierte. */
+const HARDEN_HISTORY_MIGRATION = 'HardenSituationHistory1788700000000';
 const FIRST_IDEMPOTENCY_MIGRATION =
   'CreateSituationClientRequestUniqueIndex1787200000001';
 
@@ -288,6 +289,10 @@ describe('Alta idempotente y reclamo de análisis con PostgreSQL real', () => {
 
     await ds.query('DROP SCHEMA IF EXISTS public CASCADE');
     await ds.query('CREATE SCHEMA public');
+    // Restaura el privilegio por defecto del esquema public (PostgreSQL 15+:
+    // USAGE para PUBLIC). Desde 1788700000000 las tablas de historial son del
+    // rol propietario, que ejecuta las comprobaciones de claves foráneas.
+    await ds.query('GRANT USAGE ON SCHEMA public TO PUBLIC');
     await ds.runMigrations();
 
     const suffix = Date.now().toString(36);
@@ -846,29 +851,48 @@ describe('Alta idempotente y reclamo de análisis con PostgreSQL real', () => {
   });
 
   describe('migraciones', () => {
-    it('revertir hasta las migraciones de idempotencia elimina índices y columnas; reaplicar las restaura', async () => {
-      // Revierte de la más reciente hacia atrás hasta deshacer la primera del
-      // bloque de idempotencia. Ejercita también los down() posteriores.
+    /*
+     * Desde 1788700000000 (HardenSituationHistory) la reversión automática se
+     * detiene ahí por diseño: revertirla quitaría las protecciones del
+     * historial. Por eso ya no se puede volver hasta el bloque de idempotencia
+     * (${FIRST_IDEMPOTENCY_MIGRATION}); esa reversión se probó en Fase 01A.
+     * Aquí se ejercitan los down() posteriores (Fase 01B.2), la barrera y la
+     * reaplicación completa.
+     */
+    it('los down() posteriores al historial protegido revierten y reaplican; la barrera no se cruza', async () => {
       for (let guard = 0; guard < 40; guard += 1) {
         const [last] = await query<{ name: string }>(
           'SELECT name FROM typeorm_migrations ORDER BY id DESC LIMIT 1',
         );
+        if (last.name === HARDEN_HISTORY_MIGRATION) break;
         await ds.undoLastMigration();
-        if (last.name === FIRST_IDEMPOTENCY_MIGRATION) break;
       }
 
-      const indexesAfterUndo = await query(
+      const retirementColumns = await query(
+        `SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'situation_evidences' AND column_name = 'retired_at'`,
+      );
+      expect(retirementColumns).toHaveLength(0);
+      const normalizationLog = await query<{ t: string | null }>(
+        `SELECT to_regclass('public.legacy_resolved_normalizations')::text AS t`,
+      );
+      expect(normalizationLog[0].t).toBeNull();
+
+      await expect(ds.undoLastMigration()).rejects.toThrow(/irreversible/);
+      const indexesAtBarrier = await query(
         'SELECT 1 FROM pg_indexes WHERE indexname = ANY($1)',
         [[INDEX_NAME, EVIDENCE_INDEX_NAME]],
       );
-      expect(indexesAfterUndo).toHaveLength(0);
-      const columnsAfterUndo = await query(
-        `SELECT 1 FROM information_schema.columns
-          WHERE table_name = 'situations' AND column_name = 'analysis_claim_token'`,
-      );
-      expect(columnsAfterUndo).toHaveLength(0);
+      expect(indexesAtBarrier).toHaveLength(2);
+      expect(FIRST_IDEMPOTENCY_MIGRATION).toBeTruthy();
 
       await ds.runMigrations();
+
+      const retirementAfterRedo = await query(
+        `SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'situation_evidences' AND column_name = 'retired_at'`,
+      );
+      expect(retirementAfterRedo).toHaveLength(1);
 
       const indexesAfterRedo = await query(
         'SELECT indexname FROM pg_indexes WHERE indexname = ANY($1)',
