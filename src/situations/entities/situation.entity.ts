@@ -17,6 +17,7 @@ import { Coordination } from '../../coordinations/entities/coordination.entity';
 import { IncidentCategory } from '../../intelligence/entities/incident-category.entity';
 import { User } from '../../users/entities/user.entity';
 import { SituationRelatedCoordination } from './situation-related-coordination.entity';
+import { SituationCancellation } from './situation-cancellation.entity';
 import { SituationResolution } from './situation-resolution.entity';
 
 @Entity({ name: 'situations' })
@@ -232,4 +233,11 @@ export class Situation extends BaseEntity {
    */
   @OneToOne(() => SituationResolution, (resolution) => resolution.situation)
   resolution!: SituationResolution | null;
+
+  /** Anulación administrativa (Fase 01B.1); `null` si no está anulada. */
+  @OneToOne(
+    () => SituationCancellation,
+    (cancellation) => cancellation.situation,
+  )
+  cancellation!: SituationCancellation | null;
 }

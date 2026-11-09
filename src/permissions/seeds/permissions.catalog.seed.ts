@@ -81,6 +81,20 @@ export const CATALOG_PERMISSIONS: readonly PermissionCatalogItem[] = [
     description: 'Permite cerrar o archivar situaciones.',
   },
   {
+    code: 'SITUATIONS_CANCEL',
+    name: 'Anular situaciones',
+    module: 'SITUATIONS',
+    description:
+      'Permite anular un reporte erróneo o duplicado con motivo obligatorio. La situación y su historial se conservan; deja de contar en los indicadores.',
+  },
+  {
+    code: 'SITUATIONS_TRANSFER',
+    name: 'Trasladar coordinación responsable',
+    module: 'SITUATIONS',
+    description:
+      'Permite trasladar la coordinación responsable de una situación activa con motivo obligatorio. No concede editar, atender ni resolver.',
+  },
+  {
     code: 'AI_ANALYZE',
     name: 'Ejecutar análisis IA',
     module: 'AI',
@@ -151,8 +165,9 @@ const DIRECTOR_ONLY_PERMISSION_CODES = ['KPIS_VIEW'];
  *               (solo si Coordinación General es la responsable). El permiso
  *               delimita el rol; la política delimita el caso.
  *
- * ADMIN conserva USERS_*, COORDINATIONS_MANAGE y SYSTEM_CONFIGURATION.
- * NO recibe CREATE/UPDATE/CLOSE ni AI_ANALYZE.
+ * ADMIN conserva USERS_*, COORDINATIONS_MANAGE y SYSTEM_CONFIGURATION, y
+ * recibe SITUATIONS_CANCEL / SITUATIONS_TRANSFER (acciones administrativas con
+ * motivo, Fase 01B.1). NO recibe CREATE/UPDATE/CLOSE ni AI_ANALYZE.
  */
 export const ROLE_PERMISSION_CODES: Readonly<
   Record<'ADMIN' | 'DIRECTOR' | 'ANALISTA' | 'COORDINADOR', readonly string[]>

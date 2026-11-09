@@ -44,6 +44,15 @@ describe('ROLE_PERMISSION_CODES · operación de situaciones', () => {
     );
   });
 
+  it('solo ADMIN anula y traslada (Fase 01B.1), sin ganar permisos de operación', () => {
+    for (const code of ['SITUATIONS_CANCEL', 'SITUATIONS_TRANSFER']) {
+      expect(ROLE_PERMISSION_CODES.ADMIN).toContain(code);
+      expect(ROLE_PERMISSION_CODES.DIRECTOR).not.toContain(code);
+      expect(ROLE_PERMISSION_CODES.ANALISTA).not.toContain(code);
+      expect(ROLE_PERMISSION_CODES.COORDINADOR).not.toContain(code);
+    }
+  });
+
   it('ANALISTA conserva CREATE, UPDATE, CLOSE y AI_ANALYZE', () => {
     expect(ROLE_PERMISSION_CODES.ANALISTA).toEqual(
       expect.arrayContaining([

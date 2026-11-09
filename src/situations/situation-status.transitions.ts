@@ -12,6 +12,9 @@ export const SITUATION_STATUS_TRANSITIONS: Record<
   [SituationStatus.IN_PROGRESS]: [SituationStatus.CLOSED],
   [SituationStatus.RESOLVED]: [SituationStatus.CLOSED],
   [SituationStatus.CLOSED]: [],
+  // La anulación es una acción administrativa propia, no una transición del
+  // ciclo operativo; desde CANCELLED no se sale.
+  [SituationStatus.CANCELLED]: [],
 };
 
 export const SITUATION_STATUS_LABEL_ES: Record<SituationStatus, string> = {
@@ -20,6 +23,7 @@ export const SITUATION_STATUS_LABEL_ES: Record<SituationStatus, string> = {
   /** Valor legado: se presenta como En atención en la UI operativa. */
   [SituationStatus.RESOLVED]: 'En atención',
   [SituationStatus.CLOSED]: 'Cerrado',
+  [SituationStatus.CANCELLED]: 'Anulado',
 };
 
 export function getNextSituationStatuses(

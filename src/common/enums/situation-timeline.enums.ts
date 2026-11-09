@@ -24,4 +24,11 @@ export enum TimelineEventType {
    * `SEVERITY_CHANGED`, que era la edición por PATCH y ya no se emite.
    */
   SEVERITY_ESCALATED = 'SEVERITY_ESCALATED',
+  /** Anulación administrativa. Metadata: `{ previousStatus }`. */
+  CANCELLED = 'CANCELLED',
+  /**
+   * Traslado administrativo de la coordinación responsable. Metadata:
+   * `{ fromCoordinationId, toCoordinationId, reportKind, statusAtTransfer }`.
+   */
+  COORDINATION_TRANSFERRED = 'COORDINATION_TRANSFERRED',
 }

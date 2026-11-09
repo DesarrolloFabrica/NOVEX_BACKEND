@@ -8,6 +8,8 @@ import { User } from '../users/entities/user.entity';
 import { Situation } from './entities/situation.entity';
 import { SituationConsequence } from './entities/situation-consequence.entity';
 import { SituationRelatedCoordination } from './entities/situation-related-coordination.entity';
+import { SituationCancellation } from './entities/situation-cancellation.entity';
+import { SituationCoordinationTransfer } from './entities/situation-coordination-transfer.entity';
 import { SituationResolution } from './entities/situation-resolution.entity';
 import { SituationSeverityChange } from './entities/situation-severity-change.entity';
 import { SituationsRepository } from './repositories/situations.repository';
@@ -32,6 +34,8 @@ import { SituationSweepService } from './sweep/situation-sweep.service';
       Situation,
       SituationRelatedCoordination,
       SituationResolution,
+      SituationCancellation,
+      SituationCoordinationTransfer,
       SituationSeverityChange,
       SituationConsequence,
       Coordination,

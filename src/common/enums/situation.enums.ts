@@ -10,6 +10,11 @@ export enum SituationStatus {
   IN_PROGRESS = 'IN_PROGRESS',
   RESOLVED = 'RESOLVED',
   CLOSED = 'CLOSED',
+  /**
+   * Anulada por administración (reporte erróneo o duplicado). Distinta de
+   * CLOSED: no hubo solución ni aprendizaje. Queda fuera de los indicadores.
+   */
+  CANCELLED = 'CANCELLED',
 }
 
 /**
