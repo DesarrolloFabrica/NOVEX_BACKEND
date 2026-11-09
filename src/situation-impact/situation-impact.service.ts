@@ -10,6 +10,7 @@ import { ImpactLevel } from '../common/enums/situation-impact.enums';
 import { Coordination } from '../coordinations/entities/coordination.entity';
 import { Situation } from '../situations/entities/situation.entity';
 import {
+  AI_SUGGESTION_ORIGIN,
   AffectedCoordinationResponseDto,
   ImpactCoordinationCandidateDto,
   SaveImpactAssessmentInput,
@@ -71,6 +72,8 @@ export class SituationImpactService {
       return {
         situationId,
         impactAssessmentId: null,
+        origin: AI_SUGGESTION_ORIGIN,
+        countsForIntegrity: false,
         items: [],
         total: 0,
       };
@@ -83,6 +86,8 @@ export class SituationImpactService {
     return {
       situationId,
       impactAssessmentId: assessment.id,
+      origin: AI_SUGGESTION_ORIGIN,
+      countsForIntegrity: false,
       items,
       total: items.length,
     };
@@ -447,6 +452,8 @@ export class SituationImpactService {
   ): AffectedCoordinationResponseDto {
     return {
       id: item.id,
+      origin: AI_SUGGESTION_ORIGIN,
+      isSuggestion: true,
       coordinationId: item.coordinationId,
       coordinationCode: item.coordination.code,
       coordinationName: item.coordination.name,

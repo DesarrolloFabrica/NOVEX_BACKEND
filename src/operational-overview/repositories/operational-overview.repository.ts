@@ -5,8 +5,6 @@ import {
   SituationSeverity,
   SituationStatus,
 } from '../../common/enums/situation.enums';
-import { SituationAffectedCoordination } from '../../situation-impact/entities/situation-affected-coordination.entity';
-import { SituationImpactAssessment } from '../../situation-impact/entities/situation-impact-assessment.entity';
 import { Situation } from '../../situations/entities/situation.entity';
 import { ACTIVE_SITUATION_STATUSES } from '../domain/coordination-integrity';
 
@@ -111,41 +109,55 @@ export class OperationalOverviewRepository extends Repository<Situation> {
   }
 
   /**
-   * Coordinaciones DISTINTAS afectadas por los problemas activos de cada
-   * dueño, vía `situation_impact_assessments` ->
-   * `situation_affected_coordinations`.
+   * PROPAGACIÓN CONFIRMADA de los problemas activos de cada dueño: número de
+   * coordinaciones DISTINTAS, distintas de la dueña, que un usuario autorizado
+   * registró como relacionadas con el caso:
+   *   - coordinaciones relacionadas declaradas al reportar
+   *     (`situation_related_coordinations`);
+   *   - la coordinación AFECTADA de una dependencia INTER (hecho registrado).
    *
-   * La coordinación dueña no cuenta como propagación hacia otra área: el
-   * modelo permite que aparezca entre las afectadas y la lectura existente ya
-   * la descarta (`SituationImpactService.selectSimulatedCandidates`). El
-   * Registro de analista no tiene dueña, así que no se excluye nada.
+   * Fase 01B.2: las coordinaciones que Gemini PROPONE en su análisis
+   * (`situation_affected_coordinations`) son SUGERENCIAS y no entran aquí. Un
+   * análisis IA no puede cambiar por sí solo la integridad ni las vidas de una
+   * carta. El umbral de la política (integrity-mvp-v1) no cambia: cambia solo
+   * la fuente del dato.
+   *
+   * El Registro de analista no tiene dueña, así que no se excluye nada.
    */
   async aggregateAffectedCoordinations(
     scope?: OperationalAggregationScope,
   ): Promise<AffectedCoordinationRow[]> {
-    const qb = this.createQueryBuilder('situation')
-      .innerJoin(
-        SituationImpactAssessment,
-        'assessment',
-        'assessment.situationId = situation.id',
-      )
-      .innerJoin(
-        SituationAffectedCoordination,
-        'affected',
-        'affected.impactAssessmentId = assessment.id',
-      )
-      .select('situation.coordinationId', 'coordinationId')
-      .addSelect('COUNT(DISTINCT affected.coordination_id)', 'total')
-      .where('situation.status IN (:...statuses)', {
-        statuses: [...ACTIVE_SITUATION_STATUSES],
-      })
-      .andWhere(
-        '(situation.coordinationId IS NULL OR affected.coordinationId <> situation.coordinationId)',
-      );
-    this.applyOwnerScope(qb, scope);
-    const rows = await qb
-      .groupBy('situation.coordinationId')
-      .getRawMany<{ coordinationId: string | null; total: string }>();
+    const owners = scope?.ownerCoordinationIds?.length
+      ? [...scope.ownerCoordinationIds]
+      : null;
+    const rows = await this.manager.query<
+      Array<{ coordinationId: string | null; total: number }>
+    >(
+      `
+      SELECT propagation.owner AS "coordinationId",
+             COUNT(DISTINCT propagation.related)::int AS total
+        FROM (
+          SELECT s.coordination_id AS owner, rc.coordination_id AS related
+            FROM situations s
+            JOIN situation_related_coordinations rc ON rc.situation_id = s.id
+           WHERE s.status = ANY($1::situations_status_enum[])
+          UNION ALL
+          SELECT s.coordination_id AS owner, s.affected_coordination_id AS related
+            FROM situations s
+           WHERE s.status = ANY($1::situations_status_enum[])
+             AND s.report_kind = $2
+             AND s.affected_coordination_id IS NOT NULL
+        ) AS propagation
+       WHERE propagation.related IS DISTINCT FROM propagation.owner
+         AND ($3::uuid[] IS NULL OR propagation.owner = ANY($3::uuid[]))
+       GROUP BY propagation.owner
+      `,
+      [
+        [...ACTIVE_SITUATION_STATUSES],
+        SituationReportKind.INTER_COORDINATION,
+        owners,
+      ],
+    );
 
     return rows.map((row) => ({
       coordinationId: row.coordinationId,

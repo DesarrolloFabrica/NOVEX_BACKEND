@@ -204,4 +204,45 @@ describe('SituationImpactService simulation and context', () => {
     expect(simulation.potentialCoordinations).toEqual([]);
     expect(simulation.message).toMatch(/análisis/i);
   });
+
+  it('Fase 01B.2: marca cada coordinación propuesta por Gemini como sugerencia', async () => {
+    const { service, situationsRepository, impactRepository } = createService();
+    situationsRepository.exist.mockResolvedValue(true);
+    impactRepository.findBySituationId.mockResolvedValue({
+      id: 'assessment-1',
+      affectedCoordinations: [1, 2, 3, 4, 5].map((n) => ({
+        id: `affected-${n}`,
+        coordinationId: `coord-${n}`,
+        coordination: { code: `c-${n}`, name: `C ${n}` },
+        impactLevel: ImpactLevel.HIGH,
+        description: 'propuesta del análisis',
+      })),
+    });
+
+    const response = await service.getAffectedCoordinationsBySituation('sit-1');
+
+    expect(response.origin).toBe('AI_SUGGESTION');
+    expect(response.countsForIntegrity).toBe(false);
+    expect(response.total).toBe(5);
+    expect(
+      response.items.every(
+        (item) => item.origin === 'AI_SUGGESTION' && item.isSuggestion,
+      ),
+    ).toBe(true);
+  });
+
+  it('Fase 01B.2: sin análisis, la lista vacía también declara su naturaleza', async () => {
+    const { service, situationsRepository, impactRepository } = createService();
+    situationsRepository.exist.mockResolvedValue(true);
+    impactRepository.findBySituationId.mockResolvedValue(null);
+
+    const response = await service.getAffectedCoordinationsBySituation('sit-1');
+
+    expect(response).toMatchObject({
+      origin: 'AI_SUGGESTION',
+      countsForIntegrity: false,
+      items: [],
+      total: 0,
+    });
+  });
 });

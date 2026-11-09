@@ -19,8 +19,20 @@ export interface SaveImpactAssessmentInput {
   affectedCoordinations: AffectedCoordinationInput[];
 }
 
+/**
+ * Naturaleza de las coordinaciones que propone el análisis IA (Fase 01B.2).
+ * Son SUGERENCIAS: no alimentan la integridad, las vidas ni ningún indicador,
+ * y no cambian coordinación, estado ni severidad del caso. Solo cuentan como
+ * propagación las relaciones confirmadas por un usuario autorizado.
+ */
+export const AI_SUGGESTION_ORIGIN = 'AI_SUGGESTION' as const;
+export type AffectedCoordinationOrigin = typeof AI_SUGGESTION_ORIGIN;
+
 export class AffectedCoordinationResponseDto {
   id!: string;
+  /** Siempre `AI_SUGGESTION`: propuesta del análisis, no un hecho confirmado. */
+  origin!: AffectedCoordinationOrigin;
+  isSuggestion!: true;
   coordinationId!: string;
   coordinationCode!: string;
   coordinationName!: string;
@@ -43,6 +55,9 @@ export class SituationImpactAssessmentResponseDto {
 export class SituationAffectedCoordinationsResponseDto {
   situationId!: string;
   impactAssessmentId!: string | null;
+  /** Toda la lista son sugerencias del análisis IA (ver AI_SUGGESTION_ORIGIN). */
+  origin!: AffectedCoordinationOrigin;
+  countsForIntegrity!: false;
   items!: AffectedCoordinationResponseDto[];
   total!: number;
 }

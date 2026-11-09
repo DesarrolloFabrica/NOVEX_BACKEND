@@ -42,7 +42,11 @@ export function isActiveForIntegrity(status: SituationStatus): boolean {
  *
  *   activeProblemsCount / severidades  Problemas donde esta área es RESPONSABLE
  *                                      (debe atender). Significado histórico.
- *   affectedCoordinationCount          Propagación IA de esos problemas propios.
+ *   affectedCoordinationCount          Propagación CONFIRMADA de esos problemas:
+ *                                      coordinaciones relacionadas declaradas
+ *                                      y afectadas INTER registradas. Las
+ *                                      sugerencias de Gemini NO cuentan
+ *                                      (Fase 01B.2).
  *   incomingDependencyCount            Dependencias INTER activas donde esta
  *                                      área es la AFECTADA (impacto recibido).
  *                                      NO se suman a activeProblemsCount: un
