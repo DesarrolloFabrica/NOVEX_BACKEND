@@ -1,4 +1,6 @@
 import { ConflictException } from '@nestjs/common';
+import { AuditLogService } from '../audit/audit-log.service';
+import { AuditLog } from '../audit/entities/audit-log.entity';
 import { config as loadEnv } from 'dotenv';
 import { join } from 'node:path';
 import { DataSource } from 'typeorm';
@@ -126,11 +128,15 @@ suite('INTERNAL vivo · Postgres real', () => {
     );
     // El subscriber escribe SITUATION_CREATED dentro de la transacción del alta.
     new SituationTimelineSubscriber(ds, timelineService);
-    const audit = { record: jest.fn().mockResolvedValue(null) };
+    // Auditoría REAL (Fase 01B.1): las acciones críticas la escriben dentro
+    // de su transacción; audit_logs es inmutable y queda en la base desechable.
+    const audit = new AuditLogService(ds.getRepository(AuditLog), {
+      getRequestId: () => null,
+    } as never);
     const escalation = new SeverityEscalationService(
       [QA_POLICY],
       timelineService,
-      audit as never,
+      audit,
     );
     const situationsRepository = new SituationsRepository(ds);
     situations = new SituationsService(
@@ -144,14 +150,14 @@ suite('INTERNAL vivo · Postgres real', () => {
       ds.getRepository(SituationConsequence),
       timelineService,
       new OperationalScopeService(),
-      audit as never,
+      audit,
       escalation,
     );
     consequences = new SituationConsequencesService(
       situationsRepository,
       new OperationalScopeService(),
       timelineService,
-      audit as never,
+      audit,
       escalation,
     );
     sweep = new SituationSweepService(ds, timelineService, escalation);

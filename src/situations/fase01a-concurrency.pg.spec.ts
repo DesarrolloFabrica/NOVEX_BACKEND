@@ -1,4 +1,6 @@
 import { ConflictException, ForbiddenException } from '@nestjs/common';
+import { AuditLogService } from '../audit/audit-log.service';
+import { AuditLog } from '../audit/entities/audit-log.entity';
 import { randomUUID } from 'node:crypto';
 import { config as loadEnv } from 'dotenv';
 import { join } from 'node:path';
@@ -141,11 +143,15 @@ suite('Fase 01A · concurrencia contra PostgreSQL real', () => {
       ds.getRepository(Situation),
     );
     new SituationTimelineSubscriber(ds, timelineService);
-    const audit = { record: jest.fn().mockResolvedValue(null) };
+    // Auditoría REAL (Fase 01B.1): las acciones críticas la escriben dentro
+    // de su transacción; audit_logs es inmutable y queda en la base desechable.
+    const audit = new AuditLogService(ds.getRepository(AuditLog), {
+      getRequestId: () => null,
+    } as never);
     const escalation = new SeverityEscalationService(
       [],
       timelineService,
-      audit as never,
+      audit,
     );
     situations = new SituationsService(
       new SituationsRepository(ds),
@@ -158,7 +164,7 @@ suite('Fase 01A · concurrencia contra PostgreSQL real', () => {
       ds.getRepository(SituationConsequence),
       timelineService,
       new OperationalScopeService(),
-      audit as never,
+      audit,
       escalation,
     );
   });
@@ -408,7 +414,10 @@ suite('Fase 01A · concurrencia contra PostgreSQL real', () => {
           getLatestSession: jest.fn().mockResolvedValue(null),
           createSession,
         } as never,
-        { record: jest.fn().mockResolvedValue(null) } as never,
+        {
+          record: jest.fn().mockResolvedValue(null),
+          recordCritical: jest.fn().mockResolvedValue({}),
+        } as never,
       );
       return { orchestrator, persistAnalysis, createSession };
     }

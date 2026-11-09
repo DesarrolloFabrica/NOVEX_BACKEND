@@ -48,6 +48,8 @@ import { SituationSeverityChange } from '../../src/situations/entities/situation
 import type { CreateSituationDto } from '../../src/situations/dto/situation.dto';
 import { User } from '../../src/users/entities/user.entity';
 import { openDisposableDataSource } from '../support/disposable-database.guard';
+import { AuditLogService } from '../../src/audit/audit-log.service';
+import { AuditLog } from '../../src/audit/entities/audit-log.entity';
 
 const ROOT = join(__dirname, '../..');
 const KEY = '6f1c2b1e-8d2a-4c3b-9e4f-112233445566';
@@ -135,6 +137,11 @@ describe('Alta idempotente y reclamo de análisis con PostgreSQL real', () => {
   }
 
   function buildOrchestrator() {
+    // Auditoría REAL (Fase 01B.1): obligatoria y en la transacción de cada
+    // acción crítica; audit_logs es inmutable.
+    const audit = new AuditLogService(ds.getRepository(AuditLog), {
+      getRequestId: () => null,
+    } as never);
     const situationsRepository = new SituationsRepository(ds);
     const situationsService = new SituationsService(
       situationsRepository,
@@ -147,7 +154,7 @@ describe('Alta idempotente y reclamo de análisis con PostgreSQL real', () => {
       ds.getRepository(SituationConsequence),
       { createEntry: () => Promise.resolve({}) } as never,
       new OperationalScopeService(),
-      { record: () => Promise.resolve(null) } as never,
+      audit,
       // Sin política de escalamiento (estado productivo actual).
       {
         materializeDueEscalations: () => Promise.resolve([]),
@@ -251,7 +258,7 @@ describe('Alta idempotente y reclamo de análisis con PostgreSQL real', () => {
           };
         },
       } as never,
-      { record: () => Promise.resolve(null) } as never,
+      audit,
     );
 
     return { orchestrator, situationsService };
