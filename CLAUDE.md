@@ -60,6 +60,10 @@ Contra Cloud SQL (`DB_CLOUD=true` o `DB_HOST=/cloudsql/…`): las semillas de ar
 
 La e2e real del frontend (`NOVEX_FRONTEND/e2e-real/run.mjs`) crea por ejecución un contenedor PostgreSQL nuevo con tmpfs, puerto aleatorio ligado a loopback y base marcada `novex:disposable-test-db`; el preparador exige la guarda central antes de recrear el esquema. El contenedor se detiene al terminar. La aplicación e2e necesita el puerto 3001 libre.
 
+### Propiedad del historial institucional
+
+La migración `1788700000000-HardenSituationHistory` requiere que infraestructura cree `NOVEX_HISTORY_OWNER_ROLE` como `NOLOGIN` y `NOVEX_APP_DB_ROLE` como rol runtime no-superusuario, sin membresía del rol propietario. El migrador debe poder transferir la propiedad. Ejecute la migración con credenciales de migrador y declare ambos nombres solo en esa invocación; configure el servicio con el rol de aplicación. La migración valida los privilegios efectivos y falla cerrada si el runtime conserva UPDATE, DELETE o TRUNCATE. Los triggers también rechazan esas operaciones; propietarios y superusuarios siguen siendo una frontera administrativa privilegiada y nunca deben usarse como runtime.
+
 ## Docs operativos en este repo
 
 Conservar: `docs/RELEASE_CIRCO.md`, `INCIDENTE-20261023-MIGRACIONES.md`, `RESTORE-TEST.md`, `BACKUP-DR.md`, `SECURITY.md`, `SECRETS-AND-VARS.md`, `INTERNAL_VIVO.md`, `DEPLOY_BACKEND.md`. Índice en `../docs/despliegue-y-operacion.md`.

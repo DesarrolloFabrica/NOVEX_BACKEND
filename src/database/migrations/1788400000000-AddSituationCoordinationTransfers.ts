@@ -57,6 +57,14 @@ export class AddSituationCoordinationTransfers1788400000000 implements Migration
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    const rows = (await queryRunner.query(
+      `SELECT count(*)::text AS total FROM "situation_coordination_transfers"`,
+    )) as Array<{ total: string }>;
+    if (Number(rows[0]?.total ?? 0) > 0) {
+      throw new Error(
+        'No se puede revertir AddSituationCoordinationTransfers: hay historial de traslados. Exporte y preserve esos registros antes de una reversión explícita.',
+      );
+    }
     await queryRunner.query(
       `DROP TABLE IF EXISTS "situation_coordination_transfers"`,
     );

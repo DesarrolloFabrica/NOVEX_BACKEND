@@ -25,7 +25,7 @@ export class SituationCancellation {
 
   @OneToOne(() => Situation, (situation) => situation.cancellation, {
     nullable: false,
-    onDelete: 'CASCADE',
+    onDelete: 'RESTRICT',
   })
   @JoinColumn({ name: 'situation_id' })
   situation!: Situation;

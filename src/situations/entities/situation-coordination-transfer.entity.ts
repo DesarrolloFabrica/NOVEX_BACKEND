@@ -28,7 +28,7 @@ export class SituationCoordinationTransfer {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @ManyToOne(() => Situation, { nullable: false, onDelete: 'CASCADE' })
+  @ManyToOne(() => Situation, { nullable: false, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'situation_id' })
   situation!: Situation;
 
@@ -49,6 +49,12 @@ export class SituationCoordinationTransfer {
 
   @Column({ type: 'uuid', name: 'to_coordination_id' })
   toCoordinationId!: string;
+
+  @Column({ type: 'uuid', name: 'previous_assigned_user_id', nullable: true })
+  previousAssignedUserId!: string | null;
+
+  @Column({ type: 'uuid', name: 'next_assigned_user_id', nullable: true })
+  nextAssignedUserId!: string | null;
 
   @Column({ type: 'text' })
   reason!: string;
