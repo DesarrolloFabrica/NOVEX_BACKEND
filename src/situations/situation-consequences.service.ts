@@ -10,10 +10,14 @@ import { AuditLogService } from '../audit/audit-log.service';
 import {
   CONSEQUENCE_OPEN_STATUSES,
   OperationalScopeService,
+  SITUATION_CANCELLED_CODE,
 } from '../auth/services/operational-scope.service';
 import { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { TimelineEventType } from '../common/enums/situation-timeline.enums';
-import { SituationReportKind } from '../common/enums/situation.enums';
+import {
+  SituationReportKind,
+  SituationStatus,
+} from '../common/enums/situation.enums';
 import { SituationTimelineService } from '../situation-timeline/situation-timeline.service';
 import {
   CreateSituationConsequenceDto,
@@ -95,6 +99,12 @@ export class SituationConsequencesService {
           throw new BadRequestException(
             'Las afectaciones solo aplican a problemas internos.',
           );
+        }
+        if (situation.status === SituationStatus.CANCELLED) {
+          throw new ConflictException({
+            code: SITUATION_CANCELLED_CODE,
+            message: 'El problema fue anulado: no admite afectaciones.',
+          });
         }
         if (!CONSEQUENCE_OPEN_STATUSES.includes(situation.status)) {
           throw new ConflictException(

@@ -54,6 +54,20 @@ export const SITUATION_CANCELLED_CODE = 'SITUATION_CANCELLED';
 /** Código de negocio de un COORDINADOR sin coordinación asignada. */
 export const COORDINATION_REQUIRED_CODE = 'COORDINATION_REQUIRED';
 
+/**
+ * Estados desde los que un ADMIN puede ANULAR o TRASLADAR un caso (Fase
+ * 01B.1). CLOSED (ya solucionado, con aprendizaje) y CANCELLED quedan fuera.
+ * RESOLVED es legado y sigue pendiente de cierre: se admite.
+ */
+export const ADMINISTRABLE_SITUATION_STATUSES: readonly SituationStatus[] = [
+  SituationStatus.OPEN,
+  SituationStatus.IN_PROGRESS,
+  SituationStatus.RESOLVED,
+];
+
+/** Código del rol que administra la plataforma. */
+export const ADMIN_ROLE_CODE = 'ADMIN';
+
 /** Código del rol que coordina un área. */
 export const COORDINATOR_ROLE_CODE = 'COORDINADOR';
 
@@ -607,6 +621,36 @@ export class OperationalScopeService {
 
     this.assertSituationInScope(actor, situation);
     this.assertCanOperateSituation(actor, situation);
+  }
+
+  /**
+   * ACCIONES ADMINISTRATIVAS sobre situaciones (anular, trasladar). Exigen el
+   * permiso específico Y el rol ADMIN: defensa en profundidad para que un
+   * permiso concedido por error a otro rol no lo convierta en administrador.
+   * Ninguna de las dos concede editar, atender ni resolver.
+   */
+  assertCanAdministerSituation(
+    actor: AuthPayload,
+    permission: 'SITUATIONS_CANCEL' | 'SITUATIONS_TRANSFER',
+  ): void {
+    this.assertPermission(actor, permission);
+    if (this.normalizeRoleCode(actor.roleCode) !== ADMIN_ROLE_CODE) {
+      throw new ForbiddenException(
+        'Solo la administración de la plataforma puede ejecutar esta acción.',
+      );
+    }
+  }
+
+  canAdministerSituation(
+    actor: AuthPayload,
+    permission: 'SITUATIONS_CANCEL' | 'SITUATIONS_TRANSFER',
+    situation: { status: SituationStatus },
+  ): boolean {
+    return (
+      actor.permissions.includes(permission) &&
+      this.normalizeRoleCode(actor.roleCode) === ADMIN_ROLE_CODE &&
+      ADMINISTRABLE_SITUATION_STATUSES.includes(situation.status)
+    );
   }
 
   /**

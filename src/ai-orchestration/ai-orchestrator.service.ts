@@ -19,6 +19,7 @@ import type { AIAnalysisResult } from '../ai-analysis/contracts/ai-analysis-resu
 
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import {
+  SITUATION_CANCELLED_CODE,
   SITUATION_CLOSED_CODE,
   WORKABLE_SITUATION_STATUSES,
 } from '../auth/services/operational-scope.service';
@@ -555,7 +556,10 @@ export class AIOrchestrator {
       !WORKABLE_SITUATION_STATUSES.includes(row.status as SituationStatus)
     ) {
       // M1: el caso se cerró durante el análisis. No se escribe nada.
-      throw this.situationClosedDuringAnalysis(situationId);
+      throw this.situationClosedDuringAnalysis(
+        situationId,
+        row.status as SituationStatus,
+      );
     }
 
     if (!row || row.claim_token !== claimToken) {
@@ -581,15 +585,19 @@ export class AIOrchestrator {
           SituationStatus | undefined)
       : undefined;
     if (status && !WORKABLE_SITUATION_STATUSES.includes(status)) {
-      throw this.situationClosedDuringAnalysis(situationId);
+      throw this.situationClosedDuringAnalysis(situationId, status);
     }
   }
 
   private situationClosedDuringAnalysis(
     situationId: string,
+    status: SituationStatus,
   ): ConflictException {
     return new ConflictException({
-      code: SITUATION_CLOSED_CODE,
+      code:
+        status === SituationStatus.CANCELLED
+          ? SITUATION_CANCELLED_CODE
+          : SITUATION_CLOSED_CODE,
       message:
         'El problema ya no está activo: no admite análisis. El resultado no se guardó.',
       situationId,

@@ -88,6 +88,7 @@ describe('SituationsService PATCH (transacción, bloqueo y reglas de edición)',
       canUpdateSituation: jest.fn().mockReturnValue(true),
       canAdvanceSituationToInProgress: jest.fn().mockReturnValue(false),
       canAddConsequence: jest.fn().mockReturnValue(false),
+      canAdministerSituation: jest.fn().mockReturnValue(false),
       assertSituationReadable: jest.fn(),
     };
     const auditLogService = {
@@ -499,6 +500,7 @@ describe('SituationsService related coordinations', () => {
       canAdvanceSituationToInProgress: jest.fn().mockReturnValue(false),
       assertCanAdvanceSituationToInProgress: jest.fn(),
       canAddConsequence: jest.fn().mockReturnValue(false),
+      canAdministerSituation: jest.fn().mockReturnValue(false),
     };
     const detail = emptyDetailRepositories();
 

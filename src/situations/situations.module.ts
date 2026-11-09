@@ -19,6 +19,8 @@ import {
 } from './severity-escalation/severity-escalation.policy';
 import { SeverityEscalationService } from './severity-escalation/severity-escalation.service';
 import { SituationsController } from './situations.controller';
+import { SituationAdministrationController } from './situation-administration.controller';
+import { SituationAdministrationService } from './situation-administration.service';
 import { SituationAccessService } from './situation-access.service';
 import { SituationConsequencesService } from './situation-consequences.service';
 import { SituationSlaScheduler } from './situation-sla.scheduler';
@@ -45,9 +47,14 @@ import { SituationSweepService } from './sweep/situation-sweep.service';
     AuthModule,
     forwardRef(() => SituationTimelineModule),
   ],
-  controllers: [SituationsController, SituationSweepController],
+  controllers: [
+    SituationsController,
+    SituationSweepController,
+    SituationAdministrationController,
+  ],
   providers: [
     SituationsService,
+    SituationAdministrationService,
     SituationsRepository,
     SituationAccessService,
     SituationConsequencesService,

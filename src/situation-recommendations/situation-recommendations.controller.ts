@@ -1,5 +1,6 @@
 import {
   Body,
+  ConflictException,
   Controller,
   Get,
   NotFoundException,
@@ -13,6 +14,8 @@ import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { SITUATION_CANCELLED_CODE } from '../auth/services/operational-scope.service';
+import { SituationStatus } from '../common/enums/situation.enums';
 import { SituationAccessService } from '../situations/situation-access.service';
 import {
   CreateManualRecommendationDto,
@@ -126,12 +129,24 @@ export class SituationRecommendationsController {
     @CurrentUser() user: AuthPayload,
   ) {
     const recommendation = await this.recommendationsService.getById(id);
-    await this.requireRecommendationScope(id, () =>
-      this.situationAccessService.requireOperableSituation(
-        user,
-        recommendation.situationId,
-      ),
-    );
+    let situationStatus: SituationStatus | undefined;
+    await this.requireRecommendationScope(id, async () => {
+      const situation =
+        await this.situationAccessService.requireOperableSituation(
+          user,
+          recommendation.situationId,
+        );
+      situationStatus = situation.status;
+    });
+    // Fase 01B.1: las recomendaciones de un caso ANULADO quedan congeladas
+    // (se conservan, no se modifican). Comprobado después del alcance.
+    if (situationStatus === SituationStatus.CANCELLED) {
+      throw new ConflictException({
+        code: SITUATION_CANCELLED_CODE,
+        message:
+          'El problema fue anulado: sus recomendaciones no se modifican.',
+      });
+    }
     return this.recommendationsService.updateRecommendation(id, dto, user.sub);
   }
 

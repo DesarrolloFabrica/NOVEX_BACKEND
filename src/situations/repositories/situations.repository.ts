@@ -43,6 +43,7 @@ export class SituationsRepository extends Repository<Situation> {
         },
         // El aprendizaje viaja con el detalle: la UI no debe pedirlo aparte.
         resolution: true,
+        cancellation: true,
       },
       order: {
         relatedCoordinations: {
@@ -98,10 +99,22 @@ export class SituationsRepository extends Repository<Situation> {
       // LEFT JOIN, no INNER: los problemas activos y los cerrados sin
       // aprendizaje deben seguir apareciendo en el listado.
       .leftJoinAndSelect('situation.resolution', 'resolution')
-      .leftJoinAndSelect('resolution.resolvedByUser', 'resolvedByUser');
+      .leftJoinAndSelect('resolution.resolvedByUser', 'resolvedByUser')
+      .leftJoinAndSelect('situation.cancellation', 'cancellation')
+      .leftJoinAndSelect('cancellation.cancelledByUser', 'cancelledByUser');
 
     if (query.status) {
       qb.andWhere('situation.status = :status', { status: query.status });
+    } else {
+      /*
+       * Fase 01B.1: las situaciones ANULADAS no aparecen en los listados por
+       * defecto (tampoco en «mis reportes»); se consultan explícitamente con
+       * `status=CANCELLED`. Así ningún cliente actual recibe un estado que no
+       * conoce y los conteos operativos no las mezclan.
+       */
+      qb.andWhere('situation.status <> :cancelled', {
+        cancelled: SituationStatus.CANCELLED,
+      });
     }
 
     if (query.severity) {

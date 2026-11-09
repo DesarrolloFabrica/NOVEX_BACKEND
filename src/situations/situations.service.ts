@@ -14,6 +14,7 @@ import { AuditLogService } from '../audit/audit-log.service';
 import {
   GENERAL_OPERATIONS_COORDINATION_CODE,
   OperationalScopeService,
+  SITUATION_CANCELLED_CODE,
   SITUATION_CLOSED_CODE,
 } from '../auth/services/operational-scope.service';
 import { AuthPayload } from '../auth/contracts/auth-payload.contract';
@@ -44,6 +45,7 @@ import {
   SituationResponseDto,
   SituationsListResponseDto,
   UpdateSituationDto,
+  SituationCancellationResponseDto,
 } from './dto/situation.dto';
 import { Situation } from './entities/situation.entity';
 import { SituationConsequence } from './entities/situation-consequence.entity';
@@ -97,6 +99,12 @@ const ADVANCE_FORBIDDEN_FIELDS = [
   'occurredAt',
   'coordinationId',
 ] as const satisfies ReadonlyArray<keyof UpdateSituationDto>;
+
+/** Estados sin edición ordinaria: cerrado y anulado. */
+const FROZEN_STATUSES: readonly SituationStatus[] = [
+  SituationStatus.CLOSED,
+  SituationStatus.CANCELLED,
+];
 
 const RESOLVABLE_STATUSES: readonly SituationStatus[] = [
   SituationStatus.OPEN,
@@ -792,6 +800,13 @@ export class SituationsService implements OnModuleInit {
           );
         }
 
+        if (situation.status === SituationStatus.CANCELLED) {
+          throw new ConflictException({
+            code: SITUATION_CANCELLED_CODE,
+            message: 'El problema fue anulado y no admite modificaciones.',
+          });
+        }
+
         if (situation.status === SituationStatus.CLOSED) {
           throw new ConflictException({
             code: SITUATION_CLOSED_CODE,
@@ -1007,6 +1022,13 @@ export class SituationsService implements OnModuleInit {
           situation,
           await this.ensureGeneralCoordinationId(),
         );
+
+        if (situation.status === SituationStatus.CANCELLED) {
+          throw new ConflictException({
+            code: SITUATION_CANCELLED_CODE,
+            message: 'El problema fue anulado: no se resuelve.',
+          });
+        }
 
         if (!RESOLVABLE_STATUSES.includes(situation.status)) {
           throw new ConflictException(
@@ -1339,6 +1361,20 @@ export class SituationsService implements OnModuleInit {
     };
   }
 
+  private toCancellationResponse(
+    situation: Situation,
+  ): SituationCancellationResponseDto | null {
+    const cancellation = situation.cancellation;
+    if (!cancellation) return null;
+    return {
+      reason: cancellation.reason,
+      previousStatus: cancellation.previousStatus,
+      cancelledByUserId: cancellation.cancelledByUserId,
+      cancelledByUserName: cancellation.cancelledByUser?.fullName ?? '',
+      cancelledAt: cancellation.cancelledAt,
+    };
+  }
+
   private toResolutionResponse(
     situation: Situation,
   ): SituationResolutionResponseDto | null {
@@ -1437,8 +1473,22 @@ export class SituationsService implements OnModuleInit {
           situation,
           this.generalCoordinationId,
         ),
-      canUpdate: this.scopeService.canUpdateSituation(actor, situation),
+      // Un caso cerrado o anulado no admite edición ordinaria (Fase 01A/01B).
+      canUpdate:
+        !FROZEN_STATUSES.includes(situation.status) &&
+        this.scopeService.canUpdateSituation(actor, situation),
       canAddConsequence: this.scopeService.canAddConsequence(actor, situation),
+      cancellation: this.toCancellationResponse(situation),
+      canCancel: this.scopeService.canAdministerSituation(
+        actor,
+        'SITUATIONS_CANCEL',
+        situation,
+      ),
+      canTransfer: this.scopeService.canAdministerSituation(
+        actor,
+        'SITUATIONS_TRANSFER',
+        situation,
+      ),
     };
   }
 }

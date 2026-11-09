@@ -239,6 +239,59 @@ export class ResolveSituationDto {
   learning!: string;
 }
 
+/** Longitudes del motivo administrativo (anulación y traslado). */
+export const SITUATION_ADMIN_REASON_MIN_LENGTH = 10;
+export const SITUATION_ADMIN_REASON_MAX_LENGTH = 1000;
+
+/**
+ * POST /situations/:id/cancellation (solo ADMIN, permiso SITUATIONS_CANCEL).
+ * El motivo se recorta ANTES de validar su longitud.
+ */
+export class CancelSituationDto {
+  @IsString()
+  @Transform(trimString)
+  @MinLength(SITUATION_ADMIN_REASON_MIN_LENGTH, {
+    message: `El motivo debe tener al menos ${SITUATION_ADMIN_REASON_MIN_LENGTH} caracteres.`,
+  })
+  @MaxLength(SITUATION_ADMIN_REASON_MAX_LENGTH)
+  reason!: string;
+}
+
+/**
+ * POST /situations/:id/coordination-transfer (solo ADMIN, permiso
+ * SITUATIONS_TRANSFER).
+ */
+export class TransferSituationCoordinationDto {
+  @IsUUID()
+  toCoordinationId!: string;
+
+  @IsString()
+  @Transform(trimString)
+  @MinLength(SITUATION_ADMIN_REASON_MIN_LENGTH, {
+    message: `El motivo debe tener al menos ${SITUATION_ADMIN_REASON_MIN_LENGTH} caracteres.`,
+  })
+  @MaxLength(SITUATION_ADMIN_REASON_MAX_LENGTH)
+  reason!: string;
+
+  /**
+   * Control optimista opcional: la coordinación responsable que el
+   * administrador VIO al decidir. Si ya no es la vigente → 409
+   * COORDINATION_CHANGED. Se recomienda enviarla siempre desde la interfaz.
+   */
+  @IsOptional()
+  @IsUUID()
+  expectedCurrentCoordinationId?: string;
+}
+
+/** Anulación registrada (Fase 01B.1). */
+export class SituationCancellationResponseDto {
+  reason!: string;
+  previousStatus!: SituationStatus;
+  cancelledByUserId!: string;
+  cancelledByUserName!: string;
+  cancelledAt!: Date;
+}
+
 export class SituationResolutionResponseDto {
   /** Qué se aprendió al solucionar el problema. */
   learning!: string;
@@ -378,6 +431,12 @@ export class SituationResponseDto {
    * la reconstruye.
    */
   canAddConsequence!: boolean;
+  /** Anulación administrativa; `null` si el caso no está anulado. */
+  cancellation!: SituationCancellationResponseDto | null;
+  /** Pista: el usuario puede anular este caso (ADMIN, caso no cerrado). */
+  canCancel!: boolean;
+  /** Pista: el usuario puede trasladar la coordinación responsable. */
+  canTransfer!: boolean;
 }
 
 /** Un nivel del historial de severidad. */
