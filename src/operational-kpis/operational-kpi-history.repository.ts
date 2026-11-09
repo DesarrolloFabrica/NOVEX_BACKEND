@@ -15,6 +15,7 @@ import {
 import { activeAtCutCondition } from './domain/kpi-active-at-cut';
 import { OperationalKpiHistoryMetric } from './dto/operational-kpi-history-query.dto';
 import { kpiNotCancelledSql } from './domain/kpi-excluded-statuses';
+import { responsibleCoordinationAtSql } from './domain/kpi-responsibility-at';
 
 /**
  * Filtro opcional de serie histórica.
@@ -91,7 +92,13 @@ export class OperationalKpiHistoryRepository {
       index += 3;
     }
 
-    const join = this.buildSituationJoin(filter, coordinationId, params, index);
+    const join = this.buildSituationJoin(
+      filter,
+      coordinationId,
+      params,
+      index,
+      column,
+    );
 
     const sql = `
       SELECT b.key AS key, COUNT(s.id)::int AS total
@@ -140,7 +147,14 @@ export class OperationalKpiHistoryRepository {
       index += 2;
     }
 
-    const join = this.buildSituationJoin(filter, coordinationId, params, index);
+    const join = this.buildSituationJoin(
+      filter,
+      coordinationId,
+      params,
+      index,
+      'b.end_exclusive',
+      'exclusive-cut',
+    );
 
     const sql = `
       SELECT b.key AS key, COUNT(s.id)::int AS total
@@ -173,8 +187,8 @@ export class OperationalKpiHistoryRepository {
    *   áreas (affected = X, responsable ≠ X) es DEPENDENCIAS, no se cuenta.
    * Corte semiabierto: created_at < T AND (closed_at IS NULL OR closed_at >= T).
    * Una query por agregación para TODOS los buckets (no crece con N).
-   * Limitación: coordination_id / report_kind / category_id son los ACTUALES
-   * (no hay snapshot histórico de reasignaciones ni de recategorizaciones).
+   * La coordinación se reconstruye con el historial de traslados; tipo y
+   * categoría siguen siendo sus valores actuales (no hay snapshots de ellos).
    * ───────────────────────────────────────────────────────────────────── */
 
   private activeCut(buckets: readonly KpiHistoryBucket[]) {
@@ -257,7 +271,7 @@ export class OperationalKpiHistoryRepository {
         COUNT(s.id)::int AS count
       FROM (VALUES ${cut.values}) AS b(end_exclusive, key)
       INNER JOIN situations s
-        ON s.coordination_id = $${cut.next}
+        ON ${responsibleCoordinationAtSql('s', 'b.end_exclusive', 'exclusive-cut')} = $${cut.next}
         AND s.report_kind = $${cut.next + 1}
         AND s.created_at < b.end_exclusive
         AND (s.closed_at IS NULL OR s.closed_at >= b.end_exclusive)
@@ -314,7 +328,7 @@ export class OperationalKpiHistoryRepository {
         COUNT(s.id)::int AS count
       FROM (VALUES ${cut.values}) AS b(end_exclusive, key)
       INNER JOIN situations s
-        ON s.coordination_id = $${owner}
+        ON ${responsibleCoordinationAtSql('s', 'b.end_exclusive', 'exclusive-cut')} = $${owner}
         AND s.report_kind = $${owner + 1}
         AND s.affected_coordination_id IS DISTINCT FROM $${owner}
         AND s.created_at < b.end_exclusive
@@ -352,6 +366,8 @@ export class OperationalKpiHistoryRepository {
     coordinationId: string,
     params: unknown[],
     startIndex: number,
+    responsibleAt: string,
+    boundary: 'event' | 'exclusive-cut' = 'event',
   ): { clause: string } {
     let index = startIndex;
 
@@ -368,13 +384,13 @@ export class OperationalKpiHistoryRepository {
       if (filter.partner.side === 'commitment') {
         return {
           clause: `s.report_kind = $${kindParam}
-            AND s.coordination_id = $${ownerParam}
+            AND ${responsibleCoordinationAtSql('s', responsibleAt, boundary)} = $${ownerParam}
             AND s.affected_coordination_id = $${partnerParam}`,
         };
       }
       return {
         clause: `s.report_kind = $${kindParam}
-          AND s.coordination_id = $${partnerParam}
+          AND ${responsibleCoordinationAtSql('s', responsibleAt, boundary)} = $${partnerParam}
           AND s.affected_coordination_id = $${ownerParam}`,
       };
     }
@@ -382,7 +398,9 @@ export class OperationalKpiHistoryRepository {
     params.push(coordinationId);
     const ownerParam = index;
     index += 1;
-    const parts = [`s.coordination_id = $${ownerParam}`];
+    const parts = [
+      `${responsibleCoordinationAtSql('s', responsibleAt, boundary)} = $${ownerParam}`,
+    ];
 
     if (filter.reportKind) {
       parts.push(`AND s.report_kind = $${index}`);

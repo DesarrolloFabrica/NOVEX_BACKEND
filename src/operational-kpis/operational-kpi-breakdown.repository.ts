@@ -15,6 +15,7 @@ import {
 } from './domain/kpi-uncategorized-category';
 import { OperationalKpiHistoryMetric } from './dto/operational-kpi-history-query.dto';
 import { kpiNotCancelledSql } from './domain/kpi-excluded-statuses';
+import { responsibleCoordinationAtSql } from './domain/kpi-responsibility-at';
 
 export type KpiBreakdownCategoryRow = {
   categoryId: string;
@@ -67,7 +68,7 @@ export class OperationalKpiBreakdownRepository {
         COUNT(s.id)::int AS value
       FROM situations s
       LEFT JOIN incident_categories c ON c.id = s.category_id
-      WHERE s.coordination_id = $1
+      WHERE ${responsibleCoordinationAtSql('s', column)} = $1
         AND s.report_kind = $2
         AND ${kpiNotCancelledSql()}
         AND ${column} IS NOT NULL
@@ -112,7 +113,7 @@ export class OperationalKpiBreakdownRepository {
         COUNT(s.id)::int AS value
       FROM situations s
       LEFT JOIN incident_categories c ON c.id = s.category_id
-      WHERE s.coordination_id = $1
+      WHERE ${responsibleCoordinationAtSql('s', '$3::timestamptz', 'exclusive-cut')} = $1
         AND s.report_kind = $2
         AND ${kpiNotCancelledSql()}
         AND s.created_at < $3

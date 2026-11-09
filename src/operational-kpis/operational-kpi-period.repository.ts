@@ -6,6 +6,7 @@ import {
   SituationStatus,
 } from '../common/enums/situation.enums';
 import { Situation } from '../situations/entities/situation.entity';
+import { responsibleCoordinationAtSql } from './domain/kpi-responsibility-at';
 import { kpiNotCancelledSql } from './domain/kpi-excluded-statuses';
 
 export type PeriodCompositionCounts = {
@@ -44,7 +45,7 @@ export class OperationalKpiPeriodRepository {
         s.status AS status,
         COUNT(s.id)::int AS total
       FROM situations s
-      WHERE s.coordination_id = $1
+      WHERE ${responsibleCoordinationAtSql('s', 's.created_at')} = $1
         AND ${kpiNotCancelledSql()}
         AND s.created_at >= $2
         AND s.created_at < $3

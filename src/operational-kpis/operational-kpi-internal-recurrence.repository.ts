@@ -10,6 +10,7 @@ import {
 } from './domain/kpi-history-buckets';
 import type { KpiRecurrenceCountRow } from './domain/kpi-internal-recurrence';
 import { kpiNotCancelledSql } from './domain/kpi-excluded-statuses';
+import { responsibleCoordinationAtSql } from './domain/kpi-responsibility-at';
 
 /* ─────────────────────────────────────────────────────────────────────
  * INTERNOS · RECURRENCIA. UNA consulta: buckets no futuros (VALUES) ×
@@ -59,7 +60,7 @@ export class OperationalKpiInternalRecurrenceRepository {
         COUNT(*)::int AS count
       FROM (VALUES ${tuples.join(', ')}) AS b(start_at, end_exclusive, key)
       JOIN situations s
-        ON s.coordination_id = $${owner}
+        ON ${responsibleCoordinationAtSql('s', 's.created_at')} = $${owner}
        AND s.report_kind = $${internal}
        AND s.created_at >= b.start_at
        AND s.created_at < b.end_exclusive

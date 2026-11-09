@@ -14,6 +14,7 @@ import {
   type KpiResolutionSummaryRow,
 } from './domain/kpi-estado-resolution';
 import { kpiNotCancelledSql } from './domain/kpi-excluded-statuses';
+import { responsibleCoordinationAtSql } from './domain/kpi-responsibility-at';
 
 /**
  * Duración EXACTA en segundos entre dos instantes absolutos: la zona horaria
@@ -30,7 +31,7 @@ const DURATION_SECONDS =
  * del intervalo semiabierto. INTER donde X solo es la afectada queda fuera
  * porque su coordination_id es otra. No se filtra por status: manda closed_at.
  */
-const UNIVERSE = `s.coordination_id = $1 AND ${kpiNotCancelledSql()} AND s.closed_at IS NOT NULL`;
+const UNIVERSE = `${responsibleCoordinationAtSql('s', 's.closed_at')} = $1 AND ${kpiNotCancelledSql()} AND s.closed_at IS NOT NULL`;
 
 /**
  * RESOLUCIÓN (ESTADO): dos consultas set-based, constantes en número de

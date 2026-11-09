@@ -76,7 +76,8 @@ describe('OperationalKpiHistoryRepository · carga activa (SQL set-based)', () =
     expect(sql).toContain(
       '(s.closed_at IS NULL OR s.closed_at >= b.end_exclusive)',
     );
-    expect(sql).toMatch(/s\.coordination_id = \$\d+/);
+    expect(sql).toContain('situation_coordination_transfers tr');
+    expect(sql).toContain('ELSE s.coordination_id END) = $9');
     expect(sql).toMatch(/s\.affected_coordination_id IS DISTINCT FROM \$\d+/);
     expect(params.slice(-3)).toEqual([AREA, 'INTERNAL', 'INTER_COORDINATION']);
     expect(counts.get('2026-10-06')).toEqual({ internal: 7, external: 5 });

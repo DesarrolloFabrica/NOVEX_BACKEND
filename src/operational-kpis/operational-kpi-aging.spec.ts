@@ -365,7 +365,9 @@ describe('SQL de Antigüedad (repositorio)', () => {
     await repository.findOldest(AREA, '2026-10-31');
 
     for (const [sql, params] of q.mock.calls as Array<[string, unknown[]]>) {
-      expect(sql).toContain('s.coordination_id = $1');
+      expect(sql).toContain('situation_coordination_transfers tr');
+      expect(sql).toContain('tr.transferred_at >= $2::timestamptz');
+      expect(sql).toContain('ELSE s.coordination_id END) = $1');
       expect(sql).toContain('s.created_at < $2::timestamptz');
       expect(sql).toContain(
         '(s.closed_at IS NULL OR s.closed_at >= $2::timestamptz)',

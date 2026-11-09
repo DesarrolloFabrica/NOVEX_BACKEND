@@ -1,6 +1,7 @@
 import { SituationReportKind } from '../../common/enums/situation.enums';
 import { bogotaDayEndExclusiveIso } from './kpi-history-buckets';
 import { kpiNotCancelledSql } from './kpi-excluded-statuses';
+import { responsibleCoordinationAtSql } from './kpi-responsibility-at';
 
 /**
  * ACTIVE_AT_CUT · la población única de las lecturas de STOCK de ESTADO.
@@ -30,7 +31,7 @@ export function activeAtCutCondition(input: {
   inter: string;
 }): string {
   const { alias: s, owner, cut, internal, inter } = input;
-  return `${s}.coordination_id = ${owner}
+  return `${responsibleCoordinationAtSql(s, cut, 'exclusive-cut')} = ${owner}
         AND ${kpiNotCancelledSql(s)}
         AND ${s}.created_at < ${cut}
         AND (${s}.closed_at IS NULL OR ${s}.closed_at >= ${cut})

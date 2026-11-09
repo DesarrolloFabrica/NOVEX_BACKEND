@@ -10,6 +10,7 @@ import {
 } from './domain/kpi-history-buckets';
 import { OperationalKpiHistoryMetric } from './dto/operational-kpi-history-query.dto';
 import { kpiNotCancelledSql } from './domain/kpi-excluded-statuses';
+import { responsibleCoordinationAtSql } from './domain/kpi-responsibility-at';
 
 export type KpiRelationRow = {
   coordinationId: string;
@@ -79,23 +80,33 @@ export class OperationalKpiRelationsRepository {
       // Corte semiabierto: stock al instante 00:00 del día siguiente (Bogotá),
       // misma semántica que el backlog de /history y /state.
       const endExclusive = bogotaDayEndExclusiveIso(args.toYmd);
+      const historicalOwner = (column: string) =>
+        column === 's.coordination_id'
+          ? responsibleCoordinationAtSql(
+              's',
+              '$3::timestamptz',
+              'exclusive-cut',
+            )
+          : column;
+      const partnerColumn = historicalOwner(args.partnerColumn);
+      const ownerColumn = historicalOwner(args.ownerColumn);
       const sql = `
         SELECT
-          ${args.partnerColumn} AS "coordinationId",
+          ${partnerColumn} AS "coordinationId",
           c.code AS code,
           c.name AS name,
           c.short_name AS "shortName",
           COUNT(s.id)::int AS value
         FROM situations s
-        INNER JOIN coordinations c ON c.id = ${args.partnerColumn}
-        WHERE ${args.ownerColumn} = $1
+        INNER JOIN coordinations c ON c.id = ${partnerColumn}
+        WHERE ${ownerColumn} = $1
           AND ${kpiNotCancelledSql()}
           AND s.report_kind = $2
-          AND ${args.partnerColumn} IS NOT NULL
-          AND ${args.partnerColumn} IS DISTINCT FROM $1
+          AND ${partnerColumn} IS NOT NULL
+          AND ${partnerColumn} IS DISTINCT FROM $1
           AND s.created_at < $3
           AND (s.closed_at IS NULL OR s.closed_at >= $3)
-        GROUP BY ${args.partnerColumn}, c.code, c.name, c.short_name
+        GROUP BY ${partnerColumn}, c.code, c.name, c.short_name
         ORDER BY value DESC, c.short_name ASC
       `;
       return this.mapRows(
@@ -111,22 +122,28 @@ export class OperationalKpiRelationsRepository {
       args.metric === OperationalKpiHistoryMetric.CREATED
         ? 's.created_at'
         : 's.closed_at';
+    const historicalOwner = (candidate: string) =>
+      candidate === 's.coordination_id'
+        ? responsibleCoordinationAtSql('s', column)
+        : candidate;
+    const partnerColumn = historicalOwner(args.partnerColumn);
+    const ownerColumn = historicalOwner(args.ownerColumn);
     const startIso = bogotaDayStartIso(args.fromYmd);
     const endExclusive = bogotaDayEndExclusiveIso(args.toYmd);
     const sql = `
       SELECT
-        ${args.partnerColumn} AS "coordinationId",
+        ${partnerColumn} AS "coordinationId",
         c.code AS code,
         c.name AS name,
         c.short_name AS "shortName",
         COUNT(s.id)::int AS value
       FROM situations s
-      INNER JOIN coordinations c ON c.id = ${args.partnerColumn}
-      WHERE ${args.ownerColumn} = $1
+      INNER JOIN coordinations c ON c.id = ${partnerColumn}
+      WHERE ${ownerColumn} = $1
           AND ${kpiNotCancelledSql()}
         AND s.report_kind = $2
-        AND ${args.partnerColumn} IS NOT NULL
-        AND ${args.partnerColumn} IS DISTINCT FROM $1
+        AND ${partnerColumn} IS NOT NULL
+        AND ${partnerColumn} IS DISTINCT FROM $1
         AND ${column} IS NOT NULL
         AND ${column} >= $3
         AND ${column} < $4
