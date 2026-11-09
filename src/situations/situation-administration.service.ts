@@ -4,24 +4,32 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EntityManager } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { AuditAction, AuditResourceType } from '../audit/audit-action.enum';
 import { AuditLogService } from '../audit/audit-log.service';
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import {
   OperationalScopeService,
+  SITUATION_CANCELLED_CODE,
   SITUATION_CLOSED_CODE,
 } from '../auth/services/operational-scope.service';
 import { TimelineEventType } from '../common/enums/situation-timeline.enums';
-import { SituationStatus } from '../common/enums/situation.enums';
+import {
+  SituationReportKind,
+  SituationStatus,
+} from '../common/enums/situation.enums';
+import { Coordination } from '../coordinations/entities/coordination.entity';
 import { SituationTimelineService } from '../situation-timeline/situation-timeline.service';
 import {
   CancelSituationDto,
   SITUATION_ADMIN_REASON_MAX_LENGTH,
   SITUATION_ADMIN_REASON_MIN_LENGTH,
   SituationDetailResponseDto,
+  TransferSituationCoordinationDto,
 } from './dto/situation.dto';
 import { SituationCancellation } from './entities/situation-cancellation.entity';
+import { SituationCoordinationTransfer } from './entities/situation-coordination-transfer.entity';
 import { Situation } from './entities/situation.entity';
 import { SituationsRepository } from './repositories/situations.repository';
 import { SITUATION_STATUS_LABEL_ES } from './situation-status.transitions';
@@ -29,6 +37,14 @@ import { SituationsService } from './situations.service';
 
 /** Código de negocio: la situación ya estaba anulada. */
 export const SITUATION_ALREADY_CANCELLED_CODE = 'SITUATION_ALREADY_CANCELLED';
+
+/** Códigos de negocio del traslado. */
+export const TRANSFER_ERROR_CODES = {
+  COORDINATION_CHANGED: 'COORDINATION_CHANGED',
+  SAME_COORDINATION: 'TRANSFER_SAME_COORDINATION',
+  DESTINATION_INACTIVE: 'TRANSFER_DESTINATION_INACTIVE',
+  DESTINATION_IS_AFFECTED: 'TRANSFER_DESTINATION_IS_AFFECTED',
+} as const;
 
 /**
  * ACCIONES ADMINISTRATIVAS SOBRE SITUACIONES (Fase 01B.1).
@@ -53,6 +69,8 @@ export class SituationAdministrationService {
     private readonly scopeService: OperationalScopeService,
     private readonly timelineService: SituationTimelineService,
     private readonly auditLogService: AuditLogService,
+    @InjectRepository(Coordination)
+    private readonly coordinationsRepository: Repository<Coordination>,
   ) {}
 
   /**
@@ -139,6 +157,165 @@ export class SituationAdministrationService {
             reportKind: situation.reportKind,
             coordinationId: situation.coordinationId,
             affectedCoordinationId: situation.affectedCoordinationId,
+            reasonLength: reason.length,
+          },
+        },
+        manager,
+      );
+    });
+
+    return this.situationsService.getById(id, actor);
+  }
+
+  /**
+   * TRASLADAR la coordinación responsable.
+   *
+   * Reglas:
+   *   - estado OPEN / IN_PROGRESS / RESOLVED; CLOSED o CANCELLED → 409;
+   *   - `expectedCurrentCoordinationId` (opcional) distinto del vigente → 409
+   *     COORDINATION_CHANGED (el administrador decidió sobre un dato viejo);
+   *   - destino existente (404) y activo (400), distinto del actual (400);
+   *   - INTERNAL: la afectada se traslada con la responsable (invariante
+   *     afectada = responsable). El reporte sigue siendo INTERNAL: no se
+   *     convierte en INTER;
+   *   - INTER: solo cambia la responsable y debe seguir siendo distinta de la
+   *     afectada (400 TRANSFER_DESTINATION_IS_AFFECTED).
+   *
+   * Se conservan autor, fecha de registro, fecha de ocurrencia, severidad,
+   * vencimiento (`due_at`: la promesa SLA nace con el reporte), estado y
+   * persona asignada. Ver docs/seguridad-y-permisos.md para los efectos sobre
+   * indicadores y alcance, y la decisión pendiente sobre casos IN_PROGRESS.
+   */
+  async transferCoordination(
+    id: string,
+    dto: TransferSituationCoordinationDto,
+    actor: AuthPayload,
+  ): Promise<SituationDetailResponseDto> {
+    this.scopeService.assertCanAdministerSituation(
+      actor,
+      'SITUATIONS_TRANSFER',
+    );
+    const reason = this.normalizeReason(dto.reason);
+
+    await this.situationsRepository.manager.transaction(async (manager) => {
+      const situation = await this.lockSituation(manager, id);
+
+      if (situation.status === SituationStatus.CANCELLED) {
+        throw new ConflictException({
+          code: SITUATION_CANCELLED_CODE,
+          message: 'Una situación anulada no se traslada.',
+        });
+      }
+      if (situation.status === SituationStatus.CLOSED) {
+        throw new ConflictException({
+          code: SITUATION_CLOSED_CODE,
+          message: 'Una situación cerrada no se traslada.',
+        });
+      }
+
+      const fromCoordinationId = situation.coordinationId;
+      if (
+        dto.expectedCurrentCoordinationId !== undefined &&
+        dto.expectedCurrentCoordinationId !== fromCoordinationId
+      ) {
+        throw new ConflictException({
+          code: TRANSFER_ERROR_CODES.COORDINATION_CHANGED,
+          message:
+            'La coordinación responsable cambió desde que se consultó. Recargue la situación.',
+        });
+      }
+      if (dto.toCoordinationId === fromCoordinationId) {
+        throw new BadRequestException({
+          code: TRANSFER_ERROR_CODES.SAME_COORDINATION,
+          message: 'La coordinación destino es la responsable actual.',
+        });
+      }
+
+      const destination = await manager.findOne(Coordination, {
+        where: { id: dto.toCoordinationId },
+      });
+      if (!destination) {
+        throw new NotFoundException('Coordinación destino no encontrada.');
+      }
+      if (!destination.isActive) {
+        throw new BadRequestException({
+          code: TRANSFER_ERROR_CODES.DESTINATION_INACTIVE,
+          message: 'La coordinación destino no está activa.',
+        });
+      }
+
+      const isInternal = situation.reportKind === SituationReportKind.INTERNAL;
+      if (
+        !isInternal &&
+        dto.toCoordinationId === situation.affectedCoordinationId
+      ) {
+        throw new BadRequestException({
+          code: TRANSFER_ERROR_CODES.DESTINATION_IS_AFFECTED,
+          message:
+            'En una dependencia entre coordinaciones, la responsable no puede ser la misma que la afectada.',
+        });
+      }
+
+      const origin = fromCoordinationId
+        ? await manager.findOne(Coordination, {
+            where: { id: fromCoordinationId },
+          })
+        : null;
+
+      // Escritura PARCIAL bajo el bloqueo: sin evento UPDATED duplicado.
+      await manager.update(
+        Situation,
+        { id },
+        isInternal
+          ? {
+              coordinationId: destination.id,
+              affectedCoordinationId: destination.id,
+            }
+          : { coordinationId: destination.id },
+      );
+
+      await manager.insert(SituationCoordinationTransfer, {
+        situationId: id,
+        fromCoordinationId,
+        toCoordinationId: destination.id,
+        reason,
+        statusAtTransfer: situation.status,
+        reportKind: situation.reportKind,
+        transferredByUserId: actor.sub,
+      });
+
+      await this.timelineService.createEntry(
+        {
+          situationId: id,
+          userId: actor.sub,
+          eventType: TimelineEventType.COORDINATION_TRANSFERRED,
+          title: 'Coordinación responsable trasladada',
+          description: `La administración trasladó la situación de ${origin?.name ?? 'sin coordinación'} a ${destination.name}. Motivo: ${reason}`,
+          metadata: {
+            fromCoordinationId,
+            toCoordinationId: destination.id,
+            reportKind: situation.reportKind,
+            statusAtTransfer: situation.status,
+          },
+        },
+        manager,
+      );
+
+      await this.auditLogService.recordCritical(
+        {
+          actor,
+          action: AuditAction.SITUATION_COORDINATION_TRANSFERRED,
+          resourceType: AuditResourceType.SITUATION,
+          resourceId: id,
+          metadata: {
+            previousCoordinationId: fromCoordinationId,
+            nextCoordinationId: destination.id,
+            previousAffectedCoordinationId: situation.affectedCoordinationId,
+            nextAffectedCoordinationId: isInternal
+              ? destination.id
+              : situation.affectedCoordinationId,
+            reportKind: situation.reportKind,
+            statusAtTransfer: situation.status,
             reasonLength: reason.length,
           },
         },

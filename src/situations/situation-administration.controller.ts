@@ -10,7 +10,10 @@ import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
-import { CancelSituationDto } from './dto/situation.dto';
+import {
+  CancelSituationDto,
+  TransferSituationCoordinationDto,
+} from './dto/situation.dto';
 import { SituationAdministrationService } from './situation-administration.service';
 
 /**
@@ -34,5 +37,16 @@ export class SituationAdministrationController {
     @CurrentUser() user: AuthPayload,
   ) {
     return this.administration.cancel(id, dto, user);
+  }
+
+  /** Traslada la coordinación responsable. Responde el detalle actualizado. */
+  @Post(':id/coordination-transfer')
+  @RequirePermissions('SITUATIONS_TRANSFER')
+  transferCoordination(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: TransferSituationCoordinationDto,
+    @CurrentUser() user: AuthPayload,
+  ) {
+    return this.administration.transferCoordination(id, dto, user);
   }
 }
