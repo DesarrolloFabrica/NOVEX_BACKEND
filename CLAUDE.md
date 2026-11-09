@@ -1,7 +1,8 @@
 # CLAUDE.md — NOVEX_BACKEND
 
 Instrucciones para asistentes y desarrolladores.  
-**Documentación vigente (monorepo):** [`../docs/README.md`](../docs/README.md) · continuidad: [`../docs/EMPALME-NOVEX.md`](../docs/EMPALME-NOVEX.md) · seguridad: [`../docs/seguridad-y-permisos.md`](../docs/seguridad-y-permisos.md) + [`../docs/seguridad-fase0-detalle.md`](../docs/seguridad-fase0-detalle.md).
+**Documentación vigente (versionada en este repo):** [`docs/proyecto/README.md`](docs/proyecto/README.md) · retomar: [`docs/proyecto/CONTINUIDAD.md`](docs/proyecto/CONTINUIDAD.md) · seguridad: [`docs/proyecto/seguridad-y-permisos.md`](docs/proyecto/seguridad-y-permisos.md).  
+Si el monorepo local está presente, también existe `../docs/` (misma verdad; no borrar).
 
 ## Qué es este repo
 
