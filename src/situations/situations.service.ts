@@ -360,8 +360,12 @@ export class SituationsService implements OnModuleInit {
       );
     }
 
-    // Autoriza CREATE y fija el RESPONSABLE (selección explícita, nunca sustituida).
-    this.scopeService.resolveCreateCoordinationId(actor, dto.coordinationId);
+    // Autoriza CREATE. Un COORDINADOR reporta desde SU coordinación: la
+    // afectada debe ser la suya (nunca una dependencia entre dos áreas ajenas).
+    this.scopeService.assertCanCreateInterDependency(
+      actor,
+      dto.affectedCoordinationId,
+    );
 
     const [coordination, affectedCoordination, relatedCoordinations] =
       await Promise.all([

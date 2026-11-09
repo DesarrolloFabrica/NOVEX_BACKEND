@@ -244,6 +244,35 @@ export class OperationalScopeService {
   }
 
   /**
+   * REGLA DE CREACIÓN DE UNA DEPENDENCIA INTER. Un COORDINADOR reporta DESDE su
+   * coordinación: la AFECTADA (quien espera la entrega) debe ser la suya, y la
+   * responsable, otra área. No puede declarar una dependencia entre dos áreas
+   * ajenas, porque eso movería la integridad y las vidas de coordinaciones que
+   * no gestiona.
+   *
+   * ANALISTA (rol transversal) conserva la selección libre de ambas.
+   * La validación responsable ≠ afectada vive en el servicio (400).
+   */
+  assertCanCreateInterDependency(
+    actor: AuthPayload,
+    affectedCoordinationId: string,
+  ): void {
+    this.assertPermission(actor, 'SITUATIONS_CREATE');
+
+    if (!this.isCoordinationScoped(actor)) {
+      return;
+    }
+
+    this.assertCoordinatorHasCoordination(actor);
+
+    if (affectedCoordinationId !== actor.coordinationId) {
+      throw new ForbiddenException(
+        'Un coordinador registra dependencias desde su propia coordinación: la coordinación afectada debe ser la suya.',
+      );
+    }
+  }
+
+  /**
    * REGLA DE CREACIÓN DE UN PROBLEMA INTERNAL. Más estricta que la general
    * (`resolveCreateCoordinationId`, que sigue rigiendo INTER):
    *

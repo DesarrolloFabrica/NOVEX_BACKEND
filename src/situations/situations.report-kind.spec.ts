@@ -251,6 +251,89 @@ describe('SituationsService · alta por tipo de registro', () => {
     });
   });
 
+  describe('A2 · listado de un COORDINADOR sin coordinación (Fase 01A)', () => {
+    const sinArea = { ...coordinatorA, coordinationId: null };
+
+    it.each([
+      ['listado normal', {}],
+      ['mis reportes', { mine: true }],
+      ['otra coordinación', { coordinationId: AREA_B }],
+    ])(
+      'falla cerrado en %s: 403 COORDINATION_REQUIRED sin consultar',
+      async (_label, query) => {
+        const { service, situationsRepository } = buildService();
+        const search = jest.fn();
+        (situationsRepository as unknown as { search: jest.Mock }).search =
+          search;
+
+        const error: unknown = await service
+          .list(query as never, sinArea as never)
+          .catch((caught: unknown) => caught);
+
+        expect(error).toBeInstanceOf(ForbiddenException);
+        expect((error as ForbiddenException).getResponse()).toMatchObject({
+          code: 'COORDINATION_REQUIRED',
+        });
+        expect(search).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  describe('INTER_COORDINATION · COORDINADOR (Fase 01A)', () => {
+    const AREA_C = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    const interDto = (
+      coordinationId: string,
+      affectedCoordinationId: string,
+    ) => ({
+      title: 'Dep',
+      description: 'Desc',
+      reportKind: SituationReportKind.INTER_COORDINATION,
+      coordinationId,
+      affectedCoordinationId,
+      severity: SituationSeverity.CRITICAL,
+      occurredAt: new Date().toISOString(),
+      affectedProcess: 'proceso',
+      pendingDelivery: 'entrega',
+    });
+
+    it('registra una dependencia desde SU coordinación (afectada = la suya)', async () => {
+      const { service, manager } = buildService({
+        reportKind: SituationReportKind.INTER_COORDINATION,
+      });
+      await service.create(interDto(AREA_B, AREA_A), coordinatorA as never);
+
+      const saved = savedSituation(manager)!;
+      expect(saved.coordinationId).toBe(AREA_B);
+      expect(saved.affectedCoordinationId).toBe(AREA_A);
+    });
+
+    it('no registra una dependencia entre dos áreas ajenas (403), sin escribir', async () => {
+      const { service, manager } = buildService();
+      await expect(
+        service.create(interDto(AREA_B, AREA_C), coordinatorA as never),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it('no declara su propia área como responsable de un impacto en otra (403)', async () => {
+      const { service, manager } = buildService();
+      await expect(
+        service.create(interDto(AREA_A, AREA_B), coordinatorA as never),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it('sin coordinación asignada no registra nada (403)', async () => {
+      const { service } = buildService();
+      await expect(
+        service.create(interDto(AREA_B, AREA_A), {
+          ...coordinatorA,
+          coordinationId: null,
+        } as never),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
   describe('INTERNAL', () => {
     it('sin reportKind no hay alta (ya no existe el default silencioso)', async () => {
       const { service, manager } = buildService();
