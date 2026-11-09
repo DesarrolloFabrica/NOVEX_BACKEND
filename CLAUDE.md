@@ -22,8 +22,9 @@ API NestJS de NOVEX (Cartas y Circo): RBAC, situaciones, overview/KPIs, Gemini. 
 4. Ante docs vs código → manda el código; reporta discrepancia.
 5. No afirmar pruebas sin ejecutarlas. No secretos en docs/commits.
 6. No remontar módulos latentes sin PermissionsGuard + alcance.
-7. A2/M1: reimplementar desde spec; M1 requiere decisión producto P1.
-8. Trabajar por fases con aprobación explícita.
+7. Lectura ≠ análisis IA ≠ escritura (Fase 01A): ninguna ruta de escritura usa `requireAccessibleSituation`. Análisis → `requireAnalyzableSituation`; escrituras → `requireOperableSituation` (+ `assertSituationWorkable` si exige caso activo).
+8. El `PATCH` de situaciones no cambia la coordinación responsable ni edita casos CLOSED; toda escritura sobre `situations` va en transacción con `pessimistic_write` (no `repository.save` de una entidad leída sin bloqueo).
+9. Trabajar por fases con aprobación explícita.
 
 ## Validación segura
 
@@ -32,7 +33,10 @@ API NestJS de NOVEX (Cartas y Circo): RBAC, situaciones, overview/KPIs, Gemini. 
 | `npx eslint "{src,test}/**/*.ts"` | Solo lectura |
 | `npm run lint` | **Modifica** (`--fix`) |
 | `npm test` / `test:security` | Jest; `*.pg.spec.ts` omitidos sin `NOVEX_PG_IT=1` |
+| `NOVEX_PG_IT=1 npx jest --runInBand --testPathPatterns pg.spec` | Solo contra una base local **desechable y migrada** (`DB_CLOUD=false` + todas las `DB_*_LOCAL`). `--runInBand` es obligatorio: las suites comparten tablas |
 | `npm run build` | Escribe `dist/` |
+
+Contra Cloud SQL (`DB_CLOUD=true` o `DB_HOST=/cloudsql/…`): las semillas de arranque se omiten, `seed:*` aborta salvo `ALLOW_CLOUD_SEED=true` y `migration:*` aborta salvo `ALLOW_CLOUD_MIGRATIONS=true`. Esas banderas solo en la invocación concreta y con autorización.
 
 ## Docs operativos en este repo
 
