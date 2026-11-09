@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -33,6 +34,23 @@ export const CONSEQUENCE_OPEN_STATUSES: readonly SituationStatus[] = [
   SituationStatus.IN_PROGRESS,
 ];
 
+/**
+ * Estados en los que un caso admite trabajo nuevo que no es cerrarlo:
+ * análisis IA y recomendaciones manuales. `CLOSED` es inmutable para las
+ * operaciones ordinarias, y `RESOLVED` es un valor legado que solo admite su
+ * cierre con aprendizaje.
+ */
+export const WORKABLE_SITUATION_STATUSES: readonly SituationStatus[] = [
+  SituationStatus.OPEN,
+  SituationStatus.IN_PROGRESS,
+];
+
+/** Código de negocio de una operación sobre un caso que ya no está activo. */
+export const SITUATION_CLOSED_CODE = 'SITUATION_CLOSED';
+
+/** Código de negocio de un COORDINADOR sin coordinación asignada. */
+export const COORDINATION_REQUIRED_CODE = 'COORDINATION_REQUIRED';
+
 /** Código del rol que coordina un área. */
 export const COORDINATOR_ROLE_CODE = 'COORDINADOR';
 
@@ -64,15 +82,37 @@ export class OperationalScopeService {
     }
   }
 
+  /**
+   * A2 · Un COORDINADOR sin coordinación asignada es una configuración
+   * incompleta, no un rol institucional: no opera ni lista situaciones. Falla
+   * CERRADO con 403 y un código estable para que la interfaz lo explique.
+   *
+   * Antes, `resolveSituationListCoordinationId` devolvía `undefined` para este
+   * actor y el repositorio lo interpretaba como «sin filtro»: listaba TODAS las
+   * situaciones de la institución.
+   */
+  assertCoordinatorHasCoordination(actor: AuthPayload): void {
+    if (this.isCoordinationScoped(actor) && !actor.coordinationId) {
+      throw new ForbiddenException({
+        code: COORDINATION_REQUIRED_CODE,
+        message:
+          'Su usuario no tiene una coordinación asignada. Solicite a un administrador que la asigne.',
+      });
+    }
+  }
+
+  /**
+   * Coordinación con la que se filtra el listado normal. Para un COORDINADOR
+   * es SIEMPRE la suya (y sin ella, 403). Para el resto de roles, la pedida o
+   * ninguna. Nunca devuelve `undefined` para un actor acotado por área.
+   */
   resolveSituationListCoordinationId(
     actor: AuthPayload,
     requestedCoordinationId?: string,
   ): string | undefined {
     if (this.isCoordinationScoped(actor)) {
-      if (!actor.coordinationId) {
-        return undefined;
-      }
-      return actor.coordinationId ?? undefined;
+      this.assertCoordinatorHasCoordination(actor);
+      return actor.coordinationId as string;
     }
 
     return requestedCoordinationId;
@@ -132,6 +172,13 @@ export class OperationalScopeService {
     },
   ): void {
     this.assertPermission(actor, 'SITUATIONS_VIEW');
+
+    // A2: sin coordinación, un COORDINADOR no lee ningún caso, tampoco los que
+    // reportó. Se responde igual que a un caso inexistente (404): no revela
+    // si el identificador existe.
+    if (this.isCoordinationScoped(actor) && !actor.coordinationId) {
+      throw new NotFoundException('Situación no encontrada.');
+    }
 
     if (this.isOwnReport(actor, situation)) {
       return;
@@ -498,6 +545,50 @@ export class OperationalScopeService {
     this.assertPermission(actor, 'SITUATIONS_UPDATE');
     this.assertSituationInScope(actor, situation);
     this.assertCanOperateSituation(actor, situation);
+  }
+
+  /**
+   * M1 · REGLA DE ANÁLISIS IA. Separada de la lectura y de la modificación:
+   *
+   *   ANALISTA     Cualquier caso que pueda leer (lectura institucional). El
+   *                análisis NO le concede editar, reasignar ni resolver.
+   *   COORDINADOR  Solo los casos de los que puede operar: coordinación
+   *                RESPONSABLE la suya. Ser la afectada o haber reportado un
+   *                caso de otra área permite leerlo, no analizarlo.
+   *   Otro rol     Solo si además opera el caso (autoría + alcance). Hoy
+   *                ADMIN y DIRECTOR no tienen `AI_ANALYZE`.
+   *
+   * Fuera de alcance → 404 (igual que la lectura); el estado se comprueba
+   * DESPUÉS, con `assertSituationWorkable`, para no revelar si un caso ajeno
+   * está cerrado.
+   */
+  assertCanRequestAnalysis(
+    actor: AuthPayload,
+    situation: SituationOwnership,
+  ): void {
+    this.assertPermission(actor, 'AI_ANALYZE');
+    this.assertSituationReadable(actor, situation);
+
+    if (this.isAnalyst(actor)) {
+      return;
+    }
+
+    this.assertSituationInScope(actor, situation);
+    this.assertCanOperateSituation(actor, situation);
+  }
+
+  /**
+   * Un caso CLOSED (o el valor legado RESOLVED) no admite análisis ni
+   * recomendaciones nuevas: 409 con código estable.
+   */
+  assertSituationWorkable(situation: { status: SituationStatus }): void {
+    if (!WORKABLE_SITUATION_STATUSES.includes(situation.status)) {
+      throw new ConflictException({
+        code: SITUATION_CLOSED_CODE,
+        message:
+          'El problema ya no está activo: no admite análisis ni nuevas recomendaciones.',
+      });
+    }
   }
 
   assertCoordinationInScope(actor: AuthPayload, coordinationId: string): void {

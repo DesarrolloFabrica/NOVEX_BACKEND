@@ -49,4 +49,44 @@ export class SituationAccessService {
     this.scopeService.assertCanOperateSituation(actor, situation);
     return situation;
   }
+
+  /**
+   * M1 · Puerta de `POST /situations/:id/analyze`. Alcance de ANÁLISIS
+   * (`assertCanRequestAnalysis`), distinto de la lectura y de la operación, y
+   * solo sobre casos activos (409 `SITUATION_CLOSED` después del alcance).
+   * El orquestador vuelve a comprobar el estado al reclamar y al confirmar,
+   * por si el caso se cierra mientras corre el análisis.
+   */
+  async requireAnalyzableSituation(
+    actor: AuthPayload,
+    situationId: string,
+  ): Promise<Situation> {
+    this.scopeService.assertCoordinatorHasCoordination(actor);
+    const situation = await this.findOrFail(situationId);
+    this.scopeService.assertCanRequestAnalysis(actor, situation);
+    this.scopeService.assertSituationWorkable(situation);
+    return situation;
+  }
+
+  /**
+   * M1 · Escritura sobre un caso ACTIVO (recomendación manual): operación real
+   * (`requireOperableSituation`) y estado OPEN/IN_PROGRESS.
+   */
+  async requireOperableWorkableSituation(
+    actor: AuthPayload,
+    situationId: string,
+  ): Promise<Situation> {
+    const situation = await this.requireOperableSituation(actor, situationId);
+    this.scopeService.assertSituationWorkable(situation);
+    return situation;
+  }
+
+  private async findOrFail(situationId: string): Promise<Situation> {
+    const situation =
+      await this.situationsRepository.findByIdWithRelations(situationId);
+    if (!situation) {
+      throw new NotFoundException(`Situación no encontrada: ${situationId}`);
+    }
+    return situation;
+  }
 }

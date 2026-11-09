@@ -355,6 +355,31 @@ describe('AIOrchestrator análisis bajo demanda (POST :id/analyze)', () => {
     expect(runClaimed).not.toHaveBeenCalled();
   });
 
+  it('M1: si el caso se cerró antes del reclamo, 409 SITUATION_CLOSED sin llamar a Gemini', async () => {
+    const { orchestrator, runClaimed, dataSource } = createOrchestrator();
+    // 1) el UPDATE del reclamo no toma la fila (su WHERE exige estado activo);
+    // 2) la relectura del estado ve el cierre.
+    dataSource.query
+      .mockResolvedValueOnce([[], 0])
+      .mockResolvedValueOnce([{ status: 'CLOSED' }]);
+
+    const error = await orchestrator
+      .execute('sit-1', actor)
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ConflictException);
+    expect((error as ConflictException).getResponse()).toMatchObject({
+      code: 'SITUATION_CLOSED',
+    });
+    expect(runClaimed).not.toHaveBeenCalled();
+    const [claimSql, claimParams] = dataSource.query.mock.calls[0] as [
+      string,
+      unknown[],
+    ];
+    expect(claimSql).toContain('status = ANY($4::situations_status_enum[])');
+    expect(claimParams[3]).toEqual(['OPEN', 'IN_PROGRESS']);
+  });
+
   it('si Gemini falla, conserva la situación y libera el reclamo', async () => {
     const { orchestrator, manager, dataSource } = createOrchestrator({
       runClaimed: () =>

@@ -342,10 +342,24 @@ describe('Institutional audit trail', () => {
               create: jest.fn((value: unknown) => value),
               save: jest.fn(),
             }),
-            query: jest.fn().mockResolvedValue([{ id: 'situation-id' }]),
+            // Confirmación fenciada: la fila conserva el reclamo de este
+            // intento y el caso sigue activo.
+            query: jest.fn(() =>
+              Promise.resolve([
+                {
+                  claim_token: (
+                    claimQuery.mock.calls[0] as [string, string[]]
+                  )[1][1],
+                  status: 'OPEN',
+                },
+              ]),
+            ),
           }),
         ),
     );
+    const claimQuery = jest
+      .fn()
+      .mockResolvedValue([[{ id: 'situation-id' }], 1]);
 
     const analysisService = {
       normalizeCoordinationReferences: jest.fn().mockResolvedValue({}),
@@ -360,7 +374,7 @@ describe('Institutional audit trail', () => {
       { get: jest.fn().mockReturnValue('gemini-test') } as never,
       {
         transaction,
-        query: jest.fn().mockResolvedValue([[{ id: 'situation-id' }], 1]),
+        query: claimQuery,
       } as never,
       { exist: jest.fn().mockResolvedValue(true) } as never,
       {} as never,

@@ -80,7 +80,8 @@ export class AIOrchestrationController {
     @Param('id', ParseUUIDPipe) situationId: string,
     @CurrentUser() user: AuthPayload,
   ) {
-    await this.situationAccessService.requireAccessibleSituation(
+    // M1: alcance de ANÁLISIS (no de lectura) y solo casos activos.
+    await this.situationAccessService.requireAnalyzableSituation(
       user,
       situationId,
     );

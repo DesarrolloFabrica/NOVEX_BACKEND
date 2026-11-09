@@ -56,7 +56,9 @@ export class SituationRecommendationsBySituationController {
     @Body() dto: CreateManualRecommendationDto,
     @CurrentUser() user: AuthPayload,
   ) {
-    await this.situationAccessService.requireAccessibleSituation(
+    // M1: crear es ESCRIBIR. Exige operar el caso (no basta con leerlo) y que
+    // siga activo. Se comprueba antes de validar `assignedUserId`.
+    await this.situationAccessService.requireOperableWorkableSituation(
       user,
       situationId,
     );

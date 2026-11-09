@@ -11,9 +11,17 @@ describe('AI-002 atomic persistence', () => {
       create: jest.fn().mockImplementation((value: unknown) => value),
       save: jest.fn().mockResolvedValue(undefined),
     };
+    // Confirmación fenciada: la fila bloqueada conserva el reclamo de ESTE
+    // intento (el token que tomó el UPDATE del reclamo) y sigue activa.
+    const claimedToken = () =>
+      (
+        (dataSource.query as jest.Mock).mock.calls[0] as [string, string[]]
+      )[1][1];
     const manager = {
       getRepository: jest.fn().mockReturnValue(recordRepository),
-      query: jest.fn().mockResolvedValue([{ id: 'situation-id' }]),
+      query: jest.fn(() =>
+        Promise.resolve([{ claim_token: claimedToken(), status: 'OPEN' }]),
+      ),
     };
     const transaction = jest.fn(
       (work: (entityManager: typeof manager) => unknown) =>

@@ -18,6 +18,11 @@ import { AuditLogService } from '../audit/audit-log.service';
 import type { AIAnalysisResult } from '../ai-analysis/contracts/ai-analysis-result.contract';
 
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
+import {
+  SITUATION_CLOSED_CODE,
+  WORKABLE_SITUATION_STATUSES,
+} from '../auth/services/operational-scope.service';
+import { SituationStatus } from '../common/enums/situation.enums';
 
 import { AIAnalysisService } from '../ai-analysis/ai-analysis.service';
 
@@ -472,17 +477,26 @@ export class AIOrchestrator {
   private async claimAnalysis(situationId: string): Promise<string> {
     const claimToken = randomUUID();
 
+    // M1: solo se reclama un caso ACTIVO. Si se cerró entre la comprobación del
+    // controlador y este UPDATE, no se toma el reclamo ni se llama a Gemini.
     const result: unknown = await this.dataSource.query(
       `UPDATE situations
           SET analysis_claim_token = $2,
               analysis_claim_expires_at = now() + ($3::int * interval '1 millisecond')
         WHERE id = $1
+          AND status = ANY($4::situations_status_enum[])
           AND (analysis_claim_expires_at IS NULL OR analysis_claim_expires_at < now())
         RETURNING id`,
-      [situationId, claimToken, ANALYSIS_CLAIM_LEASE_MS],
+      [
+        situationId,
+        claimToken,
+        ANALYSIS_CLAIM_LEASE_MS,
+        [...WORKABLE_SITUATION_STATUSES],
+      ],
     );
 
     if (updatedRowCount(result) !== 1) {
+      await this.assertSituationStillWorkable(situationId);
       throw new ConflictException({
         code: 'ANALYSIS_IN_PROGRESS',
         message:
@@ -516,14 +530,27 @@ export class AIOrchestrator {
     situationId: string,
     claimToken: string,
   ): Promise<void> {
-    const rows: Array<{ id: string }> = await manager.query(
-      `SELECT id FROM situations
-        WHERE id = $1 AND analysis_claim_token = $2
-        FOR UPDATE`,
-      [situationId, claimToken],
-    );
+    // El `FOR UPDATE` se toma sobre la fila aunque el reclamo se haya perdido,
+    // para leer el estado VIGENTE: la resolución bloquea la misma fila, así que
+    // si un cierre confirmó mientras corría Gemini, aquí se ve CLOSED.
+    const rows: Array<{ claim_token: string | null; status: string }> =
+      await manager.query(
+        `SELECT analysis_claim_token AS claim_token, status FROM situations
+          WHERE id = $1
+          FOR UPDATE`,
+        [situationId],
+      );
 
-    if (rows.length !== 1) {
+    const row = rows[0];
+    if (
+      row &&
+      !WORKABLE_SITUATION_STATUSES.includes(row.status as SituationStatus)
+    ) {
+      // M1: el caso se cerró durante el análisis. No se escribe nada.
+      throw this.situationClosedDuringAnalysis(situationId);
+    }
+
+    if (!row || row.claim_token !== claimToken) {
       throw new ConflictException({
         code: 'ANALYSIS_CLAIM_LOST',
         message:
@@ -531,6 +558,34 @@ export class AIOrchestrator {
         situationId,
       });
     }
+  }
+
+  /** Si el caso ya no está activo, 409 `SITUATION_CLOSED`; si no, nada. */
+  private async assertSituationStillWorkable(
+    situationId: string,
+  ): Promise<void> {
+    const rows: unknown = await this.dataSource.query(
+      `SELECT status FROM situations WHERE id = $1`,
+      [situationId],
+    );
+    const status = Array.isArray(rows)
+      ? ((rows[0] as { status?: string } | undefined)?.status as
+          SituationStatus | undefined)
+      : undefined;
+    if (status && !WORKABLE_SITUATION_STATUSES.includes(status)) {
+      throw this.situationClosedDuringAnalysis(situationId);
+    }
+  }
+
+  private situationClosedDuringAnalysis(
+    situationId: string,
+  ): ConflictException {
+    return new ConflictException({
+      code: SITUATION_CLOSED_CODE,
+      message:
+        'El problema ya no está activo: no admite análisis. El resultado no se guardó.',
+      situationId,
+    });
   }
 
   private findRegistrationByKey(

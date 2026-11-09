@@ -205,7 +205,9 @@ const GET_EXPECTED: Record<ActorKey, number[]> = {
   //          R1   R2   R3   R4   R5   R6   Rx
   coordA: [200, 404, 200, 200, 404, 404, 404],
   coordB: [404, 200, 200, 200, 200, 404, 404],
-  coordNull: [404, 404, 404, 404, 200, 404, 404],
+  // A2 (Fase 01A): un COORDINADOR sin coordinación no lee ningún caso, ni
+  // siquiera el que reportó (S5). Antes: 200 por autoría.
+  coordNull: [404, 404, 404, 404, 404, 404, 404],
   analista: [200, 200, 200, 200, 200, 200, 404],
   director: [200, 200, 200, 200, 200, 200, 404],
   admin: [200, 200, 200, 200, 200, 200, 404],

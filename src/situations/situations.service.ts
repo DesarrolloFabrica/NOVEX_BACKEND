@@ -559,6 +559,9 @@ export class SituationsService implements OnModuleInit {
     actor: AuthPayload,
   ): Promise<SituationsListResponseDto> {
     this.scopeService.assertPermission(actor, 'SITUATIONS_VIEW');
+    // A2: un COORDINADOR sin coordinación no lista nada, en ningún modo
+    // (tampoco «mis reportes» ni la lectura restringida de otra área).
+    this.scopeService.assertCoordinatorHasCoordination(actor);
     await this.ensureGeneralCoordinationId();
 
     if (query.closedFrom && query.closedTo) {
