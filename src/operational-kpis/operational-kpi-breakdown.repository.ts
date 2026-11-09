@@ -14,6 +14,7 @@ import {
   KPI_UNCATEGORIZED_CATEGORY_NAME,
 } from './domain/kpi-uncategorized-category';
 import { OperationalKpiHistoryMetric } from './dto/operational-kpi-history-query.dto';
+import { kpiNotCancelledSql } from './domain/kpi-excluded-statuses';
 
 export type KpiBreakdownCategoryRow = {
   categoryId: string;
@@ -68,6 +69,7 @@ export class OperationalKpiBreakdownRepository {
       LEFT JOIN incident_categories c ON c.id = s.category_id
       WHERE s.coordination_id = $1
         AND s.report_kind = $2
+        AND ${kpiNotCancelledSql()}
         AND ${column} IS NOT NULL
         AND ${column} >= $3
         AND ${column} < $4
@@ -112,6 +114,7 @@ export class OperationalKpiBreakdownRepository {
       LEFT JOIN incident_categories c ON c.id = s.category_id
       WHERE s.coordination_id = $1
         AND s.report_kind = $2
+        AND ${kpiNotCancelledSql()}
         AND s.created_at < $3
         AND (s.closed_at IS NULL OR s.closed_at >= $3)
       GROUP BY s.category_id, c.code, c.name, c.is_selectable

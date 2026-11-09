@@ -9,6 +9,7 @@ import {
   parseYmd,
 } from './domain/kpi-history-buckets';
 import { OperationalKpiHistoryMetric } from './dto/operational-kpi-history-query.dto';
+import { kpiNotCancelledSql } from './domain/kpi-excluded-statuses';
 
 export type KpiRelationRow = {
   coordinationId: string;
@@ -88,6 +89,7 @@ export class OperationalKpiRelationsRepository {
         FROM situations s
         INNER JOIN coordinations c ON c.id = ${args.partnerColumn}
         WHERE ${args.ownerColumn} = $1
+          AND ${kpiNotCancelledSql()}
           AND s.report_kind = $2
           AND ${args.partnerColumn} IS NOT NULL
           AND ${args.partnerColumn} IS DISTINCT FROM $1
@@ -121,6 +123,7 @@ export class OperationalKpiRelationsRepository {
       FROM situations s
       INNER JOIN coordinations c ON c.id = ${args.partnerColumn}
       WHERE ${args.ownerColumn} = $1
+          AND ${kpiNotCancelledSql()}
         AND s.report_kind = $2
         AND ${args.partnerColumn} IS NOT NULL
         AND ${args.partnerColumn} IS DISTINCT FROM $1

@@ -6,6 +6,7 @@ import {
   SituationStatus,
 } from '../common/enums/situation.enums';
 import { Situation } from '../situations/entities/situation.entity';
+import { kpiNotCancelledSql } from './domain/kpi-excluded-statuses';
 
 export type PeriodCompositionCounts = {
   severity: {
@@ -44,6 +45,7 @@ export class OperationalKpiPeriodRepository {
         COUNT(s.id)::int AS total
       FROM situations s
       WHERE s.coordination_id = $1
+        AND ${kpiNotCancelledSql()}
         AND s.created_at >= $2
         AND s.created_at < $3
       GROUP BY s.severity, s.status

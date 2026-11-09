@@ -9,6 +9,7 @@ import {
   bogotaDayStartIso,
 } from './domain/kpi-history-buckets';
 import type { KpiRecurrenceCountRow } from './domain/kpi-internal-recurrence';
+import { kpiNotCancelledSql } from './domain/kpi-excluded-statuses';
 
 /* ─────────────────────────────────────────────────────────────────────
  * INTERNOS · RECURRENCIA. UNA consulta: buckets no futuros (VALUES) ×
@@ -62,6 +63,7 @@ export class OperationalKpiInternalRecurrenceRepository {
        AND s.report_kind = $${internal}
        AND s.created_at >= b.start_at
        AND s.created_at < b.end_exclusive
+       AND ${kpiNotCancelledSql()}
       LEFT JOIN incident_categories c ON c.id = s.category_id
       GROUP BY b.key, s.category_id, c.code, c.name, c.is_selectable
     `;

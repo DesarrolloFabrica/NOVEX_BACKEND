@@ -73,11 +73,16 @@ export class OperationalOverviewService {
      */
     const coordinations = await this.coordinationsRepository.findCatalog(false);
 
-    const [severityRows, affectedRows, incomingRows] = await Promise.all([
-      this.overviewRepository.aggregateActiveSituationsBySeverity(),
-      this.overviewRepository.aggregateAffectedCoordinations(),
-      this.overviewRepository.aggregateIncomingDependencies(),
-    ]);
+    const [severityRows, affectedRows, incomingRows, cancelledRows] =
+      await Promise.all([
+        this.overviewRepository.aggregateActiveSituationsBySeverity(),
+        this.overviewRepository.aggregateAffectedCoordinations(),
+        this.overviewRepository.aggregateIncomingDependencies(),
+        this.overviewRepository.aggregateCancelledByCoordination(),
+      ]);
+    const cancelledByCoordination = new Map(
+      cancelledRows.map((row) => [row.coordinationId, row.total]),
+    );
 
     const snapshots = buildCoordinationLifeSnapshots(
       severityRows,
@@ -86,7 +91,11 @@ export class OperationalOverviewService {
     );
 
     const coordinationDtos = coordinations.map((coordination) =>
-      this.toCoordinationDto(coordination, snapshots.get(coordination.id)),
+      this.toCoordinationDto(
+        coordination,
+        snapshots.get(coordination.id),
+        cancelledByCoordination.get(coordination.id) ?? 0,
+      ),
     );
 
     const analystRegistry = this.toAnalystRegistryDto(
@@ -108,12 +117,14 @@ export class OperationalOverviewService {
       totals: direction.totals,
       coordinations: coordinationDtos,
       analystRegistry,
+      cancelledTotal: cancelledRows.reduce((sum, row) => sum + row.total, 0),
     };
   }
 
   private toCoordinationDto(
     coordination: Coordination,
     snapshot: CoordinationLifeSnapshot | undefined,
+    cancelledCount = 0,
   ): CoordinationOverviewDto {
     const resolved = snapshot ?? emptyCoordinationLifeSnapshot();
     const evaluation = evaluateCoordinationIntegrity(resolved);
@@ -148,6 +159,7 @@ export class OperationalOverviewService {
       affectedCoordinationCount: resolved.affectedCoordinationCount,
       incomingDependencyCount: resolved.incomingDependencyCount,
       lifePoints: life.lifePoints,
+      cancelledCount,
     };
   }
 

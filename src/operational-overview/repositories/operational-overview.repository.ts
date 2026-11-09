@@ -276,6 +276,29 @@ export class OperationalOverviewRepository extends Repository<Situation> {
     }));
   }
 
+  /**
+   * Fase 01B.1 · situaciones ANULADAS por coordinación responsable. Solo se
+   * cuentan aparte: no entran en integridad, vidas ni conteos operativos
+   * (todas las demás agregaciones filtran OPEN / IN_PROGRESS).
+   */
+  async aggregateCancelledByCoordination(): Promise<
+    Array<{ coordinationId: string | null; total: number }>
+  > {
+    const rows = await this.createQueryBuilder('situation')
+      .select('situation.coordinationId', 'coordinationId')
+      .addSelect('COUNT(*)', 'total')
+      .where('situation.status = :cancelled', {
+        cancelled: SituationStatus.CANCELLED,
+      })
+      .groupBy('situation.coordinationId')
+      .getRawMany<{ coordinationId: string | null; total: string }>();
+
+    return rows.map((row) => ({
+      coordinationId: row.coordinationId,
+      total: Number(row.total),
+    }));
+  }
+
   private applyOwnerScope(
     qb: SelectQueryBuilder<Situation>,
     scope?: OperationalAggregationScope,

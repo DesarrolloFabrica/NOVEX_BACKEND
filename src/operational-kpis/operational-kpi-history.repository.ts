@@ -14,6 +14,7 @@ import {
 } from './domain/kpi-uncategorized-category';
 import { activeAtCutCondition } from './domain/kpi-active-at-cut';
 import { OperationalKpiHistoryMetric } from './dto/operational-kpi-history-query.dto';
+import { kpiNotCancelledSql } from './domain/kpi-excluded-statuses';
 
 /**
  * Filtro opcional de serie histórica.
@@ -100,6 +101,7 @@ export class OperationalKpiHistoryRepository {
         AND ${column} IS NOT NULL
         AND ${column} >= b.start_at
         AND ${column} < b.end_exclusive
+        AND ${kpiNotCancelledSql()}
       GROUP BY b.key, b.start_at
       ORDER BY b.start_at
     `;
@@ -147,6 +149,7 @@ export class OperationalKpiHistoryRepository {
         ON ${join.clause}
         AND s.created_at < b.end_exclusive
         AND (s.closed_at IS NULL OR s.closed_at >= b.end_exclusive)
+        AND ${kpiNotCancelledSql()}
       GROUP BY b.key, b.end_exclusive
       ORDER BY b.end_exclusive
     `;
@@ -258,6 +261,7 @@ export class OperationalKpiHistoryRepository {
         AND s.report_kind = $${cut.next + 1}
         AND s.created_at < b.end_exclusive
         AND (s.closed_at IS NULL OR s.closed_at >= b.end_exclusive)
+        AND ${kpiNotCancelledSql()}
       LEFT JOIN incident_categories c ON c.id = s.category_id
       GROUP BY b.key, s.category_id, c.code, c.name, c.is_selectable
     `;
@@ -315,6 +319,7 @@ export class OperationalKpiHistoryRepository {
         AND s.affected_coordination_id IS DISTINCT FROM $${owner}
         AND s.created_at < b.end_exclusive
         AND (s.closed_at IS NULL OR s.closed_at >= b.end_exclusive)
+        AND ${kpiNotCancelledSql()}
       LEFT JOIN coordinations c ON c.id = s.affected_coordination_id
       GROUP BY b.key, s.affected_coordination_id, c.code, c.name, c.short_name
     `;

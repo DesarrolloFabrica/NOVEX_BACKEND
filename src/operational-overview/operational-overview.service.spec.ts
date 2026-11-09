@@ -141,6 +141,7 @@ function createService(options: {
     aggregateIncomingDependencies: jest
       .fn()
       .mockResolvedValue(options.incomingRows ?? []),
+    aggregateCancelledByCoordination: jest.fn().mockResolvedValue([]),
   };
   const service = new OperationalOverviewService(
     coordinationsRepository as never,
@@ -196,6 +197,8 @@ describe('OperationalOverviewService · catálogo e identificadores', () => {
 
     expect(Object.keys(overview).sort()).toEqual([
       'analystRegistry',
+      // Fase 01B.1: conteo informativo de anuladas (aditivo).
+      'cancelledTotal',
       'coordinations',
       'directionStatus',
       'generatedAt',
@@ -204,6 +207,7 @@ describe('OperationalOverviewService · catálogo e identificadores', () => {
     expect(Object.keys(overview.coordinations[0]).sort()).toEqual([
       'activeProblemsCount',
       'affectedCoordinationCount',
+      'cancelledCount',
       'code',
       'color',
       'criticalCount',

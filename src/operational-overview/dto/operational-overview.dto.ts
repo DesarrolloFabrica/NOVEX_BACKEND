@@ -38,6 +38,11 @@ export class CoordinationOverviewDto {
    * Política en `domain/coordination-life-points`; independiente de `status`.
    */
   lifePoints!: number | null;
+  /**
+   * Fase 01B.1 · situaciones ANULADAS cuya responsable es esta coordinación.
+   * Solo informativo: no interviene en `status` ni en `lifePoints`.
+   */
+  cancelledCount!: number;
 }
 
 /**
@@ -66,4 +71,6 @@ export class OperationalOverviewDto {
   totals!: OperationalOverviewTotalsDto;
   coordinations!: CoordinationOverviewDto[];
   analystRegistry!: AnalystRegistryOverviewDto;
+  /** Fase 01B.1 · total institucional de situaciones anuladas (informativo). */
+  cancelledTotal!: number;
 }

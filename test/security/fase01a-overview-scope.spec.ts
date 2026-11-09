@@ -145,6 +145,7 @@ describe('Fase 01A · alcance de GET /operational-overview', () => {
   const overviewRepository = {
     aggregateActiveSituationsBySeverity: jest.fn(),
     aggregateAffectedCoordinations: jest.fn(),
+    aggregateCancelledByCoordination: jest.fn().mockResolvedValue([]),
     aggregateIncomingDependencies: jest.fn(),
   };
 

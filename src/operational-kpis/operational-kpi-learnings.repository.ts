@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Situation } from '../situations/entities/situation.entity';
 import type { KpiLearningCategoryCountRow } from './domain/kpi-learnings';
 import { KPI_UNCATEGORIZED_CATEGORY_ID } from './domain/kpi-uncategorized-category';
+import { kpiNotCancelledSql } from './domain/kpi-excluded-statuses';
 
 /**
  * Universo común: coordinación RESPONSABLE = $1 y closed_at ∈ [$2, $3).
@@ -12,6 +13,7 @@ import { KPI_UNCATEGORIZED_CATEGORY_ID } from './domain/kpi-uncategorized-catego
  */
 const UNIVERSE = `
   s.coordination_id = $1
+  AND ${kpiNotCancelledSql()}
   AND s.closed_at IS NOT NULL
   AND s.closed_at >= $2::timestamptz
   AND s.closed_at < $3::timestamptz

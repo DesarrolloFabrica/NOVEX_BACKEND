@@ -13,7 +13,7 @@ describe('OperationalKpiSnapshotRepository · composición de ACTIVE_AT_CUT', ()
     };
   }
 
-  it('usa la MISMA población que Carga/Antigüedad (corte semiabierto, sin filtrar status)', async () => {
+  it('usa la MISMA población que Carga/Antigüedad (corte semiabierto, sin anuladas)', async () => {
     const { query, repository } = capture([{ active_count: 0 }]);
     await repository.aggregateComposition(AREA, '2026-09-30');
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
@@ -23,8 +23,10 @@ describe('OperationalKpiSnapshotRepository · composición de ACTIVE_AT_CUT', ()
       '(s.closed_at IS NULL OR s.closed_at >= $2::timestamptz)',
     );
     expect(sql).toContain('s.affected_coordination_id IS DISTINCT FROM $1');
-    // El status solo CLASIFICA la población, nunca la recorta.
-    expect(sql).not.toMatch(/WHERE[^()]*s\.status/);
+    // El status solo CLASIFICA la población; la única exclusión es la
+    // anulación (Fase 01B.1): una anulada nunca fue un problema operativo.
+    expect(sql).toContain("s.status <> 'CANCELLED'");
+    expect(sql).not.toMatch(/s\.status\s*(=|IN)\s/);
     expect(params).toEqual([
       AREA,
       '2026-10-01T05:00:00.000Z',
