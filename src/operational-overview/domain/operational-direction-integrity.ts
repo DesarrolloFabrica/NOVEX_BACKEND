@@ -39,14 +39,45 @@ export interface OperationalDirectionInput {
   analystRegistryStatus: OperationalIntegrityStatus;
 }
 
+/**
+ * Regla de la política de Dirección que DECIDIÓ el estado (Fase 01B.2, K-01).
+ * Es la única fuente de la explicación que ve el DIRECTOR: el frontend no
+ * reaplica reglas de coordinación sobre totales de la Dirección.
+ */
+export type DirectionIntegrityRule =
+  | 'NO_COORDINATIONS'
+  | 'MULTIPLE_CRITICAL_SIGNALS'
+  | 'UNKNOWN_SIGNAL'
+  | 'SINGLE_CRITICAL_SIGNAL'
+  | 'ALERT_THRESHOLD_REACHED'
+  | 'BELOW_ALERT_THRESHOLD';
+
+export const DIRECTION_INTEGRITY_POLICY_CODE = 'direction-mvp-v1';
+
+/** Explicación serializable de la evaluación de la Dirección. */
+export interface DirectionIntegrityExplanation {
+  policyCode: typeof DIRECTION_INTEGRITY_POLICY_CODE;
+  rule: DirectionIntegrityRule;
+  totalCoordinations: number;
+  criticalSignals: number;
+  alertSignals: number;
+  alertThreshold: number;
+  /** Umbral de señales críticas que vuelve CRÍTICA a la Dirección. */
+  criticalSignalsThreshold: number;
+  unknownCoordinations: number;
+  analystRegistryStatus: OperationalIntegrityStatus;
+}
+
 export interface OperationalDirectionEvaluation {
   status: OperationalIntegrityStatus;
+  rule: DirectionIntegrityRule;
   /** Solo coordinaciones: el Registro de analista nunca entra en el total. */
   totalCoordinations: number;
   /** ceil(totalCoordinations / 3), calculado sin el Registro de analista. */
   alertThreshold: number;
   criticalSignals: number;
   alertSignals: number;
+  unknownCoordinations: number;
   /** Reparto de COORDINACIONES por estado. No incluye desconocidas. */
   totals: {
     critical: number;
@@ -85,6 +116,7 @@ export function evaluateOperationalDirectionIntegrity(
     input.analystRegistryStatus === 'DESCONOCIDO';
 
   const base = {
+    unknownCoordinations: coordinations.unknownCoordinationsCount,
     totalCoordinations: coordinations.totalCoordinations,
     alertThreshold: coordinations.alertThreshold,
     criticalSignals,
@@ -97,24 +129,42 @@ export function evaluateOperationalDirectionIntegrity(
   };
 
   if (coordinations.totalCoordinations === 0) {
-    return { status: 'DESCONOCIDO', ...base };
+    return { status: 'DESCONOCIDO', rule: 'NO_COORDINATIONS', ...base };
   }
 
   if (criticalSignals >= MVP_DIRECTION_CRITICAL_COORDINATIONS) {
-    return { status: 'CRITICO', ...base };
+    return { status: 'CRITICO', rule: 'MULTIPLE_CRITICAL_SIGNALS', ...base };
   }
 
   if (hasUnknown) {
-    return { status: 'DESCONOCIDO', ...base };
+    return { status: 'DESCONOCIDO', rule: 'UNKNOWN_SIGNAL', ...base };
   }
 
   if (criticalSignals === 1) {
-    return { status: 'ALERTA', ...base };
+    return { status: 'ALERTA', rule: 'SINGLE_CRITICAL_SIGNAL', ...base };
   }
 
   if (alertSignals >= coordinations.alertThreshold) {
-    return { status: 'ALERTA', ...base };
+    return { status: 'ALERTA', rule: 'ALERT_THRESHOLD_REACHED', ...base };
   }
 
-  return { status: 'ESTABLE', ...base };
+  return { status: 'ESTABLE', rule: 'BELOW_ALERT_THRESHOLD', ...base };
+}
+
+/** Proyección de la evaluación para la API (sin recalcular nada). */
+export function toDirectionIntegrityExplanation(
+  evaluation: OperationalDirectionEvaluation,
+  analystRegistryStatus: OperationalIntegrityStatus,
+): DirectionIntegrityExplanation {
+  return {
+    policyCode: DIRECTION_INTEGRITY_POLICY_CODE,
+    rule: evaluation.rule,
+    totalCoordinations: evaluation.totalCoordinations,
+    criticalSignals: evaluation.criticalSignals,
+    alertSignals: evaluation.alertSignals,
+    alertThreshold: evaluation.alertThreshold,
+    criticalSignalsThreshold: MVP_DIRECTION_CRITICAL_COORDINATIONS,
+    unknownCoordinations: evaluation.unknownCoordinations,
+    analystRegistryStatus,
+  };
 }

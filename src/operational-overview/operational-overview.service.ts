@@ -19,6 +19,7 @@ import {
 import {
   evaluateAnalystRegistryIntegrity,
   evaluateOperationalDirectionIntegrity,
+  toDirectionIntegrityExplanation,
 } from './domain/operational-direction-integrity';
 import {
   AnalystRegistryOverviewDto,
@@ -113,6 +114,10 @@ export class OperationalOverviewService {
 
     return {
       directionStatus: direction.status,
+      directionIntegrity: toDirectionIntegrityExplanation(
+        direction,
+        analystRegistry.status,
+      ),
       generatedAt,
       totals: direction.totals,
       coordinations: coordinationDtos,

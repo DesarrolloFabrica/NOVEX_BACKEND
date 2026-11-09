@@ -33,6 +33,7 @@ import {
 import {
   evaluateAnalystRegistryIntegrity,
   evaluateOperationalDirectionIntegrity,
+  toDirectionIntegrityExplanation,
 } from '../operational-overview/domain/operational-direction-integrity';
 import {
   ActiveStatusRow,
@@ -1096,6 +1097,10 @@ export class OperationalKpiService {
 
     return {
       directionStatus: direction.status,
+      directionIntegrity: toDirectionIntegrityExplanation(
+        direction,
+        analystRegistry.integrityStatus,
+      ),
       problems,
       dependencies: { incoming, outgoing },
       coordinationStatusTotals: {

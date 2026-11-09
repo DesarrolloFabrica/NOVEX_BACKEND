@@ -1,4 +1,5 @@
 import { OperationalIntegrityStatus } from '../domain/coordination-integrity';
+import type { DirectionIntegrityExplanation } from '../domain/operational-direction-integrity';
 
 /**
  * Contrato HTTP de LEVEL 0. Espejo exacto del contrato congelado en el
@@ -66,6 +67,8 @@ export class OperationalOverviewTotalsDto {
 
 export class OperationalOverviewDto {
   directionStatus!: OperationalIntegrityStatus;
+  /** Regla que decidió directionStatus (Fase 01B.2, K-01). */
+  directionIntegrity!: DirectionIntegrityExplanation;
   /** ISO 8601, generado una sola vez por request. */
   generatedAt!: string;
   totals!: OperationalOverviewTotalsDto;

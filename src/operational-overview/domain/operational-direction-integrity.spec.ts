@@ -2,6 +2,7 @@ import { OperationalIntegrityStatus } from './coordination-integrity';
 import {
   evaluateAnalystRegistryIntegrity,
   evaluateOperationalDirectionIntegrity,
+  toDirectionIntegrityExplanation,
 } from './operational-direction-integrity';
 
 function coordinations(
@@ -186,5 +187,87 @@ describe('evaluateAnalystRegistryIntegrity', () => {
     });
     expect(evaluation.status).toBe('DESCONOCIDO');
     expect(evaluation.violations).toHaveLength(1);
+  });
+});
+
+describe('Fase 01B.2 · K-01: la regla que decide la Dirección viaja al frontend', () => {
+  it.each<
+    [
+      string,
+      readonly OperationalIntegrityStatus[],
+      OperationalIntegrityStatus,
+      OperationalIntegrityStatus,
+      string,
+    ]
+  >([
+    ['sin coordinaciones', [], 'ESTABLE', 'DESCONOCIDO', 'NO_COORDINATIONS'],
+    [
+      '2 críticas',
+      coordinations(15, 2),
+      'ESTABLE',
+      'CRITICO',
+      'MULTIPLE_CRITICAL_SIGNALS',
+    ],
+    [
+      '1 crítica + registro crítico',
+      coordinations(15, 1),
+      'CRITICO',
+      'CRITICO',
+      'MULTIPLE_CRITICAL_SIGNALS',
+    ],
+    [
+      '1 desconocida',
+      coordinations(15, 0, 0, 1),
+      'ESTABLE',
+      'DESCONOCIDO',
+      'UNKNOWN_SIGNAL',
+    ],
+    [
+      '1 crítica',
+      coordinations(15, 1),
+      'ESTABLE',
+      'ALERTA',
+      'SINGLE_CRITICAL_SIGNAL',
+    ],
+    [
+      '5 alertas de 15',
+      coordinations(15, 0, 5),
+      'ESTABLE',
+      'ALERTA',
+      'ALERT_THRESHOLD_REACHED',
+    ],
+    [
+      '4 alertas de 15',
+      coordinations(15, 0, 4),
+      'ESTABLE',
+      'ESTABLE',
+      'BELOW_ALERT_THRESHOLD',
+    ],
+  ])('%s -> %s', (_label, statuses, registry, status, rule) => {
+    const evaluation = direction(statuses, registry);
+    expect(evaluation.status).toBe(status);
+    expect(evaluation.rule).toBe(rule);
+
+    const explanation = toDirectionIntegrityExplanation(evaluation, registry);
+    expect(explanation).toMatchObject({
+      policyCode: 'direction-mvp-v1',
+      rule,
+      totalCoordinations: statuses.length,
+      criticalSignalsThreshold: 2,
+      analystRegistryStatus: registry,
+    });
+  });
+
+  it('muchos problemas activos sin coordinaciones en alerta siguen siendo ESTABLE', () => {
+    // La Dirección no aplica umbrales de coordinación (≥5 activos, ≥1 crítico)
+    // a sus totales: solo cuenta estados de coordinación.
+    const evaluation = direction(coordinations(15), 'ESTABLE');
+    expect(evaluation).toMatchObject({
+      status: 'ESTABLE',
+      rule: 'BELOW_ALERT_THRESHOLD',
+      criticalSignals: 0,
+      alertSignals: 0,
+      alertThreshold: 5,
+    });
   });
 });

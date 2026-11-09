@@ -200,6 +200,8 @@ describe('OperationalOverviewService · catálogo e identificadores', () => {
       // Fase 01B.1: conteo informativo de anuladas (aditivo).
       'cancelledTotal',
       'coordinations',
+      // Fase 01B.2 (K-01): regla que decidió el estado de la Dirección.
+      'directionIntegrity',
       'directionStatus',
       'generatedAt',
       'totals',

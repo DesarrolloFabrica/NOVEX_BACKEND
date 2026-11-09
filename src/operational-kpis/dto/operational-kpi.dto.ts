@@ -1,4 +1,5 @@
 import { OperationalIntegrityStatus } from '../../operational-overview/domain/coordination-integrity';
+import type { DirectionIntegrityExplanation } from '../../operational-overview/domain/operational-direction-integrity';
 import { OperationalKpiScopeType } from './operational-kpi-query.dto';
 
 export class OperationalKpiScopeDto {
@@ -72,6 +73,11 @@ export class OperationalKpiAnalystRegistryDto {
 
 export class OperationalKpiDirectionSnapshotDto {
   directionStatus!: OperationalIntegrityStatus;
+  /**
+   * Regla de la política de Dirección que decidió `directionStatus` y sus
+   * cifras (Fase 01B.2, K-01). Fuente única de la explicación del DIRECTOR.
+   */
+  directionIntegrity!: DirectionIntegrityExplanation;
   problems!: OperationalKpiProblemCountsDto;
   dependencies!: OperationalKpiDependenciesDto;
   coordinationStatusTotals!: OperationalKpiCoordinationStatusTotalsDto;
