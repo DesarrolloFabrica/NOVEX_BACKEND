@@ -27,6 +27,8 @@ API NestJS de NOVEX (Cartas y Circo): RBAC, situaciones, overview/KPIs, Gemini. 
 9. Acciones críticas (crear, avanzar, editar, resolver, anular, trasladar, afectaciones, evidencias, usuarios, análisis IA completado) auditan con `AuditLogService.recordCritical(input, manager)` **dentro** de su transacción: sin auditoría no se confirman. `record` solo para eventos no críticos. Nunca textos completos (motivos, aprendizajes, prompts) en metadatos: solo ids, estados y longitudes.
 10. `CANCELLED` (Fase 01B.1) no es `CLOSED`: no fija `closed_at`, no admite ninguna escritura, se excluye de listados por defecto y de todo indicador (`kpiNotCancelledSql()` en cualquier consulta nueva de KPIs). Anular y trasladar solo vía `SituationAdministrationService` (ADMIN + permiso específico).
 11. Trabajar por fases con aprobación explícita.
+12. (Fase 01B.2) La IA **sugiere**: nada de `situation_affected_coordinations` ni de un análisis alimenta integridad, vidas o KPIs. Todo prompt pasa por `ai-prompt-engine/privacy/prompt-privacy.ts` (sin datos de personas, expediente delimitado como no confiable, `assertPromptWithinLimits` antes del proveedor) y por la lista blanca `toPromptDossier`.
+13. (Fase 01B.2) Toda lectura de stock de KPIs usa `kpi-population.ts` (`kpiActiveAtCutWindowSql`: fin real de RESOLVED/CLOSED; INTER consigo misma = propia, nunca dependencia). Las evidencias no se borran: se retiran con motivo.
 
 ## Validación segura
 
@@ -59,6 +61,12 @@ Contra Cloud SQL (`DB_CLOUD=true` o `DB_HOST=/cloudsql/…`): las semillas de ar
 6. `docker stop` del contenedor al terminar.
 
 La e2e real del frontend (`NOVEX_FRONTEND/e2e-real/run.mjs`) crea por ejecución un contenedor PostgreSQL nuevo con tmpfs, puerto aleatorio ligado a loopback y base marcada `novex:disposable-test-db`; el preparador exige la guarda central antes de recrear el esquema. El contenedor se detiene al terminar. La aplicación e2e necesita el puerto 3001 libre.
+
+### Contenedor de pruebas con roles (Fase 01B.2)
+
+Desde `1788700000000` el contenedor desechable necesita los roles antes de migrar (paso 1-2 de arriba, como superusuario del contenedor):
+`CREATE ROLE novex_history_owner NOLOGIN; CREATE ROLE novex_app LOGIN NOSUPERUSER PASSWORD '<aleatoria>';`
+y declarar `NOVEX_HISTORY_OWNER_ROLE=novex_history_owner NOVEX_APP_DB_ROLE=novex_app` en la invocación de `migration:run`. Las suites e2e vacían fixtures con `truncateDisposableFixtures` (re-verifica la marca y usa `SET LOCAL session_replication_role = replica`, solo posible para el superusuario del contenedor). La integración recrea `public` y restaura `GRANT USAGE ON SCHEMA public TO PUBLIC`; su prueba de reversión se detiene en `1788700000000` (irreversible por diseño). `fase01b-administration.pg.spec` no es re-ejecutable sobre la misma base: usar un contenedor nuevo por corrida completa.
 
 ### Propiedad del historial institucional
 
