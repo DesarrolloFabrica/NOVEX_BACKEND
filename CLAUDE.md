@@ -24,7 +24,9 @@ API NestJS de NOVEX (Cartas y Circo): RBAC, situaciones, overview/KPIs, Gemini. 
 6. No remontar módulos latentes sin PermissionsGuard + alcance.
 7. Lectura ≠ análisis IA ≠ escritura (Fase 01A): ninguna ruta de escritura usa `requireAccessibleSituation`. Análisis → `requireAnalyzableSituation`; escrituras → `requireOperableSituation` (+ `assertSituationWorkable` si exige caso activo).
 8. El `PATCH` de situaciones no cambia la coordinación responsable ni edita casos CLOSED; toda escritura sobre `situations` va en transacción con `pessimistic_write` (no `repository.save` de una entidad leída sin bloqueo).
-9. Trabajar por fases con aprobación explícita.
+9. Acciones críticas (crear, avanzar, editar, resolver, anular, trasladar, afectaciones, evidencias, usuarios, análisis IA completado) auditan con `AuditLogService.recordCritical(input, manager)` **dentro** de su transacción: sin auditoría no se confirman. `record` solo para eventos no críticos. Nunca textos completos (motivos, aprendizajes, prompts) en metadatos: solo ids, estados y longitudes.
+10. `CANCELLED` (Fase 01B.1) no es `CLOSED`: no fija `closed_at`, no admite ninguna escritura, se excluye de listados por defecto y de todo indicador (`kpiNotCancelledSql()` en cualquier consulta nueva de KPIs). Anular y trasladar solo vía `SituationAdministrationService` (ADMIN + permiso específico).
+11. Trabajar por fases con aprobación explícita.
 
 ## Validación segura
 
