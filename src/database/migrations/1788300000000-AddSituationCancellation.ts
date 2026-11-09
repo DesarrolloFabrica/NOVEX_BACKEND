@@ -71,9 +71,9 @@ export class AddSituationCancellation1788300000000 implements MigrationInterface
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    const rows: Array<{ total: string }> = await queryRunner.query(
+    const rows = (await queryRunner.query(
       `SELECT count(*)::text AS total FROM "situations" WHERE "status"::text = 'CANCELLED'`,
-    );
+    )) as Array<{ total: string }>;
     if (Number(rows[0]?.total ?? 0) > 0) {
       throw new Error(
         'No se puede revertir AddSituationCancellation: hay situaciones anuladas.',

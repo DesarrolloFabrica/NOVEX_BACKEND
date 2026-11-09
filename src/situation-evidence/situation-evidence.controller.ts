@@ -37,7 +37,7 @@ export class SituationEvidenceController {
       user,
       situationId,
     );
-    return this.evidenceService.create(situationId, dto, user.sub);
+    return this.evidenceService.create(situationId, dto, user);
   }
 
   @Get(':id/evidences')
@@ -79,6 +79,6 @@ export class SituationEvidenceController {
       user,
       situationId,
     );
-    return this.evidenceService.delete(situationId, evidenceId);
+    return this.evidenceService.delete(situationId, evidenceId, user);
   }
 }

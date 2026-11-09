@@ -48,6 +48,9 @@ export const WORKABLE_SITUATION_STATUSES: readonly SituationStatus[] = [
 /** Código de negocio de una operación sobre un caso que ya no está activo. */
 export const SITUATION_CLOSED_CODE = 'SITUATION_CLOSED';
 
+/** Código de negocio de una operación sobre un caso ANULADO (Fase 01B.1). */
+export const SITUATION_CANCELLED_CODE = 'SITUATION_CANCELLED';
+
 /** Código de negocio de un COORDINADOR sin coordinación asignada. */
 export const COORDINATION_REQUIRED_CODE = 'COORDINATION_REQUIRED';
 
@@ -611,6 +614,13 @@ export class OperationalScopeService {
    * recomendaciones nuevas: 409 con código estable.
    */
   assertSituationWorkable(situation: { status: SituationStatus }): void {
+    if (situation.status === SituationStatus.CANCELLED) {
+      throw new ConflictException({
+        code: SITUATION_CANCELLED_CODE,
+        message:
+          'El problema fue anulado: no admite análisis, evidencias ni recomendaciones.',
+      });
+    }
     if (!WORKABLE_SITUATION_STATUSES.includes(situation.status)) {
       throw new ConflictException({
         code: SITUATION_CLOSED_CODE,

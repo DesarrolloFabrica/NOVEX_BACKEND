@@ -365,6 +365,30 @@ export class AIOrchestrator {
           );
         }
 
+        // AUDITORÍA OBLIGATORIA del análisis completado, en la transacción de
+        // confirmación (Fase 01B.1): sin registro no hay análisis confirmado.
+        // Solo identificadores y métricas; nunca el prompt ni el expediente.
+        await this.auditLogService.recordCritical(
+          {
+            actor,
+            action: previousLatest
+              ? AuditAction.AI_REANALYZED
+              : AuditAction.AI_ANALYSIS_COMPLETED,
+            resourceType: AuditResourceType.AI_ANALYSIS,
+            resourceId: situationId,
+            metadata: {
+              sessionId: createdSession.id,
+              analysisVersion: createdSession.version,
+              provider: createdSession.provider,
+              model: this.getModelName(),
+              promptVersion: engineResult.prompt.templateVersion,
+              previousVersion: previousLatest?.version ?? null,
+              confidence: analysis.confidence.overall,
+            },
+          },
+          manager,
+        );
+
         return createdSession;
       });
 
@@ -375,22 +399,6 @@ export class AIOrchestrator {
 
         this.timelineService.findBySituation(situationId),
       ]);
-
-      await this.auditLogService.record({
-        actor,
-        action: previousLatest
-          ? AuditAction.AI_REANALYZED
-          : AuditAction.AI_ANALYSIS_COMPLETED,
-        resourceType: AuditResourceType.AI_ANALYSIS,
-        resourceId: situationId,
-        metadata: {
-          sessionId: session.id,
-          analysisVersion: session.version,
-          provider: session.provider,
-          previousVersion: previousLatest?.version ?? null,
-          claimToken,
-        },
-      });
 
       return {
         situationId,

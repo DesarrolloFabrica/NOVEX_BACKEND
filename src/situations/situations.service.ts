@@ -437,140 +437,145 @@ export class SituationsService implements OnModuleInit {
     const createdAt = new Date();
     const reportedSeverity = input.dto.severity;
 
-    const { situationId, consequenceId } =
-      await this.situationsRepository.manager.transaction(
-        async (manager: EntityManager) => {
-          const situation = manager.create(Situation, {
-            title: input.dto.title.trim(),
-            description: input.dto.description.trim(),
-            reportKind: input.reportKind,
-            coordinationId: input.coordination?.id ?? null,
-            coordination: input.coordination,
-            affectedCoordinationId: input.affectedCoordination?.id ?? null,
-            affectedCoordination: input.affectedCoordination,
-            affectedProcess: input.affectedProcess,
-            pendingDelivery: input.pendingDelivery,
-            createdByUserId: input.actor.sub,
-            categoryId: input.category?.id ?? null,
-            category: input.category,
-            severity: reportedSeverity,
-            reportedSeverity,
-            severityEscalationPolicyCode:
-              ACTIVE_SEVERITY_ESCALATION_POLICY_CODE,
-            status: SituationStatus.OPEN,
-            // Idempotencia del alta: el índice parcial
-            // `uq_situations_creator_client_request` hace que un segundo
-            // intento con la misma clave aborte toda la transacción (también la
-            // fila REPORTED y la afectación inicial), así que no se duplican.
-            clientRequestId: input.idempotency?.clientRequestId ?? null,
-            requestFingerprint: input.idempotency?.requestFingerprint ?? null,
-            assignedUserId: null,
-            lastStatusComment: null,
-            resolvedAt: null,
-            closedAt: null,
-            createdAt,
-            dueAt: computeDueAt(reportedSeverity, createdAt),
-            slaPolicyCode: SLA_POLICY_CODE,
-            slaBreachedAt: null,
-            lastSlaReminderAt: null,
-            occurredAt,
-            relatedCoordinations: input.relatedCoordinations.map(
-              (item, index) =>
-                manager.create(SituationRelatedCoordination, {
-                  coordinationId: item.id,
-                  coordination: item,
-                  displayOrder: index,
-                }),
-            ),
-          });
+    const { situationId } = await this.situationsRepository.manager.transaction(
+      async (manager: EntityManager) => {
+        const situation = manager.create(Situation, {
+          title: input.dto.title.trim(),
+          description: input.dto.description.trim(),
+          reportKind: input.reportKind,
+          coordinationId: input.coordination?.id ?? null,
+          coordination: input.coordination,
+          affectedCoordinationId: input.affectedCoordination?.id ?? null,
+          affectedCoordination: input.affectedCoordination,
+          affectedProcess: input.affectedProcess,
+          pendingDelivery: input.pendingDelivery,
+          createdByUserId: input.actor.sub,
+          categoryId: input.category?.id ?? null,
+          category: input.category,
+          severity: reportedSeverity,
+          reportedSeverity,
+          severityEscalationPolicyCode: ACTIVE_SEVERITY_ESCALATION_POLICY_CODE,
+          status: SituationStatus.OPEN,
+          // Idempotencia del alta: el índice parcial
+          // `uq_situations_creator_client_request` hace que un segundo
+          // intento con la misma clave aborte toda la transacción (también la
+          // fila REPORTED y la afectación inicial), así que no se duplican.
+          clientRequestId: input.idempotency?.clientRequestId ?? null,
+          requestFingerprint: input.idempotency?.requestFingerprint ?? null,
+          assignedUserId: null,
+          lastStatusComment: null,
+          resolvedAt: null,
+          closedAt: null,
+          createdAt,
+          dueAt: computeDueAt(reportedSeverity, createdAt),
+          slaPolicyCode: SLA_POLICY_CODE,
+          slaBreachedAt: null,
+          lastSlaReminderAt: null,
+          occurredAt,
+          relatedCoordinations: input.relatedCoordinations.map((item, index) =>
+            manager.create(SituationRelatedCoordination, {
+              coordinationId: item.id,
+              coordination: item,
+              displayOrder: index,
+            }),
+          ),
+        });
 
-          const saved = await manager.save(Situation, situation);
+        const saved = await manager.save(Situation, situation);
 
-          await manager.insert(SituationSeverityChange, {
-            situationId: saved.id,
-            previousSeverity: null,
-            newSeverity: reportedSeverity,
-            source: SituationSeverityChangeSource.REPORTED,
-            effectiveAt: createdAt,
-            actorUserId: input.actor.sub,
-            policyCode: null,
-            ruleKey: null,
-          });
+        await manager.insert(SituationSeverityChange, {
+          situationId: saved.id,
+          previousSeverity: null,
+          newSeverity: reportedSeverity,
+          source: SituationSeverityChangeSource.REPORTED,
+          effectiveAt: createdAt,
+          actorUserId: input.actor.sub,
+          policyCode: null,
+          ruleKey: null,
+        });
 
-          let createdConsequenceId: string | null = null;
-          if (input.initialConsequence) {
-            const consequence = await manager.save(
-              SituationConsequence,
-              manager.create(SituationConsequence, {
-                situationId: saved.id,
-                description: input.initialConsequence,
-                // Sin fecha propia: ocurre cuando ocurrió el problema.
-                occurredAt,
-                createdAt,
-                createdByUserId: input.actor.sub,
-              }),
-            );
-            createdConsequenceId = consequence.id;
+        let createdConsequenceId: string | null = null;
+        if (input.initialConsequence) {
+          const consequence = await manager.save(
+            SituationConsequence,
+            manager.create(SituationConsequence, {
+              situationId: saved.id,
+              description: input.initialConsequence,
+              // Sin fecha propia: ocurre cuando ocurrió el problema.
+              occurredAt,
+              createdAt,
+              createdByUserId: input.actor.sub,
+            }),
+          );
+          createdConsequenceId = consequence.id;
 
-            await this.timelineService.createEntry(
-              {
-                situationId: saved.id,
-                userId: input.actor.sub,
-                eventType: TimelineEventType.CONSEQUENCE_ADDED,
-                title: 'Afectación registrada',
-                description: 'Se registró la afectación inicial del problema.',
-                metadata: {
-                  consequenceId: consequence.id,
-                  occurredAt: consequence.occurredAt.toISOString(),
-                },
+          await this.timelineService.createEntry(
+            {
+              situationId: saved.id,
+              userId: input.actor.sub,
+              eventType: TimelineEventType.CONSEQUENCE_ADDED,
+              title: 'Afectación registrada',
+              description: 'Se registró la afectación inicial del problema.',
+              metadata: {
+                consequenceId: consequence.id,
+                occurredAt: consequence.occurredAt.toISOString(),
               },
-              manager,
-            );
-          }
+            },
+            manager,
+          );
+        }
 
-          return { situationId: saved.id, consequenceId: createdConsequenceId };
-        },
-      );
+        // AUDITORÍA OBLIGATORIA en la misma transacción (Fase 01B.1): si no
+        // se puede registrar, el alta entera se revierte.
+        await this.auditLogService.recordCritical(
+          {
+            actor: input.actor,
+            action: AuditAction.SITUATION_CREATED,
+            resourceType: AuditResourceType.SITUATION,
+            resourceId: saved.id,
+            metadata: {
+              status: saved.status,
+              severity: saved.severity,
+              reportedSeverity: saved.reportedSeverity,
+              reportKind: saved.reportKind,
+              coordinationId: saved.coordinationId,
+              categoryId: saved.categoryId,
+              affectedCoordinationId: saved.affectedCoordinationId,
+              dueAt: saved.dueAt,
+              slaPolicyCode: saved.slaPolicyCode,
+              severityEscalationPolicyCode: saved.severityEscalationPolicyCode,
+              initialConsequenceId: createdConsequenceId,
+            },
+          },
+          manager,
+        );
+
+        if (createdConsequenceId && input.initialConsequence) {
+          await this.auditLogService.recordCritical(
+            {
+              actor: input.actor,
+              action: AuditAction.SITUATION_CONSEQUENCE_ADDED,
+              resourceType: AuditResourceType.SITUATION,
+              resourceId: saved.id,
+              metadata: {
+                consequenceId: createdConsequenceId,
+                occurredAt,
+                descriptionLength: input.initialConsequence.length,
+                initial: true,
+              },
+            },
+            manager,
+          );
+        }
+
+        return { situationId: saved.id, consequenceId: createdConsequenceId };
+      },
+    );
 
     const withRelations =
       await this.situationsRepository.findByIdWithRelations(situationId);
     if (!withRelations) {
       throw new NotFoundException('No fue posible cargar la situación creada.');
-    }
-
-    await this.auditLogService.record({
-      actor: input.actor,
-      action: AuditAction.SITUATION_CREATED,
-      resourceType: AuditResourceType.SITUATION,
-      resourceId: withRelations.id,
-      metadata: {
-        status: withRelations.status,
-        severity: withRelations.severity,
-        reportedSeverity: withRelations.reportedSeverity,
-        reportKind: withRelations.reportKind,
-        categoryId: withRelations.categoryId,
-        affectedCoordinationId: withRelations.affectedCoordinationId,
-        dueAt: withRelations.dueAt,
-        slaPolicyCode: withRelations.slaPolicyCode,
-        severityEscalationPolicyCode:
-          withRelations.severityEscalationPolicyCode,
-        initialConsequenceId: consequenceId,
-      },
-    });
-
-    if (consequenceId && input.initialConsequence) {
-      await this.auditLogService.record({
-        actor: input.actor,
-        action: AuditAction.SITUATION_CONSEQUENCE_ADDED,
-        resourceType: AuditResourceType.SITUATION,
-        resourceId: withRelations.id,
-        metadata: {
-          consequenceId,
-          occurredAt: withRelations.occurredAt,
-          descriptionLength: input.initialConsequence.length,
-          initial: true,
-        },
-      });
     }
 
     await this.ensureGeneralCoordinationId();
@@ -754,7 +759,7 @@ export class SituationsService implements OnModuleInit {
   ): Promise<SituationDetailResponseDto> {
     const generalCoordinationId = await this.ensureGeneralCoordinationId();
 
-    const outcome = await this.situationsRepository.manager.transaction(
+    await this.situationsRepository.manager.transaction(
       async (manager: EntityManager) => {
         // Fila desnuda: con relaciones eager, PostgreSQL rechaza FOR UPDATE
         // (ver `resolve`).
@@ -883,53 +888,49 @@ export class SituationsService implements OnModuleInit {
           );
         }
 
-        return {
-          previousStatus,
-          nextStatus: situation.status,
-          statusTransitionApplied,
-          statusComment,
-          changedFields,
-          dueAt: situation.dueAt,
-          slaBreachedAt: situation.slaBreachedAt,
-        };
+        // AUDITORÍA OBLIGATORIA en la misma transacción (Fase 01B.1).
+        if (statusTransitionApplied) {
+          await this.auditLogService.recordCritical(
+            {
+              actor,
+              action: AuditAction.SITUATION_STATUS_CHANGED,
+              resourceType: AuditResourceType.SITUATION,
+              resourceId: id,
+              metadata: {
+                previousStatus,
+                nextStatus: situation.status,
+                statusCommentLength: statusComment?.length ?? 0,
+                assignedUserId: situation.assignedUserId,
+                dueAt: situation.dueAt,
+                slaBreachedAt: situation.slaBreachedAt,
+              },
+            },
+            manager,
+          );
+        }
+
+        /*
+         * PATCH MIXTO (edición + comentario). Los campos se auditan siempre que
+         * los haya, por NOMBRE (el contenido vive en la situación y en la línea
+         * de tiempo); el comentario ya viaja en el evento de transición.
+         */
+        const fieldChanges = statusTransitionApplied
+          ? changedFields.filter((field) => field !== 'statusComment')
+          : changedFields;
+        if (fieldChanges.length > 0) {
+          await this.auditLogService.recordCritical(
+            {
+              actor,
+              action: AuditAction.SITUATION_UPDATED,
+              resourceType: AuditResourceType.SITUATION,
+              resourceId: id,
+              metadata: { changedFields: fieldChanges },
+            },
+            manager,
+          );
+        }
       },
     );
-
-    // La auditoría va después del commit, como en el resto del dominio.
-    if (outcome.statusTransitionApplied) {
-      await this.auditLogService.record({
-        actor,
-        action: AuditAction.SITUATION_STATUS_CHANGED,
-        resourceType: AuditResourceType.SITUATION,
-        resourceId: id,
-        metadata: {
-          previousStatus: outcome.previousStatus,
-          nextStatus: outcome.nextStatus,
-          statusComment: outcome.statusComment,
-          dueAt: outcome.dueAt,
-          slaBreachedAt: outcome.slaBreachedAt,
-          closedOnTime: null,
-        },
-      });
-    }
-
-    /*
-     * PATCH MIXTO (edición + comentario). Los campos se auditan siempre que los
-     * haya; el comentario de estado ya viaja en el evento de transición y no
-     * se repite.
-     */
-    const fieldChanges = outcome.statusTransitionApplied
-      ? outcome.changedFields.filter((field) => field !== 'statusComment')
-      : outcome.changedFields;
-    if (fieldChanges.length > 0) {
-      await this.auditLogService.record({
-        actor,
-        action: AuditAction.SITUATION_UPDATED,
-        resourceType: AuditResourceType.SITUATION,
-        resourceId: id,
-        metadata: { changedFields: fieldChanges },
-      });
-    }
 
     return this.getById(id, actor);
   }
@@ -976,7 +977,7 @@ export class SituationsService implements OnModuleInit {
     }
 
     let escalations: MaterializedEscalation[] = [];
-    const previousStatus = await this.situationsRepository.manager.transaction(
+    await this.situationsRepository.manager.transaction(
       async (manager: EntityManager) => {
         /*
          * BLOQUEO SOBRE LA FILA DESNUDA.
@@ -1096,24 +1097,30 @@ export class SituationsService implements OnModuleInit {
           manager,
         );
 
-        return statusBefore;
+        // AUDITORÍA OBLIGATORIA en la misma transacción (Fase 01B.1). Se
+        // audita QUE hubo aprendizaje y su tamaño, no su contenido: el texto
+        // tiene un único almacén.
+        await this.auditLogService.recordCritical(
+          {
+            actor,
+            action: AuditAction.SITUATION_RESOLVED,
+            resourceType: AuditResourceType.SITUATION,
+            resourceId: id,
+            metadata: {
+              previousStatus: statusBefore,
+              nextStatus: SituationStatus.CLOSED,
+              coordinationId: situation.coordinationId,
+              learningLength: learning.length,
+              closedOnTime: wasClosedOnTime(
+                situation.dueAt,
+                situation.closedAt,
+              ),
+            },
+          },
+          manager,
+        );
       },
     );
-
-    await this.auditLogService.record({
-      actor,
-      action: AuditAction.SITUATION_RESOLVED,
-      resourceType: AuditResourceType.SITUATION,
-      resourceId: id,
-      metadata: {
-        previousStatus,
-        nextStatus: SituationStatus.CLOSED,
-        // Se audita QUE hubo aprendizaje y su tamaño, no su contenido: el texto
-        // tiene un único almacén y la auditoría no debe volverse un segundo
-        // lugar donde buscarlo.
-        learningLength: learning.length,
-      },
-    });
     await this.severityEscalationService.recordAudit(escalations);
 
     return this.getById(id, actor);

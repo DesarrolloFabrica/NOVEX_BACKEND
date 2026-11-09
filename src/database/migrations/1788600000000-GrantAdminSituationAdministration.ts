@@ -64,8 +64,9 @@ export class GrantAdminSituationAdministration1788600000000 implements Migration
       `,
       [codes],
     );
-    await queryRunner.query(`DELETE FROM "permissions" WHERE "code" = ANY($1)`, [
-      codes,
-    ]);
+    await queryRunner.query(
+      `DELETE FROM "permissions" WHERE "code" = ANY($1)`,
+      [codes],
+    );
   }
 }

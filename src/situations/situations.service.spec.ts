@@ -90,7 +90,10 @@ describe('SituationsService PATCH (transacción, bloqueo y reglas de edición)',
       canAddConsequence: jest.fn().mockReturnValue(false),
       assertSituationReadable: jest.fn(),
     };
-    const auditLogService = { record: jest.fn().mockResolvedValue(null) };
+    const auditLogService = {
+      record: jest.fn().mockResolvedValue(null),
+      recordCritical: jest.fn().mockResolvedValue({}),
+    };
     const detailRepos = emptyDetailRepositories();
 
     const service = new SituationsService(
@@ -289,7 +292,7 @@ describe('SituationsService PATCH (transacción, bloqueo y reglas de edición)',
           code: 'ADVANCE_WITH_FIELD_CHANGES',
         });
         expect(manager.save).not.toHaveBeenCalled();
-        expect(auditLogService.record).not.toHaveBeenCalled();
+        expect(auditLogService.recordCritical).not.toHaveBeenCalled();
       },
     );
   });
@@ -410,7 +413,7 @@ describe('SituationsService PATCH (transacción, bloqueo y reglas de edición)',
   });
 
   describe('edición ordinaria', () => {
-    it('edita el título con la política de edición y lo audita tras el commit', async () => {
+    it('edita el título con la política de edición y lo audita en la transacción', async () => {
       const { service, scopeService, auditLogService } = createService();
 
       await service.update(
@@ -420,11 +423,13 @@ describe('SituationsService PATCH (transacción, bloqueo y reglas de edición)',
       );
 
       expect(scopeService.assertCanUpdateSituation).toHaveBeenCalled();
-      expect(auditLogService.record).toHaveBeenCalledWith(
+      expect(auditLogService.recordCritical).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'SITUATION_UPDATED',
           metadata: { changedFields: ['title'] },
         }),
+        // Misma transacción que la acción (manager).
+        expect.anything(),
       );
     });
 
@@ -509,7 +514,10 @@ describe('SituationsService related coordinations', () => {
       detail.consequencesRepository as never,
       { createEntry: jest.fn() } as never,
       scopeService as never,
-      { record: jest.fn().mockResolvedValue(null) } as never,
+      {
+        record: jest.fn().mockResolvedValue(null),
+        recordCritical: jest.fn().mockResolvedValue({}),
+      } as never,
       inertEscalationService() as never,
     );
 

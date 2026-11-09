@@ -138,9 +138,11 @@ describe('SituationConsequencesService · agregar afectación', () => {
       }),
     };
     const auditLogService = {
-      record: jest.fn(() => {
+      record: jest.fn().mockResolvedValue(null),
+      // Fase 01B.1: auditoría obligatoria DENTRO de la transacción.
+      recordCritical: jest.fn(() => {
         calls.push('audit');
-        return Promise.resolve(null);
+        return Promise.resolve({});
       }),
     };
     const escalationService = {
@@ -186,7 +188,7 @@ describe('SituationConsequencesService · agregar afectación', () => {
     expect(result.createdByRoleName).toBe('Analista');
   });
 
-  it('bloquea la fila, escala antes de insertar, escribe el evento en la transacción y audita después', async () => {
+  it('bloquea la fila, escala antes de insertar, escribe el evento y la auditoría obligatoria en la transacción', async () => {
     const h = harness();
     await h.service.addConsequence(
       SIT_ID,
@@ -223,11 +225,12 @@ describe('SituationConsequencesService · agregar afectación', () => {
       consequenceId: 'generated-1',
       descriptionLength: 'Algo'.length,
     });
-    expect(h.auditLogService.record).toHaveBeenCalledWith(
+    expect(h.auditLogService.recordCritical).toHaveBeenCalledWith(
       expect.objectContaining({
         action: AuditAction.SITUATION_CONSEQUENCE_ADDED,
         metadata: auditMetadata,
       }),
+      h.manager,
     );
   });
 

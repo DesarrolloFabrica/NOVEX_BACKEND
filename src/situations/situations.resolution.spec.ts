@@ -163,6 +163,10 @@ describe('SituationsService · resolver con aprendizaje', () => {
       record: jest
         .fn<Promise<null>, [RecordAuditInput]>()
         .mockResolvedValue(null),
+      // Fase 01B.1: la resolución audita DENTRO de su transacción.
+      recordCritical: jest
+        .fn<Promise<object>, [RecordAuditInput, unknown]>()
+        .mockResolvedValue({}),
     };
 
     const generalId =
@@ -310,7 +314,8 @@ describe('SituationsService · resolver con aprendizaje', () => {
       const h = createHarness();
       await h.service.resolve(SIT_ID, { learning: 'Secreto' }, coordinadorA);
 
-      const metadata = h.auditLogService.record.mock.calls[0][0].metadata;
+      const metadata =
+        h.auditLogService.recordCritical.mock.calls[0][0].metadata;
       expect(metadata?.learningLength).toBe('Secreto'.length);
       expect(JSON.stringify(metadata)).not.toContain('Secreto');
     });

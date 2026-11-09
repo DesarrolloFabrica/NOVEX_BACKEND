@@ -129,7 +129,10 @@ describe('SituationsService · alta por tipo de registro', () => {
       ),
     };
     const timelineService = { createEntry: jest.fn().mockResolvedValue({}) };
-    const auditLogService = { record: jest.fn().mockResolvedValue(null) };
+    const auditLogService = {
+      record: jest.fn().mockResolvedValue(null),
+      recordCritical: jest.fn().mockResolvedValue({}),
+    };
     const detail = emptyDetailRepositories();
 
     const service = new SituationsService(
@@ -464,7 +467,7 @@ describe('SituationsService · alta por tipo de registro', () => {
         // El evento usa el MISMO manager: va dentro de la transacción.
         manager,
       );
-      expect(auditLogService.record).toHaveBeenCalledWith(
+      expect(auditLogService.recordCritical).toHaveBeenCalledWith(
         expect.objectContaining({
           action: AuditAction.SITUATION_CONSEQUENCE_ADDED,
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -473,6 +476,8 @@ describe('SituationsService · alta por tipo de registro', () => {
               .length,
           }),
         }),
+        // Misma transacción que la acción (manager).
+        expect.anything(),
       );
     });
 
@@ -497,7 +502,7 @@ describe('SituationsService · alta por tipo de registro', () => {
       // la situación, su SITUATION_CREATED y la fila REPORTED.
       expect(situationsRepository.manager.transaction).toHaveBeenCalledTimes(1);
       expect(situationsRepository.findByIdWithRelations).not.toHaveBeenCalled();
-      expect(auditLogService.record).not.toHaveBeenCalled();
+      expect(auditLogService.recordCritical).not.toHaveBeenCalled();
     });
   });
 });

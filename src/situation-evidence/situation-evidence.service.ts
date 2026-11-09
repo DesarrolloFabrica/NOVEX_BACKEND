@@ -1,6 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
+import { AuditAction, AuditResourceType } from '../audit/audit-action.enum';
+import { AuditLogService } from '../audit/audit-log.service';
+import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
+import { OperationalScopeService } from '../auth/services/operational-scope.service';
 import { EvidenceType } from '../common/enums/situation-evidence.enums';
 import { TimelineEventType } from '../common/enums/situation-timeline.enums';
 import { isUniqueViolation } from '../common/utils/database-errors';
@@ -23,40 +27,97 @@ export class SituationEvidenceService {
     private readonly situationsRepository: Repository<Situation>,
     private readonly storageService: EvidenceStorageService,
     private readonly timelineService: SituationTimelineService,
+    private readonly auditLogService: AuditLogService,
+    private readonly scopeService: OperationalScopeService,
   ) {}
 
+  /**
+   * ALTA DE EVIDENCIA (Fase 01B.1). En una transacción:
+   *   1. la situación se lee con bloqueo compartido (FOR SHARE): dos altas
+   *      conviven, pero un cierre, anulación o traslado espera o es esperado;
+   *   2. una repetición con la misma `clientKey` devuelve la existente, aun si
+   *      el caso cambió de estado después (idempotencia del primer intento);
+   *   3. solo un caso activo (OPEN / IN_PROGRESS) admite evidencias nuevas:
+   *      CLOSED y CANCELLED son inmutables (409);
+   *   4. evidencia, línea de tiempo y auditoría obligatoria se confirman juntas.
+   */
   async create(
     situationId: string,
     dto: CreateSituationEvidenceDto,
-    uploadedByUserId: string,
+    actor: AuthPayload,
   ): Promise<SituationEvidenceResponseDto> {
-    await this.ensureSituationExists(situationId);
-
-    if (dto.clientKey) {
-      const existing = await this.findByClientKey(situationId, dto.clientKey);
-      if (existing) {
-        return this.toResponse(existing);
-      }
-    }
-
     const fileFields = this.resolveFileFields(situationId, dto);
 
-    const evidence = this.evidenceRepository.create({
-      situationId,
-      uploadedByUserId,
-      type: dto.type,
-      title: dto.title.trim(),
-      description: dto.description.trim(),
-      fileName: fileFields.fileName,
-      storagePath: fileFields.storagePath,
-      mimeType: fileFields.mimeType,
-      fileSize: fileFields.fileSize,
-      clientKey: dto.clientKey ?? null,
-    });
-
-    let saved: SituationEvidence;
+    let savedId: string;
     try {
-      saved = await this.evidenceRepository.save(evidence);
+      savedId = await this.evidenceRepository.manager.transaction(
+        async (manager) => {
+          const situation = await this.lockSituation(manager, situationId);
+
+          if (dto.clientKey) {
+            const existing = await manager.findOne(SituationEvidence, {
+              where: { situationId, clientKey: dto.clientKey },
+              loadEagerRelations: false,
+            });
+            if (existing) {
+              return existing.id;
+            }
+          }
+
+          this.scopeService.assertSituationWorkable(situation);
+
+          const saved = await manager.save(
+            SituationEvidence,
+            manager.create(SituationEvidence, {
+              situationId,
+              uploadedByUserId: actor.sub,
+              type: dto.type,
+              title: dto.title.trim(),
+              description: dto.description.trim(),
+              fileName: fileFields.fileName,
+              storagePath: fileFields.storagePath,
+              mimeType: fileFields.mimeType,
+              fileSize: fileFields.fileSize,
+              clientKey: dto.clientKey ?? null,
+            }),
+          );
+
+          await this.timelineService.createEntry(
+            {
+              situationId,
+              userId: actor.sub,
+              eventType: TimelineEventType.ATTACHMENT_ADDED,
+              title: 'Evidencia agregada',
+              description: `Se agregó la evidencia "${saved.title}" (${saved.type}).`,
+              metadata: {
+                evidenceId: saved.id,
+                type: saved.type,
+                fileName: saved.fileName,
+                storagePath: saved.storagePath,
+              },
+            },
+            manager,
+          );
+
+          await this.auditLogService.recordCritical(
+            {
+              actor,
+              action: AuditAction.SITUATION_EVIDENCE_ADDED,
+              resourceType: AuditResourceType.SITUATION,
+              resourceId: situationId,
+              metadata: {
+                evidenceId: saved.id,
+                type: saved.type,
+                hasFile: saved.fileName !== null,
+                fileSize: saved.fileSize,
+              },
+            },
+            manager,
+          );
+
+          return saved.id;
+        },
+      );
     } catch (error) {
       if (!dto.clientKey || !isUniqueViolation(error)) {
         throw error;
@@ -70,25 +131,13 @@ export class SituationEvidenceService {
     }
 
     const withUser = await this.evidenceRepository.findByIdAndSituationId(
-      saved.id,
+      savedId,
       situationId,
     );
-
-    await this.timelineService.createEntry({
-      situationId,
-      userId: uploadedByUserId,
-      eventType: TimelineEventType.ATTACHMENT_ADDED,
-      title: 'Evidencia agregada',
-      description: `Se agregó la evidencia "${saved.title}" (${saved.type}).`,
-      metadata: {
-        evidenceId: saved.id,
-        type: saved.type,
-        fileName: saved.fileName,
-        storagePath: saved.storagePath,
-      },
-    });
-
-    return this.toResponse(withUser ?? saved);
+    if (!withUser) {
+      throw new NotFoundException(`Evidencia no encontrada: ${savedId}`);
+    }
+    return this.toResponse(withUser);
   }
 
   async findBySituation(
@@ -113,9 +162,65 @@ export class SituationEvidenceService {
     return this.toResponse(evidence);
   }
 
-  async delete(situationId: string, evidenceId: string): Promise<void> {
-    const evidence = await this.findEvidenceOrFail(situationId, evidenceId);
-    await this.evidenceRepository.remove(evidence);
+  /**
+   * BORRADO DE EVIDENCIA (Fase 01B.1). Sigue siendo físico (comportamiento
+   * vigente), pero ahora solo en casos activos, bajo bloqueo compartido de la
+   * situación y con auditoría obligatoria en la misma transacción: el registro
+   * conserva qué evidencia era, de qué tipo y quién la había subido.
+   */
+  async delete(
+    situationId: string,
+    evidenceId: string,
+    actor: AuthPayload,
+  ): Promise<void> {
+    await this.evidenceRepository.manager.transaction(async (manager) => {
+      const situation = await this.lockSituation(manager, situationId);
+
+      const evidence = await manager.findOne(SituationEvidence, {
+        where: { id: evidenceId, situationId },
+        loadEagerRelations: false,
+      });
+      if (!evidence) {
+        throw new NotFoundException(`Evidencia no encontrada: ${evidenceId}`);
+      }
+
+      this.scopeService.assertSituationWorkable(situation);
+
+      await manager.remove(SituationEvidence, evidence);
+
+      await this.auditLogService.recordCritical(
+        {
+          actor,
+          action: AuditAction.SITUATION_EVIDENCE_DELETED,
+          resourceType: AuditResourceType.SITUATION,
+          resourceId: situationId,
+          metadata: {
+            evidenceId,
+            type: evidence.type,
+            hadFile: evidence.fileName !== null,
+            uploadedByUserId: evidence.uploadedByUserId,
+            createdAt: evidence.createdAt,
+          },
+        },
+        manager,
+      );
+    });
+  }
+
+  /** Situación con bloqueo compartido; 404 si no existe. */
+  private async lockSituation(
+    manager: EntityManager,
+    situationId: string,
+  ): Promise<Situation> {
+    const situation = await manager.findOne(Situation, {
+      where: { id: situationId },
+      loadEagerRelations: false,
+      lock: { mode: 'pessimistic_read' },
+    });
+    if (!situation) {
+      throw new NotFoundException(`Situación no encontrada: ${situationId}`);
+    }
+    return situation;
   }
 
   private resolveFileFields(

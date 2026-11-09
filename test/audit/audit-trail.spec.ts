@@ -82,7 +82,10 @@ describe('Institutional audit trail', () => {
   });
 
   it('registra SITUATION_CREATED al crear situación', async () => {
-    const auditLogService = { record: jest.fn().mockResolvedValue(null) };
+    const auditLogService = {
+      record: jest.fn().mockResolvedValue(null),
+      recordCritical: jest.fn().mockResolvedValue({}),
+    };
     const manager = createManagerMock();
     // El alta corre en una transacción: la situación sale de `manager.save`.
     manager.save.mockImplementation((_entity: unknown, data: object) =>
@@ -159,18 +162,24 @@ describe('Institutional audit trail', () => {
       actor,
     );
 
-    expect(auditLogService.record).toHaveBeenCalledWith(
+    // Fase 01B.1: auditoría OBLIGATORIA, en la misma transacción del alta.
+    expect(auditLogService.recordCritical).toHaveBeenCalledWith(
       expect.objectContaining({
         actor,
         action: AuditAction.SITUATION_CREATED,
         resourceType: AuditResourceType.SITUATION,
         resourceId: 'sit-new',
       }),
+      manager,
     );
+    expect(auditLogService.record).not.toHaveBeenCalled();
   });
 
   it('registra SITUATION_STATUS_CHANGED al cambiar estado', async () => {
-    const auditLogService = { record: jest.fn().mockResolvedValue(null) };
+    const auditLogService = {
+      record: jest.fn().mockResolvedValue(null),
+      recordCritical: jest.fn().mockResolvedValue({}),
+    };
     const situation = {
       id: 'sit-1',
       title: 'Incidente',
@@ -245,7 +254,8 @@ describe('Institutional audit trail', () => {
       },
     );
 
-    expect(auditLogService.record).toHaveBeenCalledWith(
+    // Obligatoria y en la transacción; del comentario solo su longitud.
+    expect(auditLogService.recordCritical).toHaveBeenCalledWith(
       expect.objectContaining({
         action: AuditAction.SITUATION_STATUS_CHANGED,
         resourceType: AuditResourceType.SITUATION,
@@ -253,17 +263,21 @@ describe('Institutional audit trail', () => {
         metadata: {
           previousStatus: SituationStatus.OPEN,
           nextStatus: SituationStatus.IN_PROGRESS,
-          statusComment: null,
+          statusCommentLength: 0,
+          assignedUserId: actor.sub,
           dueAt: undefined,
           slaBreachedAt: undefined,
-          closedOnTime: null,
         },
       }),
+      expect.anything(),
     );
   });
 
   it('registra acciones administrativas de usuario', async () => {
-    const auditLogService = { record: jest.fn().mockResolvedValue(null) };
+    const auditLogService = {
+      record: jest.fn().mockResolvedValue(null),
+      recordCritical: jest.fn().mockResolvedValue({}),
+    };
     const existing = {
       id: 'user-2',
       email: 'user@cun.edu.co',
@@ -296,6 +310,13 @@ describe('Institutional audit trail', () => {
           status: UserStatus.INACTIVE,
         }),
       save: jest.fn(),
+      // Cambio y auditoría en una transacción (Fase 01B.1).
+      manager: {
+        transaction: jest.fn(
+          <T>(work: (m: { save: jest.Mock }) => Promise<T>): Promise<T> =>
+            work({ save: jest.fn().mockResolvedValue({}) }),
+        ),
+      },
     };
     const rolesRepository = {
       findOne: jest.fn().mockResolvedValue({
@@ -319,24 +340,30 @@ describe('Institutional audit trail', () => {
       actor,
     );
 
-    expect(auditLogService.record).toHaveBeenCalledWith(
+    expect(auditLogService.recordCritical).toHaveBeenCalledWith(
       expect.objectContaining({
         action: AuditAction.USER_ROLE_CHANGED,
         resourceType: AuditResourceType.USER,
         resourceId: 'user-2',
+        metadata: { previousRoleCode: 'ANALISTA', nextRoleCode: 'DIRECTOR' },
       }),
+      expect.anything(),
     );
-    expect(auditLogService.record).toHaveBeenCalledWith(
+    expect(auditLogService.recordCritical).toHaveBeenCalledWith(
       expect.objectContaining({
         action: AuditAction.USER_DEACTIVATED,
         resourceType: AuditResourceType.USER,
         resourceId: 'user-2',
       }),
+      expect.anything(),
     );
   });
 
   it('registra AI_ANALYSIS_COMPLETED y AI_ANALYSIS_FAILED', async () => {
-    const auditLogService = { record: jest.fn().mockResolvedValue(null) };
+    const auditLogService = {
+      record: jest.fn().mockResolvedValue(null),
+      recordCritical: jest.fn().mockResolvedValue({}),
+    };
     const transaction = jest.fn(
       (
         work: (manager: {
@@ -427,13 +454,20 @@ describe('Institutional audit trail', () => {
 
     await orchestrator.execute('situation-id', actor);
 
-    expect(auditLogService.record).toHaveBeenCalledWith(
+    // El análisis completado se audita en su transacción de confirmación.
+    expect(auditLogService.recordCritical).toHaveBeenCalledWith(
       expect.objectContaining({
         action: AuditAction.AI_ANALYSIS_COMPLETED,
         resourceType: AuditResourceType.AI_ANALYSIS,
         resourceId: 'situation-id',
       }),
+      expect.anything(),
     );
+    // Nunca el prompt ni el expediente en la auditoría.
+    const completed = auditLogService.recordCritical.mock.calls[0] as [
+      { metadata: Record<string, unknown> },
+    ];
+    expect(Object.keys(completed[0].metadata)).not.toContain('prompt');
 
     const failingOrchestrator = new AIOrchestrator(
       { get: jest.fn() } as never,

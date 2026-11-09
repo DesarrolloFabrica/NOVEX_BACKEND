@@ -20,6 +20,19 @@ describe('UsersService admin registration', () => {
           id: entity.id ?? 'user-1',
         }),
       ),
+      // Fase 01B.1: alta y cambios corren en una transacción con auditoría
+      // obligatoria. El manager de prueba delega en el save del repositorio.
+      manager: {
+        transaction: jest.fn(
+          <T>(work: (manager: { save: jest.Mock }) => Promise<T>): Promise<T> =>
+            work(txManager),
+        ),
+      },
+    };
+    const txManager = {
+      save: jest.fn((_entity: unknown, data: { id?: string }) =>
+        usersRepository.save(data),
+      ),
     };
 
     const rolesRepository = {
@@ -32,6 +45,7 @@ describe('UsersService admin registration', () => {
 
     const auditLogService = {
       record: jest.fn().mockResolvedValue(null),
+      recordCritical: jest.fn().mockResolvedValue({}),
     };
 
     const service = new UsersService(
@@ -179,6 +193,7 @@ describe('UsersService admin registration', () => {
       usersRepository,
       rolesRepository,
       coordinationsRepository,
+      auditLogService,
     } = createService();
 
     const existing = {
@@ -230,6 +245,26 @@ describe('UsersService admin registration', () => {
     expect(rolesRepository.findOne).not.toHaveBeenCalled();
     expect(result.status).toBe(UserStatus.INACTIVE);
     expect(result.coordinationId).toBe(coordination.id);
+    // Cada cambio crítico, con valor anterior y nuevo, en la transacción.
+    const actions = auditLogService.recordCritical.mock.calls.map(
+      ([input]: [{ action: string; metadata: unknown }]) => input,
+    );
+    expect(actions).toEqual([
+      expect.objectContaining({
+        action: 'USER_DEACTIVATED',
+        metadata: {
+          previousStatus: UserStatus.ACTIVE,
+          nextStatus: UserStatus.INACTIVE,
+        },
+      }),
+      expect.objectContaining({
+        action: 'USER_COORDINATION_CHANGED',
+        metadata: {
+          previousCoordinationId: 'old-coord',
+          nextCoordinationId: coordination.id,
+        },
+      }),
+    ]);
   });
 
   it('falla al actualizar usuario inexistente', async () => {

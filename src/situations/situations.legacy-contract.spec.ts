@@ -128,7 +128,10 @@ describe('SituationsService · alta con el contrato anterior', () => {
       detail.consequencesRepository as never,
       { createEntry: jest.fn().mockResolvedValue({}) } as never,
       scopeService,
-      { record: jest.fn().mockResolvedValue(null) } as never,
+      {
+        record: jest.fn().mockResolvedValue(null),
+        recordCritical: jest.fn().mockResolvedValue({}),
+      } as never,
       inertEscalationService() as never,
     );
 

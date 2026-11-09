@@ -77,24 +77,35 @@ export class UsersService {
       lastLoginAt: null,
     });
 
-    const saved = await this.usersRepository.save(created);
-    const user = await this.usersRepository.findByIdWithRelations(saved.id);
+    // Alta y auditoría en UNA transacción (Fase 01B.1): sin registro de
+    // auditoría no hay usuario creado.
+    const savedId = await this.usersRepository.manager.transaction(
+      async (manager) => {
+        const saved = await manager.save(User, created);
+        await this.auditLogService.recordCritical(
+          {
+            actor,
+            action: AuditAction.USER_CREATED,
+            resourceType: AuditResourceType.USER,
+            resourceId: saved.id,
+            metadata: {
+              roleCode: role.code,
+              status: saved.status,
+              coordinationId: saved.coordinationId,
+            },
+          },
+          manager,
+        );
+        return saved.id;
+      },
+    );
+
+    const user = await this.usersRepository.findByIdWithRelations(savedId);
     if (!user) {
       throw new NotFoundException(
-        `Usuario no encontrado tras crear: ${saved.id}`,
+        `Usuario no encontrado tras crear: ${savedId}`,
       );
     }
-
-    await this.auditLogService.record({
-      actor,
-      action: AuditAction.USER_CREATED,
-      resourceType: AuditResourceType.USER,
-      resourceId: user.id,
-      metadata: {
-        roleCode: user.role.code,
-        status: user.status,
-      },
-    });
 
     return this.toResponse(user);
   }
@@ -111,6 +122,8 @@ export class UsersService {
 
     const previousRoleCode = user.role.code;
     const previousStatus = user.status;
+    const previousCoordinationId = user.coordinationId;
+    const previousFullName = user.fullName;
 
     if (dto.fullName !== undefined) {
       user.fullName = dto.fullName.trim();
@@ -134,44 +147,58 @@ export class UsersService {
       user.status = dto.status;
     }
 
-    await this.usersRepository.save(user);
+    /*
+     * Cambio y auditoría en UNA transacción (Fase 01B.1). Cada cambio crítico
+     * deja su propio registro con valor anterior y nuevo. Del nombre solo se
+     * registra QUE cambió (dato personal, sin valores).
+     */
+    await this.usersRepository.manager.transaction(async (manager) => {
+      await manager.save(User, user);
+
+      const audit = (action: AuditAction, metadata: Record<string, unknown>) =>
+        this.auditLogService.recordCritical(
+          {
+            actor,
+            action,
+            resourceType: AuditResourceType.USER,
+            resourceId: user.id,
+            metadata,
+          },
+          manager,
+        );
+
+      if (user.role.code !== previousRoleCode) {
+        await audit(AuditAction.USER_ROLE_CHANGED, {
+          previousRoleCode,
+          nextRoleCode: user.role.code,
+        });
+      }
+      if (user.status !== previousStatus) {
+        await audit(
+          user.status === UserStatus.ACTIVE
+            ? AuditAction.USER_ACTIVATED
+            : AuditAction.USER_DEACTIVATED,
+          { previousStatus, nextStatus: user.status },
+        );
+      }
+      if (user.coordinationId !== previousCoordinationId) {
+        await audit(AuditAction.USER_COORDINATION_CHANGED, {
+          previousCoordinationId,
+          nextCoordinationId: user.coordinationId,
+        });
+      }
+      if (user.fullName !== previousFullName) {
+        await audit(AuditAction.USER_PROFILE_UPDATED, {
+          changedFields: ['fullName'],
+        });
+      }
+    });
+
     const refreshed = await this.usersRepository.findByIdWithRelations(id);
     if (!refreshed) {
       throw new NotFoundException(
         `Usuario no encontrado tras actualizar: ${id}`,
       );
-    }
-
-    if (
-      dto.roleCode !== undefined &&
-      refreshed.role.code !== previousRoleCode
-    ) {
-      await this.auditLogService.record({
-        actor,
-        action: AuditAction.USER_ROLE_CHANGED,
-        resourceType: AuditResourceType.USER,
-        resourceId: refreshed.id,
-        metadata: {
-          previousRoleCode,
-          nextRoleCode: refreshed.role.code,
-        },
-      });
-    }
-
-    if (dto.status !== undefined && refreshed.status !== previousStatus) {
-      await this.auditLogService.record({
-        actor,
-        action:
-          refreshed.status === UserStatus.ACTIVE
-            ? AuditAction.USER_ACTIVATED
-            : AuditAction.USER_DEACTIVATED,
-        resourceType: AuditResourceType.USER,
-        resourceId: refreshed.id,
-        metadata: {
-          previousStatus,
-          nextStatus: refreshed.status,
-        },
-      });
     }
 
     return this.toResponse(refreshed);

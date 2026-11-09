@@ -145,21 +145,25 @@ export class SituationConsequencesService {
           manager,
         );
 
+        // AUDITORÍA OBLIGATORIA en la misma transacción (Fase 01B.1).
+        await this.auditLogService.recordCritical(
+          {
+            actor,
+            action: AuditAction.SITUATION_CONSEQUENCE_ADDED,
+            resourceType: AuditResourceType.SITUATION,
+            resourceId: situationId,
+            metadata: {
+              consequenceId: consequence.id,
+              occurredAt: occurredAt.toISOString(),
+              descriptionLength: description.length,
+            },
+          },
+          manager,
+        );
+
         return consequence.id;
       },
     );
-
-    await this.auditLogService.record({
-      actor,
-      action: AuditAction.SITUATION_CONSEQUENCE_ADDED,
-      resourceType: AuditResourceType.SITUATION,
-      resourceId: situationId,
-      metadata: {
-        consequenceId,
-        occurredAt: occurredAt.toISOString(),
-        descriptionLength: description.length,
-      },
-    });
     await this.severityEscalationService.recordAudit(escalations);
 
     return this.loadConsequence(consequenceId);

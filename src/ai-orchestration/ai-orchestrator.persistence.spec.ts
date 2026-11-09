@@ -90,7 +90,10 @@ describe('AI-002 atomic persistence', () => {
         save: jest.fn(),
       } as never,
       analysisSessionsService as never,
-      { record: jest.fn().mockResolvedValue(null) } as never,
+      {
+        record: jest.fn().mockResolvedValue(null),
+        recordCritical: jest.fn().mockResolvedValue({}),
+      } as never,
     );
 
     const actor: AuthPayload = {
@@ -151,7 +154,10 @@ describe('AI-002 atomic persistence', () => {
       timelineService as never,
       {} as never,
       { getLatestSession: jest.fn().mockResolvedValue(null) } as never,
-      { record: jest.fn().mockResolvedValue(null) } as never,
+      {
+        record: jest.fn().mockResolvedValue(null),
+        recordCritical: jest.fn().mockResolvedValue({}),
+      } as never,
     );
 
     const actor: AuthPayload = {
