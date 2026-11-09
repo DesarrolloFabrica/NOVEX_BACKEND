@@ -131,9 +131,14 @@ export class SituationSweepService {
     for (const phase of phases) {
       let cursor: string | null = null;
       for (let pageIndex = 0; pageIndex < maxPages; pageIndex += 1) {
-        const outcome = await this.inLockedTransaction((manager) =>
-          phase.page(manager, cursor),
-        );
+        const outcome = await this.inLockedTransaction(async (manager) => {
+          const page = await phase.page(manager, cursor);
+          await this.severityEscalationService.recordAudit(
+            page.escalations,
+            manager,
+          );
+          return page;
+        });
         if (outcome === null) {
           // Otra instancia barre ahora mismo. En la primera página: no se hizo
           // nada; más tarde: lo que queda lo termina ella.
@@ -143,7 +148,6 @@ export class SituationSweepService {
           return result;
         }
         result[phase.key] += outcome.processed;
-        await this.severityEscalationService.recordAudit(outcome.escalations);
         if (!outcome.hasMore) break;
         cursor = outcome.cursor;
       }

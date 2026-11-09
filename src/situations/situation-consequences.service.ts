@@ -171,10 +171,10 @@ export class SituationConsequencesService {
           manager,
         );
 
+        await this.severityEscalationService.recordAudit(escalations, manager);
         return consequence.id;
       },
     );
-    await this.severityEscalationService.recordAudit(escalations);
 
     return this.loadConsequence(consequenceId);
   }

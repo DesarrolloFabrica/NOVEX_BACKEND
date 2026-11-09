@@ -265,7 +265,9 @@ describe('SeverityEscalationService.materializeDueEscalations', () => {
       createQueryBuilder: jest.fn(() => qb),
     };
     const timelineService = { createEntry: jest.fn().mockResolvedValue({}) };
-    const auditLogService = { record: jest.fn().mockResolvedValue(null) };
+    const auditLogService = {
+      recordCritical: jest.fn().mockResolvedValue({}),
+    };
     const service = new SeverityEscalationService(
       [QA_TEST_POLICY],
       timelineService as never,
@@ -341,12 +343,32 @@ describe('SeverityEscalationService.materializeDueEscalations', () => {
     );
     expect(result).toHaveLength(2);
 
-    await h.service.recordAudit(result);
-    expect(h.auditLogService.record).toHaveBeenCalledWith(
+    await h.service.recordAudit(result, h.manager as never);
+    expect(h.auditLogService.recordCritical).toHaveBeenCalledWith(
       expect.objectContaining({
         actor: null,
         action: AuditAction.SITUATION_SEVERITY_ESCALATED,
       }),
+      h.manager,
+    );
+  });
+
+  it('propaga fallo de auditoría para que el llamador revierta la escalada', async () => {
+    const h = harness();
+    const result = await h.service.materializeDueEscalations({
+      manager: h.manager as never,
+      situation: situation(),
+      now: at(3),
+    });
+    h.auditLogService.recordCritical.mockRejectedValueOnce(
+      new Error('audit unavailable'),
+    );
+    await expect(
+      h.service.recordAudit(result, h.manager as never),
+    ).rejects.toThrow('audit unavailable');
+    expect(h.auditLogService.recordCritical).toHaveBeenCalledWith(
+      expect.any(Object),
+      h.manager,
     );
   });
 

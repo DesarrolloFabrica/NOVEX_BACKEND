@@ -46,7 +46,7 @@ export interface MaterializedEscalation {
  *   - `situations.severity` con un UPDATE sin listeners: el subscriber del
  *     timeline no emite un SEVERITY_CHANGED espurio, y `due_at` NO se toca;
  *   - evento SEVERITY_ESCALATED en el timeline, en la misma transacción.
- * La auditoría la registra el llamador tras el commit (`recordAudit`).
+ * La auditoría obligatoria se escribe con este mismo manager antes del commit.
  */
 @Injectable()
 export class SeverityEscalationService {
@@ -172,26 +172,30 @@ export class SeverityEscalationService {
     return written;
   }
 
-  /** Auditoría best-effort, siempre DESPUÉS del commit. Actor nulo: sistema. */
+  /** Auditoría crítica dentro de la misma transacción del cambio. */
   async recordAudit(
     escalations: readonly MaterializedEscalation[],
+    manager: EntityManager,
   ): Promise<void> {
     for (const item of escalations) {
-      await this.auditLogService.record({
-        actor: null,
-        action: AuditAction.SITUATION_SEVERITY_ESCALATED,
-        resourceType: AuditResourceType.SITUATION,
-        resourceId: item.situationId,
-        metadata: {
-          severityChangeId: item.severityChangeId,
-          previousSeverity: item.fromSeverity,
-          newSeverity: item.toSeverity,
-          source: SituationSeverityChangeSource.AUTO_TIME,
-          policyCode: item.policyCode,
-          ruleKey: item.ruleKey,
-          effectiveAt: item.effectiveAt.toISOString(),
+      await this.auditLogService.recordCritical(
+        {
+          actor: null,
+          action: AuditAction.SITUATION_SEVERITY_ESCALATED,
+          resourceType: AuditResourceType.SITUATION,
+          resourceId: item.situationId,
+          metadata: {
+            severityChangeId: item.severityChangeId,
+            previousSeverity: item.fromSeverity,
+            newSeverity: item.toSeverity,
+            source: SituationSeverityChangeSource.AUTO_TIME,
+            policyCode: item.policyCode,
+            ruleKey: item.ruleKey,
+            effectiveAt: item.effectiveAt.toISOString(),
+          },
         },
-      });
+        manager,
+      );
     }
   }
 }

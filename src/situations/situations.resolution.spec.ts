@@ -261,7 +261,10 @@ describe('SituationsService · resolver con aprendizaje', () => {
       expect(h.escalationCalls[0].now.getTime()).toBe(
         (h.db.situation.closedAt as Date).getTime(),
       );
-      expect(h.escalationService.recordAudit).toHaveBeenCalledWith([]);
+      expect(h.escalationService.recordAudit).toHaveBeenCalledWith(
+        [],
+        expect.anything(),
+      );
     });
 
     it('también resuelve desde IN_PROGRESS, sin una segunda petición', async () => {

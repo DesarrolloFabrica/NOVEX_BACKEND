@@ -408,7 +408,8 @@ export class SituationsService implements OnModuleInit {
    *              →  afectación inicial + CONSEQUENCE_ADDED (si viene)
    *
    * Si cualquiera falla, ROLLBACK completo: no queda un problema a medio crear.
-   * La auditoría va DESPUÉS del commit, como en el resto del dominio.
+   * La auditoría crítica se escribe dentro de la transacción; sin ella el alta
+   * completa se revierte.
    *
    * UN SOLO INSTANTE. `createdAt` se captura una vez y se persiste explícito en
    * `created_at`, en `due_at = created_at + ventana(reported_severity)` y en
@@ -966,9 +967,8 @@ export class SituationsService implements OnModuleInit {
    * estuviera, porque inventar una asignación falsearía el historial.
    *
    * TRANSACCIÓN. El cambio de estado, el aprendizaje y el evento de la línea de
-   * tiempo comparten transacción: o se guardan los tres o ninguno. La auditoría
-   * se escribe DESPUÉS del commit, a propósito: es un registro observacional y
-   * un fallo suyo no debe deshacer una resolución ya confirmada.
+   * tiempo y la auditoría de cierre/escalada comparten transacción: un fallo de
+   * auditoría revierte el cierre, el historial de severidad y los eventos.
    *
    * CONCURRENCIA. Dos defensas, en este orden:
    *   1. `pessimistic_write` sobre la fila de la situación. La segunda petición
@@ -1141,9 +1141,12 @@ export class SituationsService implements OnModuleInit {
           },
           manager,
         );
+
+        // La escalada, su historial, timeline y auditoría quedan atómicos con
+        // el cierre; un fallo de auditoría revierte también la resolución.
+        await this.severityEscalationService.recordAudit(escalations, manager);
       },
     );
-    await this.severityEscalationService.recordAudit(escalations);
 
     return this.getById(id, actor);
   }
