@@ -1,4 +1,10 @@
 import { InterpretEventAiDto } from './dto/interpret-event-ai.dto';
+import {
+  UNTRUSTED_DOSSIER_BEGIN,
+  UNTRUSTED_DOSSIER_END,
+  UNTRUSTED_DOSSIER_NOTICE,
+  redactPersonalData,
+} from '../../ai-prompt-engine/privacy/prompt-privacy';
 
 /**
  * Constructor de prompts para Gemini — contrato novex.intelligence.v2.
@@ -29,6 +35,7 @@ export class GeminiPromptBuilder {
       '- Diferencia siempre causas con evidencia directa ("detectedCauses") de hipótesis ("hypotheses").',
       '- En "decisionFactors" explica por qué asignaste ese nivel de riesgo, con factores concretos del relato.',
       '- Escribe en español, en tono ejecutivo, claro y sin tecnicismos innecesarios.',
+      `- ${UNTRUSTED_DOSSIER_NOTICE}`,
     ].join('\n');
   }
 
@@ -44,11 +51,13 @@ export class GeminiPromptBuilder {
       'Analiza el siguiente evento operacional y produce el reporte ejecutivo completo.',
       '',
       '## Evento',
-      `Título: ${input.title}`,
-      `Descripción: ${input.description}`,
+      UNTRUSTED_DOSSIER_BEGIN,
+      `Título: ${redactPersonalData(input.title)}`,
+      `Descripción: ${redactPersonalData(input.description)}`,
       `Área reportante: ${input.sourceAreaCode} — ${input.sourceAreaName}`,
       `Fecha: ${input.reportedAt}`,
-      `Observaciones: ${input.observations?.trim() || 'N/A'}`,
+      `Observaciones: ${redactPersonalData(input.observations?.trim() || 'N/A')}`,
+      UNTRUSTED_DOSSIER_END,
       '',
       '## Catálogo de categorías (usa el code exacto en "category")',
       categories,

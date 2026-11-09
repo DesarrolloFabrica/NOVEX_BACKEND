@@ -141,4 +141,20 @@ describe('GeminiProvider timeout and error handling', () => {
 
     expect(capturedSignal).toBeInstanceOf(AbortSignal);
   });
+
+  it('Fase 01B.2: rechaza un prompt fuera de límites sin llamar a Gemini', async () => {
+    (GoogleGenAI as jest.Mock).mockClear();
+    const oversized = {
+      systemPrompt: 'system',
+      userPrompt: 'x'.repeat(120_001),
+    } as CompletePrompt;
+
+    await expect(
+      provider.executeAnalysis(context, oversized),
+    ).rejects.toMatchObject({
+      response: { code: 'PROMPT_TOO_LARGE' },
+    });
+    expect(GoogleGenAI).not.toHaveBeenCalled();
+    expect(generateContent).not.toHaveBeenCalled();
+  });
 });

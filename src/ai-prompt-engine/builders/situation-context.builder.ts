@@ -19,6 +19,7 @@ import type {
   SituationContextSituation,
   SituationContextTimelineEntry,
 } from '../contracts/situation-context.contract';
+import { redactPersonalData } from '../privacy/prompt-privacy';
 
 @Injectable()
 export class SituationContextBuilder {
@@ -57,20 +58,17 @@ export class SituationContextBuilder {
     ]);
 
     const situation = this.mapSituation(entity);
-    const relatedCoordinations = this.resolveRelatedCoordinations(
-      entity,
-      previousAssessment,
-    );
+    const relatedCoordinations = this.resolveRelatedCoordinations(entity);
 
     return {
       situationId,
       builtAt: new Date().toISOString(),
       situation,
-      createdBy: {
-        id: entity.createdByUser.id,
-        fullName: entity.createdByUser.fullName,
-        email: entity.createdByUser.email,
-        coordinationId: entity.createdByUser.coordinationId,
+      reporter: {
+        coordinationCode: this.reporterCoordinationCode(
+          entity,
+          availableCoordinations,
+        ),
       },
       originCoordination: entity.coordination
         ? {
@@ -121,12 +119,9 @@ export class SituationContextBuilder {
     const entries =
       await this.timelineRepository.findBySituationId(situationId);
     return entries.map((entry) => ({
-      id: entry.id,
       eventType: entry.eventType,
-      title: entry.title,
-      description: entry.description,
-      userName: entry.user?.fullName ?? null,
-      metadata: entry.metadata,
+      title: redactPersonalData(entry.title),
+      description: redactPersonalData(entry.description),
       createdAt: entry.createdAt.toISOString(),
     }));
   }
@@ -136,14 +131,11 @@ export class SituationContextBuilder {
   ): Promise<SituationContextEvidence[]> {
     const items = await this.evidenceRepository.findBySituationId(situationId);
     return items.map((item) => ({
-      id: item.id,
       type: item.type,
-      title: item.title,
-      description: item.description,
-      fileName: item.fileName,
+      title: redactPersonalData(item.title),
+      description: redactPersonalData(item.description),
       mimeType: item.mimeType,
       fileSize: item.fileSize !== null ? Number(item.fileSize) : null,
-      uploadedByUserName: item.uploadedByUser.fullName,
       createdAt: item.createdAt.toISOString(),
     }));
   }
@@ -154,13 +146,12 @@ export class SituationContextBuilder {
     const items =
       await this.recommendationsRepository.findBySituationId(situationId);
     return items.map((item) => ({
-      id: item.id,
-      title: item.title,
-      description: item.description,
+      title: redactPersonalData(item.title),
+      description: redactPersonalData(item.description),
       priority: item.priority,
       status: item.status,
       generatedBy: item.generatedBy,
-      assignedUserName: item.assignedUser?.fullName ?? null,
+      hasAssignee: Boolean(item.assignedUserId),
       dueAt: item.dueAt?.toISOString() ?? null,
       completedAt: item.completedAt?.toISOString() ?? null,
     }));
@@ -180,16 +171,15 @@ export class SituationContextBuilder {
         coordinationCode: item.coordination.code,
         coordinationName: item.coordination.name,
         impactLevel: item.impactLevel,
-        description: item.description,
+        description: redactPersonalData(item.description),
       }));
 
     return {
-      id: assessment.id,
       operationalSeverity: assessment.operationalSeverity,
       confidence: Number(assessment.confidence),
       estimatedDurationMinutes: assessment.estimatedDurationMinutes,
-      summary: assessment.summary,
-      reasoning: assessment.reasoning,
+      summary: redactPersonalData(assessment.summary),
+      reasoning: redactPersonalData(assessment.reasoning),
       affectedCoordinations,
       updatedAt: assessment.updatedAt.toISOString(),
     };
@@ -207,8 +197,8 @@ export class SituationContextBuilder {
   private mapSituation(entity: Situation): SituationContextSituation {
     return {
       id: entity.id,
-      title: entity.title,
-      description: entity.description,
+      title: redactPersonalData(entity.title),
+      description: redactPersonalData(entity.description),
       severity: entity.severity,
       status: entity.status,
       occurredAt: entity.occurredAt.toISOString(),
@@ -217,9 +207,23 @@ export class SituationContextBuilder {
     };
   }
 
+  /** Coordinación institucional del reportante, por código; nunca la persona. */
+  private reporterCoordinationCode(
+    entity: Situation,
+    catalog: Array<{ id: string; code: string }>,
+  ): string | null {
+    const coordinationId = entity.createdByUser?.coordinationId ?? null;
+    if (!coordinationId) return null;
+    return catalog.find((item) => item.id === coordinationId)?.code ?? null;
+  }
+
+  /**
+   * Solo relaciones confirmadas (Fase 01B.2). Antes se mezclaban aquí las
+   * coordinaciones sugeridas por el análisis previo, de modo que una sugerencia
+   * reaparecía como "relacionada" en el siguiente análisis.
+   */
   private resolveRelatedCoordinations(
     entity: Situation,
-    previousAssessment: SituationContextImpactAssessment | null,
   ): SituationContextCoordination[] {
     const related = new Map<string, SituationContextCoordination>();
     const structured = [...(entity.relatedCoordinations ?? [])].sort(
@@ -237,18 +241,6 @@ export class SituationContextBuilder {
 
     if (related.size === 0) {
       this.extractLegacyRelatedFromDescription(entity.description, related);
-    }
-
-    if (previousAssessment) {
-      for (const item of previousAssessment.affectedCoordinations) {
-        if (related.has(item.coordinationCode)) continue;
-        related.set(item.coordinationCode, {
-          id: item.coordinationCode,
-          code: item.coordinationCode,
-          name: item.coordinationName,
-          shortName: item.coordinationCode,
-        });
-      }
     }
 
     return [...related.values()];

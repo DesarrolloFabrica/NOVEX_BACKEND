@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import type { CompletePrompt } from '../ai-prompt-engine/contracts/prompt.contract';
+import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
+import { ADMIN_ROLE_CODE } from '../auth/services/operational-scope.service';
 import {
   AnalysisHistoryResponseDto,
   AnalysisSessionDetailDto,
@@ -9,6 +11,17 @@ import {
 } from './dto/ai-analysis-session.dto';
 import { SituationAnalysisSession } from './entities/situation-analysis-session.entity';
 import { SituationAnalysisSessionRepository } from './repositories/situation-analysis-session.repository';
+
+/**
+ * El prompt completo (aunque minimizado) es material de auditoría técnica: solo
+ * ADMIN lo lee (Fase 01B.2). El resto de lectores autorizados del historial ve
+ * versión, modelo, plantilla y resultado.
+ */
+export function canReadPromptSnapshot(
+  actor: Pick<AuthPayload, 'roleCode'>,
+): boolean {
+  return actor.roleCode === ADMIN_ROLE_CODE;
+}
 
 @Injectable()
 export class AIAnalysisSessionsService {
@@ -61,6 +74,7 @@ export class AIAnalysisSessionsService {
   async getByVersion(
     situationId: string,
     version: number,
+    actor: Pick<AuthPayload, 'roleCode'>,
   ): Promise<AnalysisSessionDetailDto> {
     const session = await this.sessionsRepository.findBySituationIdAndVersion(
       situationId,
@@ -75,7 +89,11 @@ export class AIAnalysisSessionsService {
     const latest =
       await this.sessionsRepository.findLatestBySituationId(situationId);
 
-    return this.toDetail(session, latest?.version ?? session.version);
+    return this.toDetail(
+      session,
+      latest?.version ?? session.version,
+      canReadPromptSnapshot(actor),
+    );
   }
 
   async getLatestSession(
@@ -124,11 +142,13 @@ export class AIAnalysisSessionsService {
   private toDetail(
     session: SituationAnalysisSession,
     latestVersion: number,
+    includePrompt: boolean,
   ): AnalysisSessionDetailDto {
     return {
       ...this.toSummary(session, latestVersion),
       analysis: session.analysisResult,
-      promptSnapshot: session.promptSnapshot,
+      promptSnapshot: includePrompt ? session.promptSnapshot : null,
+      promptSnapshotWithheld: !includePrompt,
     };
   }
 }

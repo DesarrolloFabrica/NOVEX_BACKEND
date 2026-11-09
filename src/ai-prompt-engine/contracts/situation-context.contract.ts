@@ -39,11 +39,13 @@ export interface SituationContextSituation {
   updatedAt: string;
 }
 
-export interface SituationContextUser {
-  id: string;
-  fullName: string;
-  email: string;
-  coordinationId: string | null;
+/**
+ * Origen institucional del reporte (Fase 01B.2, política context-min-v1).
+ * Sin id, nombre ni correo de la persona: solo la coordinación desde la que
+ * reportó, por código.
+ */
+export interface SituationContextReporter {
+  coordinationCode: string | null;
 }
 
 export interface SituationContextCoordination {
@@ -60,36 +62,32 @@ export interface SituationContextCategory {
   description: string | null;
 }
 
+/** Solo evidencias ACTIVAS; sin nombre de archivo ni autor. */
 export interface SituationContextEvidence {
-  id: string;
   type: EvidenceType;
   title: string;
   description: string;
-  fileName: string | null;
   mimeType: string | null;
   fileSize: number | null;
-  uploadedByUserName: string;
   createdAt: string;
 }
 
+/** Sin autor ni metadatos técnicos (tokens de reclamo, ids de sesión). */
 export interface SituationContextTimelineEntry {
-  id: string;
   eventType: TimelineEventType;
   title: string;
   description: string;
-  userName: string | null;
-  metadata: Record<string, unknown> | null;
   createdAt: string;
 }
 
+/** Sin persona asignada: solo si hay responsable. */
 export interface SituationContextRecommendation {
-  id: string;
   title: string;
   description: string;
   priority: RecommendationPriority;
   status: RecommendationStatus;
   generatedBy: string;
-  assignedUserName: string | null;
+  hasAssignee: boolean;
   dueAt: string | null;
   completedAt: string | null;
 }
@@ -101,8 +99,8 @@ export interface SituationContextAffectedCoordination {
   description: string;
 }
 
+/** Análisis IA previo: sugerencia, no hecho confirmado. */
 export interface SituationContextImpactAssessment {
-  id: string;
   operationalSeverity: OperationalSeverity;
   confidence: number;
   estimatedDurationMinutes: number;
@@ -116,7 +114,7 @@ export interface SituationContext {
   situationId: string;
   builtAt: string;
   situation: SituationContextSituation;
-  createdBy: SituationContextUser;
+  reporter: SituationContextReporter;
   /** Nula en casos registrados por analistas, que no representan un área. */
   originCoordination: SituationContextCoordination | null;
   /** Catálogo cerrado de coordinaciones activas visibles en Red de Impacto. */
@@ -130,6 +128,11 @@ export interface SituationContext {
   availableCategories: SituationContextCategory[];
   evidences: SituationContextEvidence[];
   timeline: SituationContextTimelineEntry[];
+  /**
+   * Relaciones CONFIRMADAS: declaradas por el usuario al reportar (o, en
+   * registros legados, en la percepción inicial del relato). Las sugerencias
+   * del análisis previo viven solo en previousAssessment.
+   */
   relatedCoordinations: SituationContextCoordination[];
   existingRecommendations: SituationContextRecommendation[];
   previousAssessment: SituationContextImpactAssessment | null;

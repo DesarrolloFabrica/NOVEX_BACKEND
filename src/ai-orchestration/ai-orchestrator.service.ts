@@ -52,6 +52,10 @@ import { SituationRecommendationsService } from '../situation-recommendations/si
 import { SituationTimelineService } from '../situation-timeline/situation-timeline.service';
 
 import { AIPromptEngineService } from '../ai-prompt-engine/ai-prompt-engine.service';
+import {
+  PROMPT_CONTEXT_POLICY_VERSION,
+  assertPromptWithinLimits,
+} from '../ai-prompt-engine/privacy/prompt-privacy';
 
 import {
   ExecuteAIAnalysisResponseDto,
@@ -285,6 +289,13 @@ export class AIOrchestrator {
       const engineResult =
         await this.promptEngine.buildForSituation(situationId);
 
+      // Fase 01B.2: límite duro ANTES del proveedor. El fallo sigue el camino
+      // normal (timeline AI_ANALYSIS_FAILED + liberación del reclamo).
+      assertPromptWithinLimits(
+        engineResult.prompt.systemPrompt,
+        engineResult.prompt.userPrompt,
+      );
+
       const providerAnalysis = await this.geminiProvider.executeAnalysis(
         engineResult.context,
 
@@ -383,6 +394,7 @@ export class AIOrchestrator {
               provider: createdSession.provider,
               model: this.getModelName(),
               promptVersion: engineResult.prompt.templateVersion,
+              contextPolicy: PROMPT_CONTEXT_POLICY_VERSION,
               previousVersion: previousLatest?.version ?? null,
               confidence: analysis.confidence.overall,
             },

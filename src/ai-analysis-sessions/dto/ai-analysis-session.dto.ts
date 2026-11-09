@@ -28,7 +28,12 @@ export class AnalysisSessionSummaryDto {
 
 export class AnalysisSessionDetailDto extends AnalysisSessionSummaryDto {
   analysis!: AIAnalysisResult;
-  promptSnapshot!: string;
+  /**
+   * Prompt completo enviado al proveedor. Solo para ADMIN (Fase 01B.2): para
+   * cualquier otro rol es null y `promptSnapshotWithheld` es true.
+   */
+  promptSnapshot!: string | null;
+  promptSnapshotWithheld!: boolean;
 }
 
 export class AnalysisHistoryResponseDto {

@@ -46,7 +46,7 @@ function buildOrchestrator(lockedRow: { status: string; sameClaim: boolean }) {
     {
       buildForSituation: jest.fn().mockResolvedValue({
         context: {},
-        prompt: { templateVersion: 'v1' },
+        prompt: { templateVersion: 'v1', systemPrompt: 's', userPrompt: 'u' },
         metrics: { estimatedTokens: 10 },
       }),
     } as never,

@@ -377,7 +377,11 @@ suite('Fase 01A · concurrencia contra PostgreSQL real', () => {
         {
           buildForSituation: jest.fn().mockResolvedValue({
             context: {},
-            prompt: { templateVersion: 'v2' },
+            prompt: {
+              templateVersion: 'v2',
+              systemPrompt: 's',
+              userPrompt: 'u',
+            },
             metrics: { estimatedTokens: 10 },
           }),
         } as never,

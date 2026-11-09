@@ -62,7 +62,7 @@ export class AIAnalysisSessionsController {
       user,
       situationId,
     );
-    return this.sessionsService.getByVersion(situationId, version);
+    return this.sessionsService.getByVersion(situationId, version, user);
   }
 
   @Get(':id/analysis/compare')

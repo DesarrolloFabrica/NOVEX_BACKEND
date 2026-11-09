@@ -16,6 +16,7 @@ import { AIAnalysisParser } from '../../ai-analysis/parsers/ai-analysis.parser';
 import type { SituationContext } from '../../ai-prompt-engine/contracts/situation-context.contract';
 import type { CompletePrompt } from '../../ai-prompt-engine/contracts/prompt.contract';
 import { AIPromptEngineService } from '../../ai-prompt-engine/ai-prompt-engine.service';
+import { assertPromptWithinLimits } from '../../ai-prompt-engine/privacy/prompt-privacy';
 import { AI_ANALYSIS_RESPONSE_JSON_SCHEMA } from '../../ai-analysis/schemas/ai-analysis-response.schema';
 import {
   AbortTimeoutError,
@@ -66,6 +67,10 @@ export class GeminiProvider implements AIProvider {
     context: SituationContext,
     prompt: CompletePrompt,
   ): Promise<AIAnalysisResult> {
+    // Última barrera antes del proveedor (Fase 01B.2): ningún camino envía a
+    // Gemini un prompt fuera de límites.
+    assertPromptWithinLimits(prompt.systemPrompt, prompt.userPrompt);
+
     const apiKey = this.getApiKey();
     if (!apiKey) {
       throw new ServiceUnavailableException(

@@ -419,7 +419,7 @@ describe('Institutional audit trail', () => {
       {
         buildForSituation: jest.fn().mockResolvedValue({
           context: {},
-          prompt: { templateVersion: 'v1' },
+          prompt: { templateVersion: 'v1', systemPrompt: 's', userPrompt: 'u' },
           metrics: { estimatedTokens: 10 },
         }),
       } as never,
@@ -482,7 +482,7 @@ describe('Institutional audit trail', () => {
       {
         buildForSituation: jest.fn().mockResolvedValue({
           context: {},
-          prompt: { templateVersion: 'v1' },
+          prompt: { templateVersion: 'v1', systemPrompt: 's', userPrompt: 'u' },
           metrics: { estimatedTokens: 10 },
         }),
       } as never,

@@ -5,8 +5,13 @@ import type {
   PromptValidationResult,
 } from '../contracts/prompt.contract';
 import type { PromptTemplate } from '../contracts/prompt.contract';
+import {
+  MAX_PROMPT_BYTES,
+  MAX_PROMPT_CHARACTERS,
+  isPromptWithinLimits,
+  measurePrompt,
+} from '../privacy/prompt-privacy';
 
-const MAX_PROMPT_CHARACTERS = 120_000;
 const MIN_DESCRIPTION_LENGTH = 80;
 const MIN_EVIDENCE_COUNT_RECOMMENDED = 1;
 
@@ -19,12 +24,12 @@ export class PromptValidator {
   ): PromptValidationResult {
     const warnings: string[] = [];
 
-    const totalCharacters =
-      prompt.systemPrompt.length + prompt.userPrompt.length;
-
-    if (totalCharacters > MAX_PROMPT_CHARACTERS) {
+    // Fase 01B.2: el exceso deja de ser un aviso. El orquestador corta la
+    // llamada a Gemini con assertPromptWithinLimits; aquí se informa igual.
+    const size = measurePrompt(prompt.systemPrompt, prompt.userPrompt);
+    if (!isPromptWithinLimits(size)) {
       warnings.push(
-        `El prompt excede el tamaño recomendado (${totalCharacters}/${MAX_PROMPT_CHARACTERS} caracteres).`,
+        `El prompt excede el tamaño máximo (${size.characters}/${MAX_PROMPT_CHARACTERS} caracteres, ${size.bytes}/${MAX_PROMPT_BYTES} bytes): no se enviará a Gemini.`,
       );
     }
 

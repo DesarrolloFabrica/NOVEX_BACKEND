@@ -7,6 +7,103 @@ import type {
   PromptTemplateSection,
 } from '../contracts/prompt.contract';
 import { getActivePromptTemplate } from '../templates/prompt-template.registry';
+import {
+  PROMPT_CONTEXT_POLICY_VERSION,
+  UNTRUSTED_DOSSIER_BEGIN,
+  UNTRUSTED_DOSSIER_END,
+  UNTRUSTED_DOSSIER_NOTICE,
+} from '../privacy/prompt-privacy';
+
+/**
+ * Expediente que viaja a Gemini (política context-min-v1). Lista blanca
+ * explícita: un campo nuevo del contexto no llega al prompt hasta que se
+ * añada aquí. Sin ids internos, marcas de construcción ni datos de personas;
+ * las coordinaciones y categorías se referencian por código.
+ */
+export function toPromptDossier(context: SituationContext) {
+  const coordination = (item: {
+    code: string;
+    name: string;
+    shortName: string;
+  }) => ({
+    code: item.code,
+    name: item.name,
+    shortName: item.shortName,
+  });
+  const category = (item: {
+    code: string;
+    name: string;
+    description: string | null;
+  }) => ({
+    code: item.code,
+    name: item.name,
+    description: item.description,
+  });
+
+  return {
+    situation: {
+      title: context.situation.title,
+      description: context.situation.description,
+      severity: context.situation.severity,
+      status: context.situation.status,
+      occurredAt: context.situation.occurredAt,
+      createdAt: context.situation.createdAt,
+      updatedAt: context.situation.updatedAt,
+    },
+    reporter: { coordinationCode: context.reporter.coordinationCode },
+    originCoordination: context.originCoordination
+      ? coordination(context.originCoordination)
+      : null,
+    availableCoordinations: context.availableCoordinations.map(coordination),
+    category: context.category ? category(context.category) : null,
+    availableCategories: (context.availableCategories ?? []).map(category),
+    evidences: context.evidences.map((item) => ({
+      type: item.type,
+      title: item.title,
+      description: item.description,
+      mimeType: item.mimeType,
+      fileSize: item.fileSize,
+      createdAt: item.createdAt,
+    })),
+    timeline: context.timeline.map((item) => ({
+      eventType: item.eventType,
+      title: item.title,
+      description: item.description,
+      createdAt: item.createdAt,
+    })),
+    confirmedRelatedCoordinations:
+      context.relatedCoordinations.map(coordination),
+    existingRecommendations: context.existingRecommendations.map((item) => ({
+      title: item.title,
+      description: item.description,
+      priority: item.priority,
+      status: item.status,
+      generatedBy: item.generatedBy,
+      hasAssignee: item.hasAssignee,
+      dueAt: item.dueAt,
+      completedAt: item.completedAt,
+    })),
+    previousAiAssessment: context.previousAssessment
+      ? {
+          nature: 'AI_SUGGESTION',
+          operationalSeverity: context.previousAssessment.operationalSeverity,
+          confidence: context.previousAssessment.confidence,
+          estimatedDurationMinutes:
+            context.previousAssessment.estimatedDurationMinutes,
+          summary: context.previousAssessment.summary,
+          reasoning: context.previousAssessment.reasoning,
+          suggestedAffectedCoordinations:
+            context.previousAssessment.affectedCoordinations.map((item) => ({
+              coordinationCode: item.coordinationCode,
+              coordinationName: item.coordinationName,
+              impactLevel: item.impactLevel,
+              description: item.description,
+            })),
+          updatedAt: context.previousAssessment.updatedAt,
+        }
+      : null,
+  };
+}
 
 @Injectable()
 export class PromptBuilder {
@@ -26,7 +123,14 @@ export class PromptBuilder {
   buildSystemPrompt(
     template: PromptTemplate = getActivePromptTemplate(),
   ): string {
-    return this.renderSections('SISTEMA', template.system);
+    return this.renderSections('SISTEMA', [
+      ...template.system,
+      {
+        key: 'untrusted_dossier',
+        title: `Expediente no confiable (política ${PROMPT_CONTEXT_POLICY_VERSION})`,
+        body: UNTRUSTED_DOSSIER_NOTICE,
+      },
+    ]);
   }
 
   buildUserPrompt(
@@ -38,7 +142,11 @@ export class PromptBuilder {
       {
         key: 'expediente_json',
         title: 'Expediente estructurado',
-        body: JSON.stringify(context, null, 2),
+        body: [
+          UNTRUSTED_DOSSIER_BEGIN,
+          JSON.stringify(toPromptDossier(context), null, 2),
+          UNTRUSTED_DOSSIER_END,
+        ].join('\n'),
       },
     ];
 

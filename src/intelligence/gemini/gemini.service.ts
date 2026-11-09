@@ -8,6 +8,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { InterpretEventAiDto } from './dto/interpret-event-ai.dto';
 import { GeminiInterpretationResult } from './dto/gemini-interpretation.result';
 import { GeminiPromptBuilder } from './prompt.builder';
+import { assertPromptWithinLimits } from '../../ai-prompt-engine/privacy/prompt-privacy';
 import { GeminiResponseParser } from './response.parser';
 import { GEMINI_INTERPRETATION_RESPONSE_SCHEMA } from './response.schema';
 
@@ -49,6 +50,10 @@ export class GeminiService {
     });
 
     const userPrompt = this.promptBuilder.buildUserPrompt(input);
+    assertPromptWithinLimits(
+      this.promptBuilder.buildSystemInstruction(),
+      userPrompt,
+    );
     this.logger.debug(`Invocando Gemini model=${modelName}`);
 
     const result = await model.generateContent(userPrompt);
