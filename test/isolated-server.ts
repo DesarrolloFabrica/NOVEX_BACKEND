@@ -20,6 +20,9 @@ import { AppModule } from '../src/app.module';
 import { GeminiProvider } from '../src/ai-orchestration/providers/gemini.provider';
 import { buildAnalysisResult } from '../src/database/seeds/seed-situations-mock';
 import { SituationSeverity } from '../src/common/enums/situation.enums';
+import { config as loadEnv } from 'dotenv';
+import { join } from 'node:path';
+import { verifyDisposableDatabase } from './support/disposable-database.guard';
 
 const ANALISIS = buildAnalysisResult({
   title: 'Análisis controlado de entorno aislado',
@@ -43,6 +46,11 @@ class GeminiProviderControlado {
 }
 
 async function main() {
+  // Guarda central: mismo .env que la aplicación (sin sobrescribir el proceso)
+  // y ambas barreras ANTES de arrancar AppModule, que escribe al iniciar.
+  loadEnv({ path: join(__dirname, '../.env'), override: false, quiet: true });
+  await verifyDisposableDatabase('isolated-server');
+
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(GeminiProvider)
     .useClass(GeminiProviderControlado)

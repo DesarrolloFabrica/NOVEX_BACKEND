@@ -9,6 +9,7 @@
  */
 import { join } from 'node:path';
 import { DataSource } from 'typeorm';
+import { disposableTargetProblems } from '../support/disposable-database.guard';
 import { Coordination } from '../../src/coordinations/entities/coordination.entity';
 import { OPERACIONES_COORDINATIONS } from '../../src/database/seeds/seed-operaciones';
 import { Permission } from '../../src/permissions/entities/permission.entity';
@@ -46,6 +47,15 @@ function requireTestDatabaseEnv() {
     throw new Error(
       `Por seguridad, TEST_DB_NAME debe contener "test". Valor: ${database}`,
     );
+  }
+  // Reglas compartidas con la guarda central: solo loopback y nombre con
+  // patrón desechable (nunca snapshot/local/prod/backup).
+  const problems = disposableTargetProblems({
+    host: process.env.TEST_DB_HOST as string,
+    database,
+  });
+  if (problems.length > 0) {
+    throw new Error(`Semilla E2E abortada: ${problems.join('; ')}`);
   }
   return {
     host: process.env.TEST_DB_HOST as string,

@@ -1,6 +1,7 @@
 import { config as loadEnv } from 'dotenv';
 import { join } from 'node:path';
 import { DataSource, type QueryRunner } from 'typeorm';
+import { openDisposableDataSource } from '../../test/support/disposable-database.guard';
 import {
   bogotaDayEndExclusiveIso,
   bogotaDayEndInclusiveIso,
@@ -14,7 +15,7 @@ import { OperationalKpiSnapshotRepository } from './operational-kpi-snapshot.rep
  * ANTIGÜEDAD contra PostgreSQL REAL (opt-in: NOVEX_PG_IT=1).
  * Ejecuta el SQL de Antigüedad y el de Carga (aggregateActiveByKind) sobre
  * fixtures insertados dentro de una transacción que SIEMPRE se revierte: no
- * deja datos. Usa la BD local de .env (DB_*), nunca la de nube.
+ * deja datos. Solo en una base desechable validada por la guarda central (test/support).
  *
  *   NOVEX_PG_IT=1 npx jest src/operational-kpis/operational-kpi-aging.pg.spec.ts
  */
@@ -46,19 +47,14 @@ suite('Antigüedad · SQL real (Postgres)', () => {
   let snapshot: OperationalKpiSnapshotRepository;
 
   beforeAll(async () => {
-    if ((process.env.DB_CLOUD ?? 'false') === 'true') {
-      throw new Error('Esta suite solo corre contra la BD local.');
-    }
-    dataSource = new DataSource({
-      type: 'postgres',
-      host: process.env.DB_HOST_LOCAL ?? process.env.DB_HOST,
-      port: Number(process.env.DB_PORT_LOCAL ?? process.env.DB_PORT),
-      username: process.env.DB_USERNAME_LOCAL ?? process.env.DB_USERNAME,
-      password: process.env.DB_PASSWORD_LOCAL ?? process.env.DB_PASSWORD,
-      database: process.env.DB_DATABASE_LOCAL ?? process.env.DB_DATABASE,
-      entities: [],
-    });
-    await dataSource.initialize();
+    // Guarda central: bandera explícita, destino declarado y marca de base
+    // desechable, comprobados ANTES de cualquier SQL (ver test/support).
+    dataSource = await openDisposableDataSource(
+      'operational-kpi-aging.pg.spec.ts',
+      {
+        entities: [],
+      },
+    );
   });
 
   afterAll(async () => {

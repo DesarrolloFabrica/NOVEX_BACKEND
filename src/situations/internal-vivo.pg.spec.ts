@@ -2,6 +2,7 @@ import { ConflictException } from '@nestjs/common';
 import { config as loadEnv } from 'dotenv';
 import { join } from 'node:path';
 import { DataSource } from 'typeorm';
+import { openDisposableDataSource } from '../../test/support/disposable-database.guard';
 import { UserStatus } from '../common/enums/identity.enums';
 import {
   SituationReportKind,
@@ -33,8 +34,9 @@ import {
 } from './sweep/situation-sweep.service';
 
 /**
- * INTERNAL VIVO contra PostgreSQL REAL (opt-in: NOVEX_PG_IT=1). BD local de
- * .env, nunca la de nube. Servicios REALES (sin Nest), auditoría inerte.
+ * INTERNAL VIVO contra PostgreSQL REAL (opt-in: NOVEX_PG_IT=1), solo en una
+ * base desechable validada por la guarda central (test/support). Servicios
+ * REALES (sin Nest), auditoría inerte.
  *
  *   NOVEX_PG_IT=1 npx jest src/situations/internal-vivo.pg.spec.ts
  *
@@ -94,19 +96,11 @@ suite('INTERNAL vivo · Postgres real', () => {
   };
 
   beforeAll(async () => {
-    if ((process.env.DB_CLOUD ?? 'false') === 'true') {
-      throw new Error('Esta suite solo corre contra la BD local.');
-    }
-    ds = new DataSource({
-      type: 'postgres',
-      host: process.env.DB_HOST_LOCAL ?? process.env.DB_HOST,
-      port: Number(process.env.DB_PORT_LOCAL ?? process.env.DB_PORT),
-      username: process.env.DB_USERNAME_LOCAL ?? process.env.DB_USERNAME,
-      password: process.env.DB_PASSWORD_LOCAL ?? process.env.DB_PASSWORD,
-      database: process.env.DB_DATABASE_LOCAL ?? process.env.DB_DATABASE,
+    // Guarda central: bandera explícita, destino declarado y marca de base
+    // desechable, comprobados ANTES de cualquier SQL (ver test/support).
+    ds = await openDisposableDataSource('internal-vivo.pg.spec.ts', {
       entities: [join(__dirname, '../**/*.entity{.ts,.js}')],
     });
-    await ds.initialize();
 
     await cleanup();
     await ds.query(

@@ -2,6 +2,10 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
+import {
+  assertDisposableDatabaseConnection,
+  assertDisposableDatabaseEnv,
+} from './support/disposable-database.guard';
 import { AppModule } from '../src/app.module';
 import { GeminiProvider } from '../src/ai-orchestration/providers/gemini.provider';
 import { buildAnalysisResult } from '../src/database/seeds/seed-situations-mock';
@@ -91,11 +95,15 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     coordB: '',
     admin: '',
     analista: '',
+    director: '',
   };
 
   const token: Record<string, string> = {};
 
   beforeAll(async () => {
+    // Guarda central (barrera 1): sin autorización y destino desechable
+    // declarado, aborta antes de arrancar AppModule (que escribe al iniciar).
+    const target = assertDisposableDatabaseEnv('phase2-http');
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -111,6 +119,9 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     await app.init();
 
     ds = app.get(DataSource);
+    // Barrera 2: la conexión real es la base desechable marcada, antes del
+    // TRUNCATE de fixtures.
+    await assertDisposableDatabaseConnection('phase2-http', ds, target);
 
     // El arranque siembra el catálogo de permisos y su reparto por rol
     // (CATALOG_SEED_ON_BOOT). Se espera a que termine antes de autenticar.

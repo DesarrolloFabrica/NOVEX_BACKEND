@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { config as loadEnv } from 'dotenv';
 import { join } from 'node:path';
 import { DataSource } from 'typeorm';
+import { openDisposableDataSource } from '../../test/support/disposable-database.guard';
 import { AIOrchestrator } from '../ai-orchestration/ai-orchestrator.service';
 import { OperationalScopeService } from '../auth/services/operational-scope.service';
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
@@ -12,10 +13,6 @@ import {
   SituationSeverity,
   SituationStatus,
 } from '../common/enums/situation.enums';
-import {
-  isCloudDatabaseEnv,
-  resolveDatabaseEnv,
-} from '../configuration/resolve-database-env';
 import { Coordination } from '../coordinations/entities/coordination.entity';
 import { IncidentCategory } from '../intelligence/entities/incident-category.entity';
 import { SituationTimelineRepository } from '../situation-timeline/repositories/situation-timeline.repository';
@@ -34,11 +31,10 @@ import { SituationsService } from './situations.service';
 /**
  * FASE 01A contra PostgreSQL REAL (opt-in: NOVEX_PG_IT=1).
  *
- * SOLO en una base LOCAL y DESECHABLE, ya migrada. La suite se niega a correr
- * si la configuración apunta a Cloud SQL (perfil cloud o socket /cloudsql/).
- *
- *   NOVEX_PG_IT=1 DB_CLOUD=false DB_*_LOCAL=<base desechable> \
- *     npx jest src/situations/fase01a-concurrency.pg.spec.ts
+ * SOLO en una base LOCAL, DESECHABLE, migrada y marcada: la guarda central
+ * (test/support/disposable-database.guard.ts) aborta antes de cualquier SQL si
+ * falta la autorización, el destino declarado no coincide o la base no lleva
+ * la marca de desechable. Procedimiento en CLAUDE.md.
  *
  * Qué demuestra que las pruebas con mocks no pueden:
  *   F-01  El PATCH ESPERA el bloqueo de fila y decide sobre el estado vigente:
@@ -111,22 +107,11 @@ suite('Fase 01A · concurrencia contra PostgreSQL real', () => {
   let situations: SituationsService;
 
   beforeAll(async () => {
-    if (isCloudDatabaseEnv()) {
-      throw new Error(
-        'Esta suite solo corre contra una base LOCAL desechable, nunca Cloud SQL.',
-      );
-    }
-    const target = resolveDatabaseEnv(process.env, { profile: 'local' });
-    ds = new DataSource({
-      type: 'postgres',
-      host: target.host,
-      port: target.port,
-      username: target.username,
-      password: target.password,
-      database: target.database,
+    // Guarda central: bandera explícita, destino declarado y marca de base
+    // desechable, comprobados ANTES de cualquier SQL (ver test/support).
+    ds = await openDisposableDataSource('fase01a-concurrency.pg.spec.ts', {
       entities: [join(__dirname, '../**/*.entity{.ts,.js}')],
     });
-    await ds.initialize();
 
     await cleanup();
     await ds.query(

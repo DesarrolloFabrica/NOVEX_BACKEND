@@ -2,6 +2,10 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
+import {
+  assertDisposableDatabaseConnection,
+  assertDisposableDatabaseEnv,
+} from './support/disposable-database.guard';
 import { AppModule } from '../src/app.module';
 import { GeminiProvider } from '../src/ai-orchestration/providers/gemini.provider';
 import { buildAnalysisResult } from '../src/database/seeds/seed-situations-mock';
@@ -81,6 +85,9 @@ describe('Fase 2.1 · resolución concurrente contra Nest real', () => {
   const userId: Record<string, string> = {};
 
   beforeAll(async () => {
+    // Guarda central (barrera 1): sin autorización y destino desechable
+    // declarado, aborta antes de arrancar AppModule (que escribe al iniciar).
+    const target = assertDisposableDatabaseEnv('phase21-concurrency');
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(GeminiProvider)
       .useClass(GeminiFalso)
@@ -93,6 +100,9 @@ describe('Fase 2.1 · resolución concurrente contra Nest real', () => {
     );
     await app.init();
     ds = app.get(DataSource);
+    // Barrera 2: la conexión real es la base desechable marcada, antes del
+    // TRUNCATE de fixtures.
+    await assertDisposableDatabaseConnection('phase21-concurrency', ds, target);
 
     await new Promise((r) => setTimeout(r, 1500));
 
