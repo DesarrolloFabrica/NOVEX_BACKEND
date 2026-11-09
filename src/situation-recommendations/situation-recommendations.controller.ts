@@ -1,6 +1,5 @@
 import {
   Body,
-  ConflictException,
   Controller,
   Get,
   NotFoundException,
@@ -14,7 +13,7 @@ import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
-import { SITUATION_CANCELLED_CODE } from '../auth/services/operational-scope.service';
+import { assertSituationStatusWorkable } from '../auth/services/operational-scope.service';
 import { SituationStatus } from '../common/enums/situation.enums';
 import { SituationAccessService } from '../situations/situation-access.service';
 import {
@@ -138,14 +137,12 @@ export class SituationRecommendationsController {
         );
       situationStatus = situation.status;
     });
-    // Fase 01B.1: las recomendaciones de un caso ANULADO quedan congeladas
-    // (se conservan, no se modifican). Comprobado después del alcance.
-    if (situationStatus === SituationStatus.CANCELLED) {
-      throw new ConflictException({
-        code: SITUATION_CANCELLED_CODE,
-        message:
-          'El problema fue anulado: sus recomendaciones no se modifican.',
-      });
+    // Fase 01B.2: las recomendaciones de un caso CERRADO, ANULADO (o RESOLVED
+    // legado) quedan congeladas: se conservan y se leen, no se modifican.
+    // Comprobado después del alcance; el servicio lo repite con la fila de la
+    // situación bloqueada para cerrar la carrera con un cierre concurrente.
+    if (situationStatus) {
+      assertSituationStatusWorkable(situationStatus);
     }
     return this.recommendationsService.updateRecommendation(id, dto, user.sub);
   }

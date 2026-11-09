@@ -255,7 +255,39 @@ describe('A1 · alcance de /recommendations/:id', () => {
   };
   const situationsRepository = { findByIdWithRelations: jest.fn() };
   const usersRepository = { exist: jest.fn() };
-  const situationEntityRepository = { exist: jest.fn() };
+  /**
+   * Fase 01B.2: la escritura se confirma con la situación bloqueada y activa.
+   * Las situaciones del fixture son OPEN (estado por defecto).
+   */
+  const situationEntityRepository = {
+    exist: jest.fn(),
+    manager: {
+      transaction: jest.fn(
+        (
+          work: (manager: {
+            getRepository: (entity: unknown) => unknown;
+          }) => unknown,
+        ) =>
+          Promise.resolve(
+            work({
+              getRepository: (entity: unknown) =>
+                entity === Situation
+                  ? {
+                      findOne: ({ where }: { where: { id: string } }) =>
+                        Promise.resolve(
+                          Object.values(SITUATIONS).some(
+                            (s) => s.id === where.id,
+                          )
+                            ? { id: where.id, status: 'OPEN' }
+                            : null,
+                        ),
+                    }
+                  : { save: recommendationsRepository.save },
+            }),
+          ),
+      ),
+    },
+  };
   const timelineService = { createEntry: jest.fn() };
 
   const resetData = () => {

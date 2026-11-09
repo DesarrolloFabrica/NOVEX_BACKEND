@@ -81,6 +81,28 @@ export const ANALYST_ROLE_CODE = 'ANALISTA';
  */
 export const GENERAL_OPERATIONS_COORDINATION_CODE = 'coord-general';
 
+/**
+ * Misma regla que `OperationalScopeService.assertSituationWorkable`, usable
+ * dentro de una transacción con la fila ya bloqueada (Fase 01B.2): solo OPEN e
+ * IN_PROGRESS admiten análisis, evidencias y recomendaciones.
+ */
+export function assertSituationStatusWorkable(status: SituationStatus): void {
+  if (status === SituationStatus.CANCELLED) {
+    throw new ConflictException({
+      code: SITUATION_CANCELLED_CODE,
+      message:
+        'El problema fue anulado: no admite análisis, evidencias ni recomendaciones.',
+    });
+  }
+  if (!WORKABLE_SITUATION_STATUSES.includes(status)) {
+    throw new ConflictException({
+      code: SITUATION_CLOSED_CODE,
+      message:
+        'El problema ya no está activo: no admite análisis ni nuevas recomendaciones.',
+    });
+  }
+}
+
 @Injectable()
 export class OperationalScopeService {
   isCoordinationScoped(actor: AuthPayload): boolean {
@@ -658,20 +680,7 @@ export class OperationalScopeService {
    * recomendaciones nuevas: 409 con código estable.
    */
   assertSituationWorkable(situation: { status: SituationStatus }): void {
-    if (situation.status === SituationStatus.CANCELLED) {
-      throw new ConflictException({
-        code: SITUATION_CANCELLED_CODE,
-        message:
-          'El problema fue anulado: no admite análisis, evidencias ni recomendaciones.',
-      });
-    }
-    if (!WORKABLE_SITUATION_STATUSES.includes(situation.status)) {
-      throw new ConflictException({
-        code: SITUATION_CLOSED_CODE,
-        message:
-          'El problema ya no está activo: no admite análisis ni nuevas recomendaciones.',
-      });
-    }
+    assertSituationStatusWorkable(situation.status);
   }
 
   assertCoordinationInScope(actor: AuthPayload, coordinationId: string): void {

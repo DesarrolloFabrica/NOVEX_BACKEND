@@ -11,6 +11,7 @@ import {
 } from '../common/enums/situation-recommendation.enums';
 import { TimelineEventType } from '../common/enums/situation-timeline.enums';
 import { Situation } from '../situations/entities/situation.entity';
+import { assertSituationStatusWorkable } from '../auth/services/operational-scope.service';
 import { SituationTimelineService } from '../situation-timeline/situation-timeline.service';
 import { User } from '../users/entities/user.entity';
 import {
@@ -87,7 +88,10 @@ export class SituationRecommendationsService {
       executionNotes: null,
     });
 
-    const saved = await this.recommendationsRepository.save(recommendation);
+    const saved = await this.saveOnWorkableSituation(
+      situationId,
+      recommendation,
+    );
     const withRelations =
       await this.recommendationsRepository.findByIdWithRelations(saved.id);
 
@@ -210,7 +214,10 @@ export class SituationRecommendationsService {
       recommendation.executionNotes = dto.executionNotes?.trim() ?? null;
     }
 
-    await this.recommendationsRepository.save(recommendation);
+    await this.saveOnWorkableSituation(
+      recommendation.situationId,
+      recommendation,
+    );
     const withRelations =
       await this.recommendationsRepository.findByIdWithRelations(id);
 
@@ -293,7 +300,10 @@ export class SituationRecommendationsService {
       recommendation.executionNotes = dto.executionNotes.trim();
     }
 
-    await this.recommendationsRepository.save(recommendation);
+    await this.saveOnWorkableSituation(
+      recommendation.situationId,
+      recommendation,
+    );
     const withRelations =
       await this.recommendationsRepository.findByIdWithRelations(id);
 
@@ -311,6 +321,33 @@ export class SituationRecommendationsService {
     });
 
     return this.toResponse(withRelations ?? recommendation);
+  }
+
+  /**
+   * Fase 01B.2: toda escritura manual de recomendaciones se confirma con la
+   * fila de la situación bloqueada (FOR SHARE) y solo si el caso sigue activo.
+   * El cierre, la anulación y el traslado toman FOR UPDATE sobre esa misma
+   * fila, así que no puede colarse una modificación tras el cierre. Las
+   * recomendaciones de un caso congelado se conservan y siguen legibles.
+   */
+  private async saveOnWorkableSituation(
+    situationId: string,
+    recommendation: SituationRecommendation,
+  ): Promise<SituationRecommendation> {
+    return this.situationsRepository.manager.transaction(async (manager) => {
+      const situation = await manager.getRepository(Situation).findOne({
+        where: { id: situationId },
+        select: { id: true, status: true },
+        lock: { mode: 'pessimistic_read' },
+      });
+      if (!situation) {
+        throw new NotFoundException(`Situación no encontrada: ${situationId}`);
+      }
+      assertSituationStatusWorkable(situation.status);
+      return manager
+        .getRepository(SituationRecommendation)
+        .save(recommendation);
+    });
   }
 
   private async ensureSituationExists(
