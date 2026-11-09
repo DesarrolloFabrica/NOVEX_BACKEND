@@ -32,11 +32,31 @@ API NestJS de NOVEX (Cartas y Circo): RBAC, situaciones, overview/KPIs, Gemini. 
 |---|---|
 | `npx eslint "{src,test}/**/*.ts"` | Solo lectura |
 | `npm run lint` | **Modifica** (`--fix`) |
-| `npm test` / `test:security` | Jest; `*.pg.spec.ts` omitidos sin `NOVEX_PG_IT=1` |
-| `NOVEX_PG_IT=1 npx jest --runInBand --testPathPatterns pg.spec` | Solo contra una base local **desechable y migrada** (`DB_CLOUD=false` + todas las `DB_*_LOCAL`). `--runInBand` es obligatorio: las suites comparten tablas |
+| `npm test` / `test:security` | Jest unitario; no toca bases (`*.pg.spec.ts` omitidos sin `NOVEX_PG_IT=1`) |
+| `npx tsc --noEmit --incremental false -p tsconfig.json` | Typecheck **con pruebas** (sin caché incremental, que oculta errores) |
 | `npm run build` | Escribe `dist/` |
 
 Contra Cloud SQL (`DB_CLOUD=true` o `DB_HOST=/cloudsql/…`): las semillas de arranque se omiten, `seed:*` aborta salvo `ALLOW_CLOUD_SEED=true` y `migration:*` aborta salvo `ALLOW_CLOUD_MIGRATIONS=true`. Esas banderas solo en la invocación concreta y con autorización.
+
+## Pruebas destructivas (PostgreSQL real)
+
+**Nunca** contra la base del `.env` (hoy `novex_local_snapshot_20261028`, puerto 5442), ni contra `novex`, ni contra Cloud SQL. Incidente 2026-11-09: `phase2-http` truncó esa snapshot. Toda prueba que escribe pasa por `test/support/disposable-database.guard.ts`, que aborta antes de cualquier SQL si falta algo de lo siguiente.
+
+1. **Contenedor nuevo y desechable**, distinto de `novex-postgres`, en loopback y con datos en memoria (en Git Bash, `MSYS_NO_PATHCONV=1`):
+   `docker run -d --rm --name novex-it-<fecha> -e POSTGRES_USER=novex_it -e POSTGRES_PASSWORD=<aleatoria> -e POSTGRES_DB=novex_it_<fecha> -p 127.0.0.1:<puerto>:5432 --tmpfs /var/lib/postgresql/data postgres:17-alpine`
+2. **Marca de desechable** (solo en esa base): `COMMENT ON DATABASE novex_it_<fecha> IS 'novex:disposable-test-db'`.
+3. **En la invocación** (nunca en `.env`; la guarda lo rechaza):
+   - `NOVEX_DESTRUCTIVE_TESTS=1`;
+   - `NOVEX_TEST_DB_HOST`, `NOVEX_TEST_DB_PORT` y `NOVEX_TEST_DB_NAME` con el destino;
+   - `DB_CLOUD=false` y todas las `DB_*_LOCAL` / `DB_*` apuntando al mismo destino.
+4. `npm run migration:run` sobre esa base. Las suites PG crean sus fixtures, salvo `internal-vivo` y los KPI, que esperan los 4 códigos de rol y un usuario.
+5. Suites:
+   - **PG:** `NOVEX_PG_IT=1 npx jest --runInBand --testPathPatterns pg.spec`. `--runInBand` es obligatorio: comparten tablas.
+   - **e2e:** `NODE_ENV=test ENABLE_EMAIL_LOGIN=true CATALOG_SEED_ON_BOOT=true GEMINI_THROTTLE_LIMIT=100 npx jest --config ./test/jest-e2e.json --runInBand`. Las banderas valen solo en esa invocación; el límite de Gemini se ignora en producción.
+   - **Integración:** `npx jest --config ./test/jest-integration.json`. Recrea el esquema: ejecútala **al final** o vuelve a crear los fixtures.
+6. `docker stop` del contenedor al terminar.
+
+La e2e real del frontend (`NOVEX_FRONTEND/e2e-real/run.mjs`) tiene su propio aislamiento (contenedor `novex-e2e-pg`, base `novex_e2e_test`) y necesita el puerto 3001 libre.
 
 ## Docs operativos en este repo
 
