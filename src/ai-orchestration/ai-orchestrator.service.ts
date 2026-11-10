@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   ConflictException,
+  HttpException,
   Injectable,
   Logger,
   NotFoundException,
@@ -54,8 +55,39 @@ import { SituationTimelineService } from '../situation-timeline/situation-timeli
 import { AIPromptEngineService } from '../ai-prompt-engine/ai-prompt-engine.service';
 import {
   PROMPT_CONTEXT_POLICY_VERSION,
+  PROMPT_TOO_LARGE_CODE,
   assertPromptWithinLimits,
 } from '../ai-prompt-engine/privacy/prompt-privacy';
+
+const AI_ANALYSIS_FAILED_MESSAGE = 'No fue posible completar el análisis IA.';
+
+/**
+ * 422 `PROMPT_TOO_LARGE` (Fase 01B.2): el expediente excede el límite. Es un
+ * error del contenido, no de disponibilidad del proveedor: se conserva tal
+ * cual, sin convertirlo en 503.
+ */
+function isPromptTooLarge(
+  error: unknown,
+): error is UnprocessableEntityException {
+  if (!(error instanceof UnprocessableEntityException)) return false;
+  const response = error.getResponse();
+  return (
+    typeof response === 'object' &&
+    response !== null &&
+    (response as { code?: unknown }).code === PROMPT_TOO_LARGE_CODE
+  );
+}
+
+/**
+ * Mensaje apto para el cliente y la línea de tiempo: solo el de excepciones
+ * HTTP que el propio backend redacta. Un error interno (base de datos, red,
+ * librería) nunca expone su mensaje; queda solo en el log del servidor.
+ */
+function publicFailureMessage(error: unknown): string {
+  return error instanceof HttpException
+    ? error.message
+    : AI_ANALYSIS_FAILED_MESSAGE;
+}
 
 import {
   ExecuteAIAnalysisResponseDto,
@@ -440,10 +472,10 @@ export class AIOrchestrator {
         throw error;
       }
 
+      // Detalle completo solo en el log del servidor.
       const causeMessage =
-        error instanceof Error
-          ? error.message
-          : 'No fue posible completar el análisis IA.';
+        error instanceof Error ? error.message : AI_ANALYSIS_FAILED_MESSAGE;
+      const publicMessage = publicFailureMessage(error);
 
       this.logger.error(
         `Análisis IA fallido situationId=${situationId}: ${causeMessage}`,
@@ -459,7 +491,7 @@ export class AIOrchestrator {
 
         title: 'Análisis IA fallido',
 
-        description: causeMessage,
+        description: publicMessage,
 
         metadata: {
           provider: this.geminiProvider.name,
@@ -480,12 +512,20 @@ export class AIOrchestrator {
         },
       });
 
+      // 422 del límite de tamaño y 503 del proveedor conservan su clase.
+      if (isPromptTooLarge(error)) {
+        throw error;
+      }
       if (error instanceof ServiceUnavailableException) {
         throw error;
       }
 
+      // Cualquier otro fallo es indisponibilidad del análisis (503), sin el
+      // mensaje interno de errores que no son HTTP.
       throw new ServiceUnavailableException(
-        `No fue posible completar el análisis IA: ${causeMessage}`,
+        publicMessage === AI_ANALYSIS_FAILED_MESSAGE
+          ? AI_ANALYSIS_FAILED_MESSAGE
+          : `No fue posible completar el análisis IA: ${publicMessage}`,
         { cause: error },
       );
     }
