@@ -16,6 +16,10 @@ import { UnprocessableEntityException } from '@nestjs/common';
  *     documentada y depende de que el usuario no los escriba.
  *   - El expediente es dato NO CONFIABLE aportado por usuarios: va delimitado
  *     y el modelo recibe la orden de no seguir instrucciones contenidas en él.
+ *     Los catálogos (categorías, coordinaciones, áreas) también son datos
+ *     editables: sus textos pasan por `sanitizeCatalogText` y viajan dentro
+ *     del bloque; fuera de él solo se enumeran códigos con forma de código
+ *     (`isSafeCatalogCode`).
  *   - Límite duro de tamaño ANTES de llamar al proveedor.
  */
 export const PROMPT_CONTEXT_POLICY_VERSION = 'context-min-v1';
@@ -61,6 +65,59 @@ export function redactPersonalData(text: string | null): string | null {
     .replace(LONG_NUMBER, (match) =>
       countDigits(match) >= 7 ? '[número omitido]' : match,
     );
+}
+
+/** Máximo de un texto de catálogo (nombre, nombre corto, descripción). */
+export const MAX_CATALOG_TEXT_CHARACTERS = 300;
+/** Forma de código admitida fuera del expediente (instrucciones). */
+const SAFE_CATALOG_CODE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
+/**
+ * Secuencias que podrían cerrar o abrir el bloque no confiable, o simularlo:
+ * tres o más `<` / `>` seguidos (`<<<FIN_EXPEDIENTE_NO_CONFIABLE>>>`).
+ */
+const DELIMITER_LIKE = /<{3,}|>{3,}/g;
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+
+/**
+ * Política central para TODO texto dinámico que entra a un prompt (Fase
+ * 01B.2): redacción de datos personales y secretos, eliminación de
+ * caracteres de control y neutralización de marcadores de delimitación, de
+ * modo que un campo no pueda cerrar el bloque `EXPEDIENTE_NO_CONFIABLE` ni
+ * simular uno nuevo. Conserva el resto del texto (utilidad operativa).
+ */
+export function sanitizePromptText(text: string): string;
+export function sanitizePromptText(text: string | null): string | null;
+export function sanitizePromptText(text: string | null): string | null {
+  if (text === null) return null;
+  return redactPersonalData(text)
+    .replace(CONTROL_CHARS, '')
+    .replace(DELIMITER_LIKE, (match) => match.charAt(0));
+}
+
+/**
+ * Texto de catálogo (nombre de categoría, coordinación, área): además de
+ * `sanitizePromptText`, una sola línea (sin saltos que simulen secciones o
+ * encabezados) y longitud acotada.
+ */
+export function sanitizeCatalogText(text: string): string;
+export function sanitizeCatalogText(text: string | null): string | null;
+export function sanitizeCatalogText(text: string | null): string | null {
+  if (text === null) return null;
+  const singleLine = sanitizePromptText(text).replace(/\s+/g, ' ').trim();
+  return singleLine.length > MAX_CATALOG_TEXT_CHARACTERS
+    ? `${singleLine.slice(0, MAX_CATALOG_TEXT_CHARACTERS - 1)}…`
+    : singleLine;
+}
+
+/**
+ * ¿Puede este código de catálogo aparecer FUERA del expediente, en las
+ * instrucciones? Solo si tiene forma de código (letras, dígitos, `_ . -`,
+ * hasta 64). Un código con espacios, saltos o texto libre se queda dentro del
+ * bloque no confiable y no se enumera en las instrucciones.
+ */
+export function isSafeCatalogCode(code: string): boolean {
+  return SAFE_CATALOG_CODE.test(code);
 }
 
 export interface PromptSize {

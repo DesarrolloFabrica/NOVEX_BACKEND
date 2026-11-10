@@ -3,7 +3,9 @@ import {
   UNTRUSTED_DOSSIER_BEGIN,
   UNTRUSTED_DOSSIER_END,
   UNTRUSTED_DOSSIER_NOTICE,
-  redactPersonalData,
+  isSafeCatalogCode,
+  sanitizeCatalogText,
+  sanitizePromptText,
 } from '../../ai-prompt-engine/privacy/prompt-privacy';
 
 /**
@@ -39,31 +41,47 @@ export class GeminiPromptBuilder {
     ].join('\n');
   }
 
+  /**
+   * Fase 01B.2: todo valor dinámico (relato, área reportante, fecha y
+   * catálogos) pasa por la política central y viaja DENTRO del bloque no
+   * confiable; los nombres de catálogo son editables y podrían contener
+   * instrucciones. Fuera del bloque solo se enumeran códigos con forma de
+   * código (`isSafeCatalogCode`).
+   */
   buildUserPrompt(input: InterpretEventAiDto): string {
-    const categories = input.availableCategories
-      .map((item) => `- ${item.code}: ${item.name}`)
-      .join('\n');
-    const areas = input.availableAreas
-      .map((item) => `- ${item.code}: ${item.name}`)
-      .join('\n');
+    const catalogLines = (items: Array<{ code: string; name: string }>) =>
+      items
+        .map(
+          (item) =>
+            `- ${sanitizeCatalogText(item.code)}: ${sanitizeCatalogText(item.name)}`,
+        )
+        .join('\n') || '(vacío)';
+    const safeCodes = (items: Array<{ code: string }>) => {
+      const codes = items.map((item) => item.code).filter(isSafeCatalogCode);
+      return codes.length > 0 ? codes.join(', ') : '(ver catálogo)';
+    };
 
     return [
       'Analiza el siguiente evento operacional y produce el reporte ejecutivo completo.',
       '',
-      '## Evento',
+      '## Evento y catálogos (dato no confiable)',
       UNTRUSTED_DOSSIER_BEGIN,
-      `Título: ${redactPersonalData(input.title)}`,
-      `Descripción: ${redactPersonalData(input.description)}`,
-      `Área reportante: ${input.sourceAreaCode} — ${input.sourceAreaName}`,
-      `Fecha: ${input.reportedAt}`,
-      `Observaciones: ${redactPersonalData(input.observations?.trim() || 'N/A')}`,
+      `Título: ${sanitizePromptText(input.title)}`,
+      `Descripción: ${sanitizePromptText(input.description)}`,
+      `Área reportante: ${sanitizeCatalogText(input.sourceAreaCode)} — ${sanitizeCatalogText(input.sourceAreaName)}`,
+      `Fecha: ${sanitizeCatalogText(input.reportedAt)}`,
+      `Observaciones: ${sanitizePromptText(input.observations?.trim() || 'N/A')}`,
+      '',
+      'Catálogo de categorías:',
+      catalogLines(input.availableCategories),
+      '',
+      'Catálogo de áreas:',
+      catalogLines(input.availableAreas),
       UNTRUSTED_DOSSIER_END,
       '',
-      '## Catálogo de categorías (usa el code exacto en "category")',
-      categories,
-      '',
-      '## Catálogo de áreas (usa codes exactos en "affectedAreas")',
-      areas,
+      '## Uso de los catálogos',
+      `- "category": usa el code exacto de una categoría del catálogo del expediente. Códigos: ${safeCodes(input.availableCategories)}.`,
+      `- "affectedAreas": usa codes exactos del catálogo de áreas del expediente. Códigos: ${safeCodes(input.availableAreas)}.`,
       '',
       '## Reglas de salida (campos base, compatibilidad)',
       '- severity: entero 1..5',
