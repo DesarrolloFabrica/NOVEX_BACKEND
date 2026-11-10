@@ -41,8 +41,9 @@ import { SituationsRepository } from '../../src/situations/repositories/situatio
  *
  * Defecto corregido: `GET /situations/:id/evidences/:evidenceId` exigía solo
  * leer el caso y devolvía una evidencia retirada con su motivo. Ahora una
- * retirada exige lo mismo que `?includeRetired=true` (ADMIN, o poder operar
- * el caso) y, sin ese permiso, responde 404 como si no existiera.
+ * retirada exige SITUATIONS_UPDATE + alcance/propiedad operativa, salvo ADMIN,
+ * igual que `?includeRetired=true`; sin esos permisos responde 404 como si no
+ * existiera. Los permisos efectivos se prueban con overrides por usuario.
  *
  * Es REAL todo lo que decide la autorización: JwtStrategy, guards globales,
  * PermissionsGuard, OperationalScopeService, SituationAccessService, el
@@ -194,8 +195,8 @@ function evidenceRow(situation: SituationKey, retired: boolean) {
  *   READ        = leer el caso (consulta de evidencia ACTIVA).
  *   RETIRED_GET = consulta por id de una RETIRADA: 200 solo con el permiso de
  *                 `includeRetired`; sin él, 404 (no revela existencia).
- *   RETIRED_LIST= `?includeRetired=true`: 404 fuera de alcance, 403 sin
- *                 propiedad del caso (contrato previo, sin cambios).
+ *   RETIRED_LIST= `?includeRetired=true`: 404 fuera de alcance, sin propiedad
+ *                 o sin permiso efectivo SITUATIONS_UPDATE.
  */
 const READ_EXPECTED: Record<ActorKey, number[]> = {
   //          S1   S2   S3   S4   S5   S6
@@ -222,8 +223,8 @@ const RETIRED_LIST_EXPECTED: Record<ActorKey, number[]> = {
   coordA: [200, 404, 404, 404, 200, 200],
   coordB: [404, 200, 200, 404, 404, 404],
   coordNull: [404, 404, 404, 404, 404, 404],
-  analista: [403, 403, 403, 200, 403, 403],
-  director: [403, 403, 403, 403, 403, 403],
+  analista: [404, 404, 404, 200, 404, 404],
+  director: [404, 404, 404, 404, 404, 404],
   admin: [200, 200, 200, 200, 200, 200],
 };
 
@@ -233,6 +234,7 @@ const JWT_SECRET = 'fase01b2-evidence-retired-access-secret-min';
 describe('Fase 01B.2 · acceso a evidencias retiradas (HTTP)', () => {
   let app: INestApplication<App>;
   let tokens: Record<ActorKey, string>;
+  const effectivePermissionOverrides = new Map<string, string[]>();
 
   const situationsRepository = { findByIdWithRelations: jest.fn() };
   const evidenceRepository = {
@@ -276,7 +278,10 @@ describe('Fase 01B.2 · acceso a evidencias retiradas (HTTP)', () => {
               return found
                 ? Promise.resolve({
                     ...found,
-                    permissions: [...found.permissions],
+                    permissions: [
+                      ...(effectivePermissionOverrides.get(sub) ??
+                        found.permissions),
+                    ],
                   })
                 : Promise.reject(
                     new UnauthorizedException('Sesión no válida.'),
@@ -325,6 +330,7 @@ describe('Fase 01B.2 · acceso a evidencias retiradas (HTTP)', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    effectivePermissionOverrides.clear();
     situationsRepository.findByIdWithRelations.mockImplementation(
       (id: string) => {
         const fixture = Object.values(SITUATIONS).find((s) => s.id === id);
@@ -434,6 +440,58 @@ describe('Fase 01B.2 · acceso a evidencias retiradas (HTTP)', () => {
       );
       expect(response.status).toBe(404);
     });
+
+    it('valida permisos efectivos, alcance y propiedad operativa', async () => {
+      const casePath = `${SITUATIONS.S1.id}/evidences/${evidenceId('S1', true)}`;
+
+      effectivePermissionOverrides.set(USER_IDS.coordA, ['SITUATIONS_VIEW']);
+      const coordinatorReadOnly = await get('coordA', casePath);
+      expect(coordinatorReadOnly.status).toBe(404);
+      expect(JSON.stringify(coordinatorReadOnly.body)).not.toContain(
+        'Motivo-secreto',
+      );
+      const activeReadOnly = await get(
+        'coordA',
+        `${SITUATIONS.S1.id}/evidences/${evidenceId('S1', false)}`,
+      );
+      expect(activeReadOnly.status).toBe(200);
+
+      effectivePermissionOverrides.set(USER_IDS.coordA, [
+        'SITUATIONS_VIEW',
+        'SITUATIONS_UPDATE',
+      ]);
+      const coordinatorOperator = await get('coordA', casePath);
+      expect(coordinatorOperator.status).toBe(200);
+      expect(
+        (coordinatorOperator.body as { retirement: { reason: string } })
+          .retirement.reason,
+      ).toBe(RETIREMENT_REASON);
+
+      // El ANALISTA puede leer institucionalmente este caso, pero su permiso
+      // efectivo se reduce a lectura para demostrar que el rol no sustituye
+      // SITUATIONS_UPDATE.
+      effectivePermissionOverrides.set(USER_IDS.analista, ['SITUATIONS_VIEW']);
+      const analystReadOnly = await get(
+        'analista',
+        `${SITUATIONS.S4.id}/evidences/${evidenceId('S4', true)}`,
+      );
+      expect(analystReadOnly.status).toBe(404);
+
+      // ADMIN tiene excepción explícita aunque no tenga SITUATIONS_UPDATE.
+      effectivePermissionOverrides.set(USER_IDS.admin, ['SITUATIONS_VIEW']);
+      const admin = await get('admin', casePath);
+      expect(admin.status).toBe(200);
+      expect(
+        (admin.body as { retirement: { reason: string } }).retirement.reason,
+      ).toBe(RETIREMENT_REASON);
+
+      // La autoría permite lectura, pero no amplía el alcance operativo.
+      const outsideScope = await get(
+        'coordA',
+        `${SITUATIONS.S3.id}/evidences/${evidenceId('S3', true)}`,
+      );
+      expect(outsideScope.status).toBe(404);
+    });
   });
 
   describe('GET /situations/:id/evidences?includeRetired=true', () => {
@@ -464,6 +522,51 @@ describe('Fase 01B.2 · acceso a evidencias retiradas (HTTP)', () => {
         }
       },
     );
+
+    it('aplica SITUATIONS_UPDATE efectivo y permite consultar el historial cerrado sin habilitar escrituras', async () => {
+      const closedSituation = SITUATIONS.S5;
+      const closedRetiredId = evidenceId('S5', true);
+
+      effectivePermissionOverrides.set(USER_IDS.coordA, ['SITUATIONS_VIEW']);
+      const readOnly = await get(
+        'coordA',
+        `${closedSituation.id}/evidences?includeRetired=true`,
+      );
+      expect(readOnly.status).toBe(404);
+
+      effectivePermissionOverrides.set(USER_IDS.coordA, [
+        'SITUATIONS_VIEW',
+        'SITUATIONS_UPDATE',
+      ]);
+      const operator = await get(
+        'coordA',
+        `${closedSituation.id}/evidences?includeRetired=true`,
+      );
+      expect(operator.status).toBe(200);
+      expect(
+        (operator.body as { items: Array<{ id: string; status: string }> })
+          .items,
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: closedRetiredId,
+            status: 'RETIRED',
+          }),
+        ]),
+      );
+
+      // El mismo permiso de lectura de historial funciona para CANCELLED;
+      // no se invoca ninguna ruta de modificación.
+      const cancelled = { ...SITUATIONS.S5, status: SituationStatus.CANCELLED };
+      situationsRepository.findByIdWithRelations.mockResolvedValueOnce(
+        cancelled,
+      );
+      const cancelledHistory = await get(
+        'coordA',
+        `${closedSituation.id}/evidences?includeRetired=true`,
+      );
+      expect(cancelledHistory.status).toBe(200);
+    });
   });
 });
 
@@ -477,9 +580,11 @@ describe('Fase 01B.2 · SituationEvidenceService aplica la autorización', () =>
   const retiredRow = evidenceRow('S1', true);
   const activeRow = evidenceRow('S1', false);
 
-  function service() {
+  function service(status: SituationStatus = situation.status) {
     const situations = {
-      findByIdWithRelations: jest.fn().mockResolvedValue({ ...situation }),
+      findByIdWithRelations: jest
+        .fn()
+        .mockResolvedValue({ ...situation, status }),
     };
     const evidences = {
       findByIdAndSituationId: jest.fn((id: string) =>
@@ -549,7 +654,7 @@ describe('Fase 01B.2 · SituationEvidenceService aplica la autorización', () =>
       svc.findBySituation(situation.id, ACTORS.director, {
         includeRetired: true,
       }),
-    ).rejects.toThrow();
+    ).rejects.toBeInstanceOf(NotFoundException);
     await expect(
       svc.findBySituation(situation.id, ACTORS.coordB, {
         includeRetired: true,
@@ -565,4 +670,31 @@ describe('Fase 01B.2 · SituationEvidenceService aplica la autorización', () =>
       includeRetired: false,
     });
   });
+
+  it.each([SituationStatus.CLOSED, SituationStatus.CANCELLED])(
+    'ADMIN y operador autorizado pueden leer retiradas en estado %s',
+    async (status) => {
+      const { svc } = service(status);
+      const operator = {
+        ...ACTORS.coordA,
+        permissions: ['SITUATIONS_VIEW', 'SITUATIONS_UPDATE'],
+      };
+      const byId = await svc.getById(situation.id, retiredRow.id, operator);
+      const history = await svc.findBySituation(situation.id, operator, {
+        includeRetired: true,
+      });
+      const byAdminActor = {
+        ...ACTORS.admin,
+        permissions: ['SITUATIONS_VIEW'],
+      };
+      const byAdmin = await svc.getById(
+        situation.id,
+        retiredRow.id,
+        byAdminActor,
+      );
+      expect(byId.status).toBe('RETIRED');
+      expect(history.items).toHaveLength(2);
+      expect(byAdmin.retirement?.reason).toBe(RETIREMENT_REASON);
+    },
+  );
 });

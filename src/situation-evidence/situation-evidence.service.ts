@@ -170,8 +170,8 @@ export class SituationEvidenceService {
         situationId,
       );
     const includeRetired = options.includeRetired === true;
-    if (includeRetired) {
-      this.assertCanViewRetiredEvidence(actor, situation);
+    if (includeRetired && !this.canViewRetiredEvidence(actor, situation)) {
+      throw new NotFoundException('Historial de evidencias no encontrado.');
     }
 
     const items = await this.evidenceRepository.findBySituationId(situationId, {
@@ -216,28 +216,22 @@ export class SituationEvidenceService {
   }
 
   /**
-   * Ver evidencias retiradas (y su motivo): ADMIN, o quien puede operar el
-   * caso (alcance de coordinación + propiedad), es decir, quien podría haber
-   * retirado. Lanza 404 (fuera de alcance) o 403 (sin propiedad), igual que la
-   * puerta de operación que usaba antes `includeRetired`.
+   * Ver evidencias retiradas (y su motivo): ADMIN, o quien tiene permiso
+   * explícito SITUATIONS_UPDATE y puede operar el caso (alcance de coordinación
+   * + propiedad), es decir, quien podría haber retirado. Cualquier denegación
+   * se oculta como 404 para no revelar la existencia de la retirada.
    */
-  private assertCanViewRetiredEvidence(
-    actor: AuthPayload,
-    situation: Situation,
-  ): void {
-    if (actor.roleCode === ADMIN_ROLE_CODE) {
-      return;
-    }
-    this.scopeService.assertSituationInScope(actor, situation);
-    this.scopeService.assertCanOperateSituation(actor, situation);
-  }
-
   private canViewRetiredEvidence(
     actor: AuthPayload,
     situation: Situation,
   ): boolean {
+    if (actor.roleCode === ADMIN_ROLE_CODE) {
+      return true;
+    }
     try {
-      this.assertCanViewRetiredEvidence(actor, situation);
+      this.scopeService.assertPermission(actor, 'SITUATIONS_UPDATE');
+      this.scopeService.assertSituationInScope(actor, situation);
+      this.scopeService.assertCanOperateSituation(actor, situation);
       return true;
     } catch (error) {
       if (error instanceof HttpException) {
