@@ -28,6 +28,9 @@ Fases **cerradas en código, sin desplegar a Cloud SQL / `main`:**
 **Backend (01B.2, después de `2bdf12f`):**  
 `1cdd00e` integridad · `f3ddeb6` prompt · `80ed87b` K-01 · `771bb96` K-02/K-06 · `9d8c49f` D8 · `d1946fc` recomendaciones · `47746ca` evidencias · `d12ca0b` fixes PG · `d0f2b67` tests PG · `6408bc4` reglas CLAUDE.
 
+**Correcciones de la revisión Codex 01B.2 (locales, sin push):**  
+`d3ddaf9` evidencia retirada por id · `33d65ed` campos dinámicos del prompt · `983711d` 422 `PROMPT_TOO_LARGE`.
+
 **Frontend (01B.2):**  
 `6e71c0b` Director / regla de estado (K-01) · `e38bca1` Coordinador / conteos oficiales (K-03).  
 También en la rama (previo): `cbf4595` e2e con PostgreSQL efímero marcado.
@@ -43,6 +46,11 @@ Revisión de código ya escrito (sin redesplegar ni migrar Cloud SQL):
 5. Migración `1788800000000`: no inventa fechas; pendientes `PENDING_*` explícitos.
 6. Retiro de evidencias (`1788900000000`): sin borrado físico; motivo obligatorio; `DELETE` compatible.
 7. Suites PG reales y guarda de base desechable; contenedor con roles `NOLOGIN` + app antes de `1788700000000+`.
+8. Correcciones de la revisión: evidencia retirada por id (404 sin permiso de historial), saneamiento de catálogos y códigos en el prompt, 422 `PROMPT_TOO_LARGE` conservado.
+
+### Hallazgo pendiente para la integración de KPIs (no corregido aquí)
+
+El parser del frontend (`NOVEX_FRONTEND` · `operational-kpi.service.ts`, `parseDirectionIntegrity`) **rechaza** con `OperationalKpiContractError` cualquier `direction.directionIntegrity.rule` fuera de su lista fija (`DIRECTION_INTEGRITY_RULES`). Hoy las 6 reglas coinciden con el backend (`operational-direction-integrity.ts`), por lo que no bloquea; pero una regla nueva rompería toda la respuesta de Dirección, aunque el contrato se declaró aditivo. Se deja sin tocar porque los KPIs están en trabajo de otro integrante; resolverlo en esa integración (p. ej. regla desconocida → explicación `null` en lugar de error) y sincronizar la lista con el backend.
 
 ## Pendientes de frontend y UX/UI
 

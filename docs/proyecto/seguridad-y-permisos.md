@@ -204,7 +204,9 @@ Backend `refactor/novex-consolidacion` (commits `1cdd00e`…), frontend `6e71c0b
 | 120k caracteres: solo aviso | límite duro 120.000 caracteres / 256 KiB antes del proveedor: 422 `PROMPT_TOO_LARGE` |
 
 - Textos libres redactados (`redactPersonalData`): correos, teléfonos y documentos (≥7 dígitos), JWT, `Bearer`, `token=`/`password:`. **Limitación:** un nombre propio escrito dentro del relato no se detecta.
-- La interpretación de registro (`/intelligence`) aplica la misma redacción, delimitación y límite.
+- **Todo** valor dinámico (relatos, catálogos de categorías y coordinaciones, códigos, análisis previo) pasa por `sanitizePromptText` / `sanitizeCatalogText` (redacción, sin caracteres de control, marcadores `<<<`/`>>>` neutralizados; catálogos en una línea y ≤300 caracteres). Fuera del bloque no confiable solo se enumeran códigos con forma de código (`isSafeCatalogCode`); nombres y descripciones de catálogo van dentro del expediente.
+- La interpretación de registro (`/intelligence`) aplica la misma redacción, delimitación y límite; área reportante y catálogos también van dentro del bloque.
+- `POST /situations/:id/analyze`: el prompt fuera de límites responde **422** `PROMPT_TOO_LARGE` (no 503); la indisponibilidad del proveedor sigue en 503. El mensaje de errores internos no HTTP no llega al cliente ni a la línea de tiempo `AI_ANALYSIS_FAILED`.
 - `GET /situations/:id/analysis/history/:version`: `promptSnapshot` solo para **ADMIN**; el resto recibe `null` y `promptSnapshotWithheld: true`. Auditoría del análisis con `contextPolicy`.
 - Los `prompt_snapshot` **anteriores** a esta fase pueden contener datos personales: no se tocaron.
 
@@ -217,6 +219,7 @@ Backend `refactor/novex-consolidacion` (commits `1cdd00e`…), frontend `6e71c0b
 - Toda escritura manual de recomendaciones (`PATCH /recommendations/:id`, completar, crear) se confirma con la situación `FOR SHARE` y solo si es `OPEN`/`IN_PROGRESS`: 409 `SITUATION_CLOSED` / `SITUATION_CANCELLED`. Lectura histórica intacta.
 - **Retiro de evidencias** (sin borrado físico): `POST /situations/:id/evidences/:evidenceId/retirement` `{ reason }` (10–1000), permiso `SITUATIONS_UPDATE` + alcance de operación, caso activo; 409 `EVIDENCE_ALREADY_RETIRED`. `DELETE` se conserva por compatibilidad: **retira** y exige el mismo `reason`. Auditoría obligatoria `SITUATION_EVIDENCE_RETIRED` y evento `ATTACHMENT_RETIRED`, sin el texto del motivo.
 - `GET /situations/:id/evidences` devuelve solo activas; `?includeRetired=true` devuelve el historial (con `retirement`) y exige poder operar el caso o ser ADMIN. Respuesta aditiva: `status: 'ACTIVE' | 'RETIRED'`, `retirement`.
+- `GET /situations/:id/evidences/:evidenceId`: una activa exige leer el caso; una **retirada** exige el mismo permiso que `includeRetired` y, sin él, responde 404 igual que una inexistente (sin estado ni motivo). La regla vive en `SituationEvidenceService` (no solo en el controlador).
 - En base: CHECK todo-o-nada con motivo no nulo; trigger que hace definitivo el retiro.
 
 ## Pruebas destructivas
