@@ -152,9 +152,9 @@ const SITUATION_OPERATION_PERMISSION_CODES = [
 
 /**
  * KPIs analíticos: capability distinta de REPORTS_VIEW.
- * En esta fase solo DIRECTOR la recibe. ADMIN no la hereda del filtro ALL.
+ * La reciben DIRECTOR y ADMIN (el ADMIN la hereda del filtro ALL; ver
+ * `GrantAdminKpisView` para instalaciones existentes).
  */
-const DIRECTOR_ONLY_PERMISSION_CODES = ['KPIS_VIEW'];
 
 /**
  * REPARTO POR ROL.
@@ -167,15 +167,14 @@ const DIRECTOR_ONLY_PERMISSION_CODES = ['KPIS_VIEW'];
  *
  * ADMIN conserva USERS_*, COORDINATIONS_MANAGE y SYSTEM_CONFIGURATION, y
  * recibe SITUATIONS_CANCEL / SITUATIONS_TRANSFER (acciones administrativas con
- * motivo, Fase 01B.1). NO recibe CREATE/UPDATE/CLOSE ni AI_ANALYZE.
+ * motivo, Fase 01B.1) y KPIS_VIEW (consulta de indicadores). NO recibe
+ * CREATE/UPDATE/CLOSE ni AI_ANALYZE.
  */
 export const ROLE_PERMISSION_CODES: Readonly<
   Record<'ADMIN' | 'DIRECTOR' | 'ANALISTA' | 'COORDINADOR', readonly string[]>
 > = {
   ADMIN: ALL_PERMISSION_CODES.filter(
-    (code) =>
-      !SITUATION_OPERATION_PERMISSION_CODES.includes(code) &&
-      !DIRECTOR_ONLY_PERMISSION_CODES.includes(code),
+    (code) => !SITUATION_OPERATION_PERMISSION_CODES.includes(code),
   ),
   DIRECTOR: [
     'AUTH_VIEW_PROFILE',

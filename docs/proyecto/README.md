@@ -11,7 +11,7 @@ Ciclo: reportar → seguir → resolver con aprendizaje.
 
 | Documento | Contenido |
 |---|---|
-| [CONTINUIDAD.md](./CONTINUIDAD.md) | Estado al cerrar jornada, SHAs, cómo retomar en otro PC |
+| [CONTINUIDAD.md](./CONTINUIDAD.md) | Estado al cerrar jornada, SHAs, retomar en otro PC; **plan Fase 02** (integración FE) |
 | [arquitectura.md](./arquitectura.md) | Stack, módulos activos/latentes, contratos FE↔BE |
 | [funcional-y-roles.md](./funcional-y-roles.md) | Flujos y capacidades de ADMIN, DIRECTOR, ANALISTA, COORDINADOR |
 | [seguridad-y-permisos.md](./seguridad-y-permisos.md) | RBAC; 01A; **01B.1** anulación/traslado; **01B.2** IA/KPIs/evidencias |

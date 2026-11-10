@@ -12,6 +12,7 @@
 | 2026-11-09 | **Fase 01B.1 cerrada en código** (BE tip `2bdf12f`): anulación, traslado, auditoría transaccional, historial endurecido e indicadores históricos. Commits Codex `119ea7b`…`2bdf12f`. Pruebas 1.158 unit + 61 PG. **Sin desplegar**: exige propietario `NOLOGIN` + rol app + migrador; UI FE de anular/trasladar pendiente. |
 | 2026-11-09 | **Fase 01B.2 cerrada en código** (BE `6408bc4`, FE `e38bca1`): IA solo sugiere + prompt minimizado; K-01/K-02/K-03/K-06; D8; recomendaciones congeladas; retiro de evidencias. Migraciones `17888*`/`17889*` sin aplicar. |
 | 2026-11-09 | Sincronización GitHub: docs vigentes versionadas en `NOVEX_BACKEND/docs/proyecto/` + `CONTINUIDAD.md`; push solo a `refactor/novex-consolidacion` (sin tocar `main`/prod). |
+| 2026-11-10 | **Fase 02 planificada (solo docs):** integración FE de anulación/traslado/evidencias/IA/sesión sobre contratos 01B; sin código ni despliegue. Detalle en `CONTINUIDAD.md` §Fase 02. |
 
 ## Ramas de trabajo (objetivo post-limpieza)
 

@@ -157,9 +157,12 @@ describe('rutas de situaciones · metadata de autorización', () => {
 });
 
 describe('KPIS_VIEW · PermissionsGuard + ROLE_PERMISSION_CODES', () => {
-  it('DIRECTOR puede; ANALISTA, COORDINADOR y ADMIN no', () => {
+  it('DIRECTOR y ADMIN pueden; ANALISTA y COORDINADOR no', () => {
     expect(() =>
       guardRequiring('KPIS_VIEW').canActivate(contextWith(actor('DIRECTOR'))),
+    ).not.toThrow();
+    expect(() =>
+      guardRequiring('KPIS_VIEW').canActivate(contextWith(actor('ADMIN'))),
     ).not.toThrow();
     expect(() =>
       guardRequiring('KPIS_VIEW').canActivate(contextWith(actor('ANALISTA'))),
@@ -168,9 +171,6 @@ describe('KPIS_VIEW · PermissionsGuard + ROLE_PERMISSION_CODES', () => {
       guardRequiring('KPIS_VIEW').canActivate(
         contextWith(actor('COORDINADOR')),
       ),
-    ).toThrow(ForbiddenException);
-    expect(() =>
-      guardRequiring('KPIS_VIEW').canActivate(contextWith(actor('ADMIN'))),
     ).toThrow(ForbiddenException);
   });
 

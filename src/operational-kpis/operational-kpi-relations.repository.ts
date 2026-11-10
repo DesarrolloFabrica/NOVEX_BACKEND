@@ -93,7 +93,7 @@ export class OperationalKpiRelationsRepository {
       const ownerColumn = historicalOwner(args.ownerColumn);
       const sql = `
         SELECT
-          ${partnerColumn} AS "coordinationId",
+          c.id AS "coordinationId",
           c.code AS code,
           c.name AS name,
           c.short_name AS "shortName",
@@ -106,7 +106,9 @@ export class OperationalKpiRelationsRepository {
           AND ${partnerColumn} IS NOT NULL
           AND ${partnerColumn} IS DISTINCT FROM $1
           AND ${kpiActiveAtCutWindowSql('s', '$3')}
-        GROUP BY ${partnerColumn}, c.code, c.name, c.short_name
+        -- c.id es la coordinación socia (JOIN sobre la expresión histórica);
+        -- agrupar por ella evita que Postgres rechace la subconsulta correlada.
+        GROUP BY c.id, c.code, c.name, c.short_name
         ORDER BY value DESC, c.short_name ASC
       `;
       return this.mapRows(
@@ -132,7 +134,7 @@ export class OperationalKpiRelationsRepository {
     const endExclusive = bogotaDayEndExclusiveIso(args.toYmd);
     const sql = `
       SELECT
-        ${partnerColumn} AS "coordinationId",
+        c.id AS "coordinationId",
         c.code AS code,
         c.name AS name,
         c.short_name AS "shortName",
@@ -147,7 +149,7 @@ export class OperationalKpiRelationsRepository {
         AND ${column} IS NOT NULL
         AND ${column} >= $3
         AND ${column} < $4
-      GROUP BY ${args.partnerColumn}, c.code, c.name, c.short_name
+      GROUP BY c.id, c.code, c.name, c.short_name
       ORDER BY value DESC, c.short_name ASC
     `;
     return this.mapRows(
