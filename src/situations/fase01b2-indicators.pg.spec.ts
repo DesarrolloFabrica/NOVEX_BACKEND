@@ -28,6 +28,8 @@ import { SituationTimelineRepository } from '../situation-timeline/repositories/
 import { SituationTimelineService } from '../situation-timeline/situation-timeline.service';
 import { User } from '../users/entities/user.entity';
 import { Situation } from './entities/situation.entity';
+import { SituationsRepository } from './repositories/situations.repository';
+import { SituationAccessService } from './situation-access.service';
 
 /**
  * FASE 01B.2 contra PostgreSQL REAL (opt-in: NOVEX_PG_IT=1), solo en una base
@@ -431,7 +433,10 @@ suite(
         const evidenceRepository = new SituationEvidenceRepository(ds);
         const service = new SituationEvidenceService(
           evidenceRepository,
-          ds.getRepository(Situation),
+          new SituationAccessService(
+            new OperationalScopeService(),
+            new SituationsRepository(ds),
+          ),
           new EvidenceStorageService(),
           timeline,
           audit,
@@ -459,10 +464,15 @@ suite(
         expect(Number(count)).toBe(1);
 
         // No aparece como activa ni en el contexto de Gemini.
-        expect((await service.findBySituation(situationId)).total).toBe(0);
         expect(
-          (await service.findBySituation(situationId, { includeRetired: true }))
-            .items[0].retirement?.reason,
+          (await service.findBySituation(situationId, coordinator)).total,
+        ).toBe(0);
+        expect(
+          (
+            await service.findBySituation(situationId, coordinator, {
+              includeRetired: true,
+            })
+          ).items[0].retirement?.reason,
         ).toBe('Nota duplicada por error del usuario');
         const builder = new SituationContextBuilder(
           {} as never,

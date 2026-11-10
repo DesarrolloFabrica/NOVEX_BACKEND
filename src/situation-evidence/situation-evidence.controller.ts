@@ -16,7 +16,6 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { SituationAccessService } from '../situations/situation-access.service';
-import { ADMIN_ROLE_CODE } from '../auth/services/operational-scope.service';
 import {
   CreateSituationEvidenceDto,
   ListSituationEvidencesQueryDto,
@@ -49,42 +48,33 @@ export class SituationEvidenceController {
   /**
    * Por defecto solo evidencias activas. `?includeRetired=true` devuelve el
    * historial completo con los retiros (Fase 01B.2) y exige más que leer el
-   * caso: poder operarlo (quien podría haber retirado) o ser ADMIN.
+   * caso: poder operarlo (quien podría haber retirado) o ser ADMIN. La
+   * autorización de lectura la aplica el servicio.
    */
   @Get(':id/evidences')
   @RequirePermissions('SITUATIONS_VIEW')
-  async findBySituation(
+  findBySituation(
     @Param('id', ParseUUIDPipe) situationId: string,
     @Query() query: ListSituationEvidencesQueryDto,
     @CurrentUser() user: AuthPayload,
   ) {
-    await this.situationAccessService.requireAccessibleSituation(
-      user,
-      situationId,
-    );
-    if (query.includeRetired && user.roleCode !== ADMIN_ROLE_CODE) {
-      await this.situationAccessService.requireOperableSituation(
-        user,
-        situationId,
-      );
-    }
-    return this.evidenceService.findBySituation(situationId, {
+    return this.evidenceService.findBySituation(situationId, user, {
       includeRetired: query.includeRetired === true,
     });
   }
 
+  /**
+   * Una evidencia retirada exige el mismo permiso que `includeRetired`; sin él
+   * responde 404 (servicio).
+   */
   @Get(':id/evidences/:evidenceId')
   @RequirePermissions('SITUATIONS_VIEW')
-  async getById(
+  getById(
     @Param('id', ParseUUIDPipe) situationId: string,
     @Param('evidenceId', ParseUUIDPipe) evidenceId: string,
     @CurrentUser() user: AuthPayload,
   ) {
-    await this.situationAccessService.requireAccessibleSituation(
-      user,
-      situationId,
-    );
-    return this.evidenceService.getById(situationId, evidenceId);
+    return this.evidenceService.getById(situationId, evidenceId, user);
   }
 
   /**

@@ -1,18 +1,22 @@
 import {
   ConflictException,
+  HttpException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager } from 'typeorm';
 import { AuditAction, AuditResourceType } from '../audit/audit-action.enum';
 import { AuditLogService } from '../audit/audit-log.service';
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
-import { OperationalScopeService } from '../auth/services/operational-scope.service';
+import {
+  ADMIN_ROLE_CODE,
+  OperationalScopeService,
+} from '../auth/services/operational-scope.service';
 import { EvidenceType } from '../common/enums/situation-evidence.enums';
 import { TimelineEventType } from '../common/enums/situation-timeline.enums';
 import { isUniqueViolation } from '../common/utils/database-errors';
 import { Situation } from '../situations/entities/situation.entity';
+import { SituationAccessService } from '../situations/situation-access.service';
 import { SituationTimelineService } from '../situation-timeline/situation-timeline.service';
 import {
   CreateSituationEvidenceDto,
@@ -31,8 +35,7 @@ export const EVIDENCE_ALREADY_RETIRED_CODE = 'EVIDENCE_ALREADY_RETIRED';
 export class SituationEvidenceService {
   constructor(
     private readonly evidenceRepository: SituationEvidenceRepository,
-    @InjectRepository(Situation)
-    private readonly situationsRepository: Repository<Situation>,
+    private readonly situationAccessService: SituationAccessService,
     private readonly storageService: EvidenceStorageService,
     private readonly timelineService: SituationTimelineService,
     private readonly auditLogService: AuditLogService,
@@ -148,16 +151,32 @@ export class SituationEvidenceService {
     return this.toResponse(withUser);
   }
 
+  /**
+   * LECTURA DE EVIDENCIAS (Fase 01B.2). La autorización vive en el servicio,
+   * no solo en el controlador, para que ninguna ruta ni consumidor la omita:
+   *   - leer el caso (`requireAccessibleSituation`) basta para las ACTIVAS;
+   *     fuera de alcance o inexistente: 404;
+   *   - `includeRetired` exige además poder operar el caso o ser ADMIN
+   *     (`assertCanViewRetiredEvidence`).
+   */
   async findBySituation(
     situationId: string,
+    actor: AuthPayload,
     options: { includeRetired?: boolean } = {},
   ): Promise<SituationEvidencesListResponseDto> {
-    await this.ensureSituationExists(situationId);
+    const situation =
+      await this.situationAccessService.requireAccessibleSituation(
+        actor,
+        situationId,
+      );
+    const includeRetired = options.includeRetired === true;
+    if (includeRetired) {
+      this.assertCanViewRetiredEvidence(actor, situation);
+    }
 
-    const items = await this.evidenceRepository.findBySituationId(
-      situationId,
-      options,
-    );
+    const items = await this.evidenceRepository.findBySituationId(situationId, {
+      includeRetired,
+    });
 
     return {
       situationId,
@@ -166,12 +185,66 @@ export class SituationEvidenceService {
     };
   }
 
+  /**
+   * Consulta individual. Una evidencia ACTIVA sigue la regla de lectura del
+   * caso. Una RETIRADA exige el mismo permiso que `includeRetired`; sin él se
+   * responde 404, igual que si no existiera: conocer el id no revela la
+   * evidencia, su retiro ni su motivo.
+   */
   async getById(
     situationId: string,
     evidenceId: string,
+    actor: AuthPayload,
   ): Promise<SituationEvidenceResponseDto> {
-    const evidence = await this.findEvidenceOrFail(situationId, evidenceId);
+    const situation =
+      await this.situationAccessService.requireAccessibleSituation(
+        actor,
+        situationId,
+      );
+
+    const evidence = await this.evidenceRepository.findByIdAndSituationId(
+      evidenceId,
+      situationId,
+    );
+    if (
+      !evidence ||
+      (evidence.retiredAt && !this.canViewRetiredEvidence(actor, situation))
+    ) {
+      throw new NotFoundException(`Evidencia no encontrada: ${evidenceId}`);
+    }
     return this.toResponse(evidence);
+  }
+
+  /**
+   * Ver evidencias retiradas (y su motivo): ADMIN, o quien puede operar el
+   * caso (alcance de coordinación + propiedad), es decir, quien podría haber
+   * retirado. Lanza 404 (fuera de alcance) o 403 (sin propiedad), igual que la
+   * puerta de operación que usaba antes `includeRetired`.
+   */
+  private assertCanViewRetiredEvidence(
+    actor: AuthPayload,
+    situation: Situation,
+  ): void {
+    if (actor.roleCode === ADMIN_ROLE_CODE) {
+      return;
+    }
+    this.scopeService.assertSituationInScope(actor, situation);
+    this.scopeService.assertCanOperateSituation(actor, situation);
+  }
+
+  private canViewRetiredEvidence(
+    actor: AuthPayload,
+    situation: Situation,
+  ): boolean {
+    try {
+      this.assertCanViewRetiredEvidence(actor, situation);
+      return true;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        return false;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -316,15 +389,6 @@ export class SituationEvidenceService {
     };
   }
 
-  private async ensureSituationExists(situationId: string): Promise<void> {
-    const exists = await this.situationsRepository.exist({
-      where: { id: situationId },
-    });
-    if (!exists) {
-      throw new NotFoundException(`Situación no encontrada: ${situationId}`);
-    }
-  }
-
   private findByClientKey(
     situationId: string,
     clientKey: string,
@@ -332,23 +396,6 @@ export class SituationEvidenceService {
     return this.evidenceRepository.findOne({
       where: { situationId, clientKey },
     });
-  }
-
-  private async findEvidenceOrFail(
-    situationId: string,
-    evidenceId: string,
-  ): Promise<SituationEvidence> {
-    await this.ensureSituationExists(situationId);
-
-    const evidence = await this.evidenceRepository.findByIdAndSituationId(
-      evidenceId,
-      situationId,
-    );
-    if (!evidence) {
-      throw new NotFoundException(`Evidencia no encontrada: ${evidenceId}`);
-    }
-
-    return evidence;
   }
 
   private toResponse(
