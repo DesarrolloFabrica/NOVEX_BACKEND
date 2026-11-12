@@ -209,7 +209,12 @@ export const CATALOG_COORDINATIONS: readonly CoordinationCatalogItem[] = [
     icon: 'coord-servicios',
     imageAsset: 'CoordServicios.png',
     displayOrder: 15,
-    isActive: true,
+    /*
+     * Fusionada en `coord-homologaciones` (migración 1789200000000). La fila se
+     * conserva inactiva por el historial inmutable que puede referenciarla; la
+     * siembra de arranque no debe reactivarla.
+     */
+    isActive: false,
   },
 ] as const;
 

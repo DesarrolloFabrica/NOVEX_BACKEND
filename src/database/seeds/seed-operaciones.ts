@@ -191,7 +191,7 @@ export const OPERACIONES_COORDINATIONS: readonly OperacionesCoordinationSeed[] =
       icon: 'coord-servicios',
       imageAsset: 'CoordServicios.png',
       displayOrder: 15,
-      isActive: true,
+      isActive: false, // fusionada en coord-homologaciones (1789200000000)
     },
   ] as const;
 
