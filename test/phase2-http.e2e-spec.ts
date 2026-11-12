@@ -1,6 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import type { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
 import {
   assertDisposableDatabaseConnection,
@@ -191,7 +192,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
       'analista@t.co',
       'director@t.co',
     ]) {
-      const res = await request(app.getHttpServer())
+      const res = await request(app.getHttpServer() as App)
         .post('/api/v1/auth/email')
         .send({ email })
         .expect(201);
@@ -207,7 +208,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
 
   /** Crea un problema por HTTP, con el proveedor de IA sustituido. */
   async function reportar(email: string, coordinationId: string | null) {
-    const res = await request(app.getHttpServer())
+    const res = await request(app.getHttpServer() as App)
       .post('/api/v1/situations/register-with-analysis')
       .set(auth(email))
       .send({
@@ -254,7 +255,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     });
 
     it('rechaza una coordinación inexistente', async () => {
-      const res = await request(app.getHttpServer())
+      const res = await request(app.getHttpServer() as App)
         .post('/api/v1/situations/register-with-analysis')
         .set(auth('analista@t.co'))
         .send({
@@ -276,7 +277,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     beforeAll(async () => {
       // Un coordinador reporta en otra área como DEPENDENCIA INTER desde la
       // suya (afectada B, responsable A) y un INTERNAL en su propia área.
-      await request(app.getHttpServer())
+      await request(app.getHttpServer() as App)
         .post('/api/v1/situations/register-with-analysis')
         .set(auth('coord.b@t.co'))
         .send({
@@ -299,7 +300,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     });
 
     it('devuelve solo los reportes del autor, de cualquier área', async () => {
-      const res = await request(app.getHttpServer())
+      const res = await request(app.getHttpServer() as App)
         .get('/api/v1/situations?mine=true&limit=50')
         .set(auth('coord.b@t.co'))
         .expect(200);
@@ -317,7 +318,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     });
 
     it('un coordinador LEE su reporte alojado en otra área', async () => {
-      const mios = await request(app.getHttpServer())
+      const mios = await request(app.getHttpServer() as App)
         .get('/api/v1/situations?mine=true&limit=50')
         .set(auth('coord.b@t.co'))
         .expect(200);
@@ -325,7 +326,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
         (i: { coordinationId: string }) => i.coordinationId === ids.areaA,
       );
 
-      const detalle = await request(app.getHttpServer())
+      const detalle = await request(app.getHttpServer() as App)
         .get(`/api/v1/situations/${ajeno?.id}`)
         .set(auth('coord.b@t.co'))
         .expect(200);
@@ -336,7 +337,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     });
 
     it('NO puede leer un reporte AJENO de otra área', async () => {
-      await request(app.getHttpServer())
+      await request(app.getHttpServer() as App)
         .get(`/api/v1/situations/${reporteAjenoDeA}`)
         .set(auth('coord.b@t.co'))
         .expect(404);
@@ -345,7 +346,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     it('el filtro por autor NO se puede falsear desde el cliente', async () => {
       // `createdByUserId` no es un parámetro admitido: el ValidationPipe con
       // whitelist lo descarta y el listado sigue siendo el del actor.
-      const res = await request(app.getHttpServer())
+      const res = await request(app.getHttpServer() as App)
         .get(
           `/api/v1/situations?mine=true&createdByUserId=${ids.admin}&limit=50`,
         )
@@ -372,7 +373,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
       // Desde INTERNAL vivo, un coordinador ya no registra INTERNAL en otra
       // área: su reporte propio en un área ajena nace como DEPENDENCIA (INTER),
       // con el área ajena como responsable.
-      const res = await request(app.getHttpServer())
+      const res = await request(app.getHttpServer() as App)
         .post('/api/v1/situations/register-with-analysis')
         .set(auth('coord.b@t.co'))
         .send({
@@ -391,7 +392,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     });
 
     it('incluye el reporte PROPIO activo de esa coordinación', async () => {
-      const res = await request(app.getHttpServer())
+      const res = await request(app.getHttpServer() as App)
         .get(`/api/v1/situations?coordinationId=${ids.areaA}&limit=50`)
         .set(auth('coord.b@t.co'))
         .expect(200);
@@ -402,7 +403,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     });
 
     it('declara que la lectura fue parcial', async () => {
-      const res = await request(app.getHttpServer())
+      const res = await request(app.getHttpServer() as App)
         .get(`/api/v1/situations?coordinationId=${ids.areaA}&limit=50`)
         .set(auth('coord.b@t.co'))
         .expect(200);
@@ -413,7 +414,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     it('NO incluye los reportes ajenos de esa coordinación', async () => {
       const ajeno = await reportar('analista@t.co', ids.areaA);
 
-      const res = await request(app.getHttpServer())
+      const res = await request(app.getHttpServer() as App)
         .get(`/api/v1/situations?coordinationId=${ids.areaA}&limit=50`)
         .set(auth('coord.b@t.co'))
         .expect(200);
@@ -431,7 +432,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
       // Un reporte suyo en SU área no debe colarse en la lista de la ajena.
       const enSuArea = await reportar('coord.b@t.co', ids.areaB);
 
-      const res = await request(app.getHttpServer())
+      const res = await request(app.getHttpServer() as App)
         .get(`/api/v1/situations?coordinationId=${ids.areaA}&limit=50`)
         .set(auth('coord.b@t.co'))
         .expect(200);
@@ -442,7 +443,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     });
 
     it('sobre SU propia coordinación la lectura es completa', async () => {
-      const res = await request(app.getHttpServer())
+      const res = await request(app.getHttpServer() as App)
         .get(`/api/v1/situations?coordinationId=${ids.areaB}&limit=50`)
         .set(auth('coord.b@t.co'))
         .expect(200);
@@ -451,7 +452,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     });
 
     it('un rol no acotado por área lee completo en cualquier coordinación', async () => {
-      const res = await request(app.getHttpServer())
+      const res = await request(app.getHttpServer() as App)
         .get(`/api/v1/situations?coordinationId=${ids.areaA}&limit=50`)
         .set(auth('admin@t.co'))
         .expect(200);
@@ -469,7 +470,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     });
 
     it('el coordinador del área responsable ve canResolve = true', async () => {
-      const res = await request(app.getHttpServer())
+      const res = await request(app.getHttpServer() as App)
         .get(`/api/v1/situations/${problemaDeA}`)
         .set(auth('coord.a@t.co'))
         .expect(200);
@@ -485,7 +486,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
       ],
       ['coord.b@t.co', 'COORDINADOR de otra área'],
     ])('rechaza a %s (%s)', async (email) => {
-      const res = await request(app.getHttpServer())
+      const res = await request(app.getHttpServer() as App)
         .post(`/api/v1/situations/${problemaDeA}/resolution`)
         .set(auth(email))
         .send({ learning: 'Intento no autorizado' });
@@ -495,7 +496,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     });
 
     it('rechaza un aprendizaje vacío', async () => {
-      const res = await request(app.getHttpServer())
+      const res = await request(app.getHttpServer() as App)
         .post(`/api/v1/situations/${problemaDeA}/resolution`)
         .set(auth('coord.a@t.co'))
         .send({ learning: '   ' });
@@ -503,7 +504,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     });
 
     it('el coordinador responsable resuelve y queda el aprendizaje', async () => {
-      const res = await request(app.getHttpServer())
+      const res = await request(app.getHttpServer() as App)
         .post(`/api/v1/situations/${problemaDeA}/resolution`)
         .set(auth('coord.a@t.co'))
         .send({ learning: 'Faltó un plan de reversión documentado.' })
@@ -522,13 +523,13 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
     });
 
     it('una segunda resolución no sobrescribe nada', async () => {
-      const res = await request(app.getHttpServer())
+      const res = await request(app.getHttpServer() as App)
         .post(`/api/v1/situations/${problemaDeA}/resolution`)
         .set(auth('coord.a@t.co'))
         .send({ learning: 'Segundo intento' });
       expect(res.status).toBe(409);
 
-      const detalle = await request(app.getHttpServer())
+      const detalle = await request(app.getHttpServer() as App)
         .get(`/api/v1/situations/${problemaDeA}`)
         .set(auth('coord.a@t.co'))
         .expect(200);
@@ -541,13 +542,13 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
       const otro = await reportar('analista@t.co', ids.areaA);
       const id = (otro.body as ReportBody).situation.id;
 
-      const res = await request(app.getHttpServer())
+      const res = await request(app.getHttpServer() as App)
         .patch(`/api/v1/situations/${id}`)
         .set(auth('coord.a@t.co'))
         .send({ status: 'CLOSED', statusComment: 'Intento de atajo' });
       expect(res.status).toBe(403);
 
-      const detalle = await request(app.getHttpServer())
+      const detalle = await request(app.getHttpServer() as App)
         .get(`/api/v1/situations/${id}`)
         .set(auth('coord.a@t.co'))
         .expect(200);
@@ -563,7 +564,7 @@ describe('Fase 2 · HTTP real contra base aislada', () => {
         [id],
       );
 
-      const res = await request(app.getHttpServer())
+      const res = await request(app.getHttpServer() as App)
         .get(`/api/v1/situations/${id}`)
         .set(auth('coord.a@t.co'))
         .expect(200);

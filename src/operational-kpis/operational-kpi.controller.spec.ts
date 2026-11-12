@@ -4,6 +4,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { GUARDS_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import type { App } from 'supertest/types';
 import { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { REQUIRE_PERMISSIONS_KEY } from '../auth/decorators/require-permissions.decorator';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
@@ -228,7 +229,7 @@ describe('GET /operational-kpis', () => {
   });
 
   it('GET ?scope=direction → 200', async () => {
-    const response = await request(app.getHttpServer())
+    const response = await request(app.getHttpServer() as App)
       .get('/operational-kpis')
       .query({ scope: 'direction' })
       .expect(200);
@@ -242,7 +243,7 @@ describe('GET /operational-kpis', () => {
   });
 
   it('GET ?scope=coordination&coordinationId= → 200', async () => {
-    const response = await request(app.getHttpServer())
+    const response = await request(app.getHttpServer() as App)
       .get('/operational-kpis')
       .query({ scope: 'coordination', coordinationId: AREA_A })
       .expect(200);
@@ -256,35 +257,35 @@ describe('GET /operational-kpis', () => {
   });
 
   it('scope inexistente → 400', async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as App)
       .get('/operational-kpis')
       .query({ scope: 'group' })
       .expect(400);
   });
 
   it('coordinationId inválida → 400', async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as App)
       .get('/operational-kpis')
       .query({ scope: 'coordination', coordinationId: 'no-es-uuid' })
       .expect(400);
   });
 
   it('coordinationId faltante → 400', async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as App)
       .get('/operational-kpis')
       .query({ scope: 'coordination' })
       .expect(400);
   });
 
   it('direction + coordinationId → 400', async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as App)
       .get('/operational-kpis')
       .query({ scope: 'direction', coordinationId: AREA_A })
       .expect(400);
   });
 
   it('GET /compare?coordinationIds=B,A → 200 en ese orden', async () => {
-    const response = await request(app.getHttpServer())
+    const response = await request(app.getHttpServer() as App)
       .get('/operational-kpis/compare')
       .query({ coordinationIds: `${AREA_B},${AREA_A}` })
       .expect(200);
@@ -301,27 +302,27 @@ describe('GET /operational-kpis', () => {
   });
 
   it('compare sin ids → 400', async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as App)
       .get('/operational-kpis/compare')
       .expect(400);
   });
 
   it('compare con 1 id → 400', async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as App)
       .get('/operational-kpis/compare')
       .query({ coordinationIds: AREA_A })
       .expect(400);
   });
 
   it('compare con id duplicado → 400', async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as App)
       .get('/operational-kpis/compare')
       .query({ coordinationIds: `${AREA_A},${AREA_A}` })
       .expect(400);
   });
 
   it('compare con UUID inválido → 400', async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as App)
       .get('/operational-kpis/compare')
       .query({ coordinationIds: `${AREA_A},no-uuid` })
       .expect(400);
@@ -329,7 +330,7 @@ describe('GET /operational-kpis', () => {
 
   it('compare con id inexistente → 404', async () => {
     const missing = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as App)
       .get('/operational-kpis/compare')
       .query({ coordinationIds: `${AREA_A},${missing}` })
       .expect(404);
@@ -341,14 +342,14 @@ describe('GET /operational-kpis', () => {
       (_, index) =>
         `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
     );
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as App)
       .get('/operational-kpis/compare')
       .query({ coordinationIds: ids.join(',') })
       .expect(400);
   });
 
   it('history coordination → 200', async () => {
-    const response = await request(app.getHttpServer())
+    const response = await request(app.getHttpServer() as App)
       .get('/operational-kpis/history')
       .query({
         scope: 'coordination',
@@ -368,7 +369,7 @@ describe('GET /operational-kpis', () => {
   });
 
   it('history sin coordinationId → 400', async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as App)
       .get('/operational-kpis/history')
       .query({
         scope: 'coordination',
@@ -381,7 +382,7 @@ describe('GET /operational-kpis', () => {
   });
 
   it('history metric inválida → 400', async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as App)
       .get('/operational-kpis/history')
       .query({
         scope: 'coordination',
@@ -396,7 +397,7 @@ describe('GET /operational-kpis', () => {
 
   it('history coordinación inexistente → 404', async () => {
     coordinationsRepository.findActiveById.mockResolvedValueOnce(null);
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as App)
       .get('/operational-kpis/history')
       .query({
         scope: 'coordination',
@@ -410,7 +411,7 @@ describe('GET /operational-kpis', () => {
   });
 
   it('breakdown coordination → 200', async () => {
-    const response = await request(app.getHttpServer())
+    const response = await request(app.getHttpServer() as App)
       .get('/operational-kpis/breakdown')
       .query({
         scope: 'coordination',
@@ -429,7 +430,7 @@ describe('GET /operational-kpis', () => {
   });
 
   it('breakdown sin coordinationId → 400', async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as App)
       .get('/operational-kpis/breakdown')
       .query({
         scope: 'coordination',
@@ -442,7 +443,7 @@ describe('GET /operational-kpis', () => {
   });
 
   it('breakdown dimension inválida → 400', async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as App)
       .get('/operational-kpis/breakdown')
       .query({
         scope: 'coordination',

@@ -8,6 +8,7 @@ import {
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import request from 'supertest';
+import type { App } from 'supertest/types';
 import { AuthPayload } from '../auth/contracts/auth-payload.contract';
 import { OperationalScopeService } from '../auth/services/operational-scope.service';
 import { UserStatus } from '../common/enums/identity.enums';
@@ -345,7 +346,7 @@ describe('GET /operational-kpis/history?kind=… (HTTP)', () => {
   });
 
   it('acepta kind + calendarEnd sin granularity → 200', async () => {
-    const response = await request(app.getHttpServer())
+    const response = await request(app.getHttpServer() as App)
       .get('/operational-kpis/history')
       .query({
         scope: 'coordination',
@@ -366,7 +367,7 @@ describe('GET /operational-kpis/history?kind=… (HTTP)', () => {
   });
 
   it('kind inválido → 400', async () => {
-    await request(app.getHttpServer())
+    await request(app.getHttpServer() as App)
       .get('/operational-kpis/history')
       .query({
         scope: 'coordination',

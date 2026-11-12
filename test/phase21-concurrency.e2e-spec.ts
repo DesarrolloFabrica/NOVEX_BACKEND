@@ -1,6 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import type { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
 import {
   assertDisposableDatabaseConnection,
@@ -142,7 +143,7 @@ describe('Fase 2.1 · resolución concurrente contra Nest real', () => {
       )[0];
       userId[email] = row.id;
 
-      const res = await request(app.getHttpServer())
+      const res = await request(app.getHttpServer() as App)
         .post('/api/v1/auth/email')
         .send({ email })
         .expect(201);
@@ -157,7 +158,7 @@ describe('Fase 2.1 · resolución concurrente contra Nest real', () => {
   const auth = (email: string) => ({ Authorization: `Bearer ${token[email]}` });
 
   async function crearProblema(): Promise<string> {
-    const res = await request(app.getHttpServer())
+    const res = await request(app.getHttpServer() as App)
       .post('/api/v1/situations/register-with-analysis')
       .set(auth('uno@conc.co'))
       .send({
@@ -182,11 +183,11 @@ describe('Fase 2.1 · resolución concurrente contra Nest real', () => {
      * bloqueo pesimista tiene que serializarlas.
      */
     const [a, b] = await Promise.all([
-      request(app.getHttpServer())
+      request(app.getHttpServer() as App)
         .post(`/api/v1/situations/${id}/resolution`)
         .set(auth('uno@conc.co'))
         .send({ learning: 'Aprendizaje de UNO' }),
-      request(app.getHttpServer())
+      request(app.getHttpServer() as App)
         .post(`/api/v1/situations/${id}/resolution`)
         .set(auth('dos@conc.co'))
         .send({ learning: 'Aprendizaje de DOS' }),
@@ -225,7 +226,7 @@ describe('Fase 2.1 · resolución concurrente contra Nest real', () => {
 
     const respuestas = await Promise.all(
       Array.from({ length: 5 }, (_, i) =>
-        request(app.getHttpServer())
+        request(app.getHttpServer() as App)
           .post(`/api/v1/situations/${id}/resolution`)
           .set(auth(i % 2 === 0 ? 'uno@conc.co' : 'dos@conc.co'))
           .send({ learning: `Aprendizaje simultáneo ${i}` }),
@@ -254,7 +255,7 @@ describe('Fase 2.1 · resolución concurrente contra Nest real', () => {
      * EntityManager simulado no habría visto nunca ese error.
      */
     const id = await crearProblema();
-    const res = await request(app.getHttpServer())
+    const res = await request(app.getHttpServer() as App)
       .post(`/api/v1/situations/${id}/resolution`)
       .set(auth('uno@conc.co'))
       .send({ learning: 'El bloqueo no revienta' });
