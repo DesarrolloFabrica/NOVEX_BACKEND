@@ -267,6 +267,87 @@ describe('UsersService admin registration', () => {
     ]);
   });
 
+  it('da de alta un analista sin coordinación (alcance global)', async () => {
+    const {
+      service,
+      usersRepository,
+      rolesRepository,
+      coordinationsRepository,
+    } = createService();
+    usersRepository.findByEmail.mockResolvedValue(null);
+    rolesRepository.findOne.mockResolvedValue({
+      id: 'role-analyst',
+      code: 'ANALISTA',
+      name: 'Analista',
+      isActive: true,
+    });
+    usersRepository.findByIdWithRelations.mockResolvedValue({
+      id: 'user-1',
+      email: 'ana@cun.edu.co',
+      fullName: 'Ana Global',
+      status: UserStatus.ACTIVE,
+      roleId: 'role-analyst',
+      role: { id: 'role-analyst', code: 'ANALISTA', name: 'Analista' },
+      coordinationId: null,
+      coordination: null,
+    });
+
+    const result = await service.create(
+      {
+        fullName: 'Ana Global',
+        email: 'ana@cun.edu.co',
+        roleCode: 'ANALISTA',
+        coordinationId: null,
+        status: UserStatus.ACTIVE,
+      },
+      adminActor,
+    );
+
+    expect(coordinationsRepository.findOne).not.toHaveBeenCalled();
+    expect(result.coordinationId).toBeNull();
+  });
+
+  it('rechaza un coordinador sin coordinación', async () => {
+    const { service, usersRepository, rolesRepository } = createService();
+    usersRepository.findByEmail.mockResolvedValue(null);
+    rolesRepository.findOne.mockResolvedValue(role);
+
+    await expect(
+      service.create(
+        {
+          fullName: 'Coord sin área',
+          email: 'c@cun.edu.co',
+          roleCode: 'COORDINADOR',
+          status: UserStatus.ACTIVE,
+        },
+        adminActor,
+      ),
+    ).rejects.toThrow(/necesita una coordinación/);
+  });
+
+  it('nadie se desactiva ni se cambia el rol a sí mismo', async () => {
+    const { service, usersRepository } = createService();
+    usersRepository.findByIdWithRelations.mockResolvedValue({
+      id: adminActor.sub,
+      fullName: 'Admin',
+      status: UserStatus.ACTIVE,
+      coordinationId: null,
+      coordination: null,
+      role: { id: 'role-admin', code: 'ADMIN' },
+    });
+
+    await expect(
+      service.update(
+        adminActor.sub,
+        { status: UserStatus.INACTIVE },
+        adminActor,
+      ),
+    ).rejects.toThrow(/propia cuenta/);
+    await expect(
+      service.update(adminActor.sub, { roleCode: 'ANALISTA' }, adminActor),
+    ).rejects.toThrow(/propia cuenta/);
+  });
+
   it('falla al actualizar usuario inexistente', async () => {
     const { service, usersRepository } = createService();
     usersRepository.findByIdWithRelations.mockResolvedValue(null);

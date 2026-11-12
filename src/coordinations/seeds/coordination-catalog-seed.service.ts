@@ -14,6 +14,11 @@ import {
   CATALOG_COORDINATIONS,
   IMPACT_AREA_COORDINATION_CODE,
 } from './coordinations.catalog.seed';
+import { AuditResourceType } from '../../audit/audit-action.enum';
+import {
+  COORDINATION_ACTIONS,
+  findAdminManagedIds,
+} from '../../audit/admin-managed';
 
 @Injectable()
 export class CoordinationCatalogSeedService implements OnApplicationBootstrap {
@@ -55,10 +60,20 @@ export class CoordinationCatalogSeedService implements OnApplicationBootstrap {
   }
 
   private async seedCoordinations(): Promise<Map<string, Coordination>> {
+    // Coordinaciones editadas desde la Consola: el catálogo no las pisa.
+    const adminManaged = await findAdminManagedIds(
+      this.coordinationsRepository.manager,
+      AuditResourceType.COORDINATION,
+      COORDINATION_ACTIONS,
+    );
     for (const item of CATALOG_COORDINATIONS) {
       const existing = await this.coordinationsRepository.findOne({
         where: { code: item.code },
       });
+
+      if (existing && adminManaged.has(existing.id)) {
+        continue;
+      }
 
       if (existing) {
         await this.coordinationsRepository.save({

@@ -11,6 +11,11 @@ import { PermissionsService } from '../../permissions/permissions.service';
 import { ROLE_PERMISSION_CODES } from '../../permissions/seeds/permissions.catalog.seed';
 import { RolePermissionsRepository } from '../../permissions/repositories/role-permissions.repository';
 import { Role } from '../../roles/entities/role.entity';
+import { AuditResourceType } from '../../audit/audit-action.enum';
+import {
+  ROLE_PERMISSION_ACTIONS,
+  findAdminManagedIds,
+} from '../../audit/admin-managed';
 
 @Injectable()
 export class RolePermissionCatalogSeedService implements OnApplicationBootstrap {
@@ -48,6 +53,12 @@ export class RolePermissionCatalogSeedService implements OnApplicationBootstrap 
 
   private async syncRolePermissions(): Promise<void> {
     const roles = await this.rolesRepository.find();
+    // Matrices editadas desde la Consola: ni asignaciones ni revocaciones.
+    const adminManaged = await findAdminManagedIds(
+      this.rolesRepository.manager,
+      AuditResourceType.ROLE,
+      ROLE_PERMISSION_ACTIONS,
+    );
     const rolesByCode = new Map(roles.map((role) => [role.code, role]));
     let totalAssignments = 0;
     let totalRevocations = 0;
@@ -56,6 +67,12 @@ export class RolePermissionCatalogSeedService implements OnApplicationBootstrap 
       ROLE_PERMISSION_CODES,
     )) {
       const role = rolesByCode.get(roleCode);
+      if (role && adminManaged.has(role.id)) {
+        this.logger.log(
+          `RBAC de ${roleCode} gestionado desde la Consola: se conserva tal cual.`,
+        );
+        continue;
+      }
       if (!role) {
         this.logger.warn(
           `Rol no encontrado para asignación RBAC: ${roleCode}. Omitiendo.`,

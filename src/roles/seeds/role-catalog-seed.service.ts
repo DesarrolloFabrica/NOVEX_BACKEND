@@ -8,6 +8,11 @@ import {
 import { isCatalogSeedEnabled } from '../../configuration/catalog-seed.guard';
 import { Role } from '../entities/role.entity';
 import { CATALOG_ROLES } from './roles.catalog.seed';
+import { AuditResourceType } from '../../audit/audit-action.enum';
+import {
+  ROLE_DEFINITION_ACTIONS,
+  findAdminManagedIds,
+} from '../../audit/admin-managed';
 
 @Injectable()
 export class RoleCatalogSeedService implements OnModuleInit {
@@ -29,10 +34,20 @@ export class RoleCatalogSeedService implements OnModuleInit {
     }
 
     try {
+      // Roles editados desde la Consola: el catálogo no los resincroniza.
+      const adminManaged = await findAdminManagedIds(
+        this.rolesRepository.manager,
+        AuditResourceType.ROLE,
+        ROLE_DEFINITION_ACTIONS,
+      );
       for (const item of CATALOG_ROLES) {
         const existing = await this.rolesRepository.findOne({
           where: { code: item.code },
         });
+
+        if (existing && adminManaged.has(existing.id)) {
+          continue;
+        }
 
         if (existing) {
           await this.rolesRepository.save({

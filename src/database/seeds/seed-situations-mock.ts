@@ -528,13 +528,22 @@ export async function runSituationsMockSeed(
   let recommendations = 0;
   let evidences = 0;
   let timelineEntries = 0;
+  /** Contador por perfil: evita sesgo cuando los índices del ciclo (0/8…) son todos pares. */
+  const profileSlots: Record<IslandMockProfile, number> = {
+    critical: 0,
+    high: 0,
+    attention: 0,
+    normal: 0,
+  };
 
   for (let index = 0; index < count; index += 1) {
     const requestedRecipe = recipeForMockIndex(index);
+    const profileSlot = profileSlots[requestedRecipe.originProfile];
+    profileSlots[requestedRecipe.originProfile] = profileSlot + 1;
     const origin = pickOrigin(
       coordinations,
       requestedRecipe.originProfile,
-      index,
+      profileSlot,
     );
     const recipe: MockSituationRecipe =
       resolveIslandMockProfile(origin.code) === requestedRecipe.originProfile

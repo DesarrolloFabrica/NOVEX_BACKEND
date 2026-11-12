@@ -9,6 +9,7 @@ import {
   IsUUID,
   MaxLength,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import { UserStatus } from '../../common/enums/identity.enums';
 
@@ -38,8 +39,11 @@ export class CreateUserDto {
   @MaxLength(64)
   roleCode!: string;
 
+  /** Obligatoria para COORDINADOR; el resto puede tener alcance global. */
+  @IsOptional()
+  @ValidateIf((_dto, value) => value !== null)
   @IsUUID()
-  coordinationId!: string;
+  coordinationId?: string | null;
 
   @IsEnum(UserStatus)
   status!: UserStatus;
@@ -58,9 +62,11 @@ export class UpdateUserDto {
   @MaxLength(64)
   roleCode?: string;
 
+  /** `null` = alcance global (no permitido para COORDINADOR). */
   @IsOptional()
+  @ValidateIf((_dto, value) => value !== null)
   @IsUUID()
-  coordinationId?: string;
+  coordinationId?: string | null;
 
   @IsOptional()
   @IsEnum(UserStatus)

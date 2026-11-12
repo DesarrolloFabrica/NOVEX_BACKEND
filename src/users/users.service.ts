@@ -62,15 +62,16 @@ export class UsersService {
     }
 
     const role = await this.resolveActiveRole(dto.roleCode);
-    const coordination = await this.resolveActiveCoordination(
-      dto.coordinationId,
-    );
+    const coordination = dto.coordinationId
+      ? await this.resolveActiveCoordination(dto.coordinationId)
+      : null;
+    this.assertCoordinationForRole(role, coordination);
 
     const created = this.usersRepository.create({
       email,
       fullName: dto.fullName.trim(),
       roleId: role.id,
-      coordinationId: coordination.id,
+      coordinationId: coordination?.id ?? null,
       status: dto.status,
       googleSub: null,
       photoUrl: null,
@@ -120,6 +121,23 @@ export class UsersService {
       throw new NotFoundException(`Usuario no encontrado: ${id}`);
     }
 
+    // Anti-bloqueo: nadie se desactiva ni se cambia el rol a sí mismo.
+    if (id === actor.sub) {
+      if (dto.status !== undefined && dto.status !== user.status) {
+        throw new BadRequestException(
+          'No puede cambiar el estado de su propia cuenta.',
+        );
+      }
+      if (
+        dto.roleCode !== undefined &&
+        dto.roleCode.trim().toUpperCase() !== user.role.code
+      ) {
+        throw new BadRequestException(
+          'No puede cambiar el rol de su propia cuenta.',
+        );
+      }
+    }
+
     const previousRoleCode = user.role.code;
     const previousStatus = user.status;
     const previousCoordinationId = user.coordinationId;
@@ -136,11 +154,14 @@ export class UsersService {
     }
 
     if (dto.coordinationId !== undefined) {
-      const coordination = await this.resolveActiveCoordination(
-        dto.coordinationId,
-      );
-      user.coordinationId = coordination.id;
+      const coordination = dto.coordinationId
+        ? await this.resolveActiveCoordination(dto.coordinationId)
+        : null;
+      user.coordinationId = coordination?.id ?? null;
       user.coordination = coordination;
+    }
+    if (dto.roleCode !== undefined || dto.coordinationId !== undefined) {
+      this.assertCoordinationForRole(user.role, user.coordination ?? null);
     }
 
     if (dto.status !== undefined) {
@@ -221,6 +242,18 @@ export class UsersService {
 
     const saved = await this.usersRepository.save(user);
     return this.toResponse(saved);
+  }
+
+  /** Un COORDINADOR opera SU coordinación: no puede quedar sin ella. */
+  private assertCoordinationForRole(
+    role: Role,
+    coordination: Coordination | null,
+  ): void {
+    if (role.code === 'COORDINADOR' && !coordination) {
+      throw new BadRequestException(
+        'Un coordinador necesita una coordinación asignada.',
+      );
+    }
   }
 
   private async resolveActiveRole(roleCode: string): Promise<Role> {

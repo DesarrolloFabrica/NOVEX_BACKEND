@@ -60,6 +60,7 @@ import { SituationTimelineModule } from './situation-timeline/situation-timeline
 import { SituationsModule } from './situations/situations.module';
 
 import { UsersModule } from './users/users.module';
+import { AdminManagementModule } from './admin-management/admin-management.module';
 
 @Module({
   imports: [
@@ -118,6 +119,8 @@ import { UsersModule } from './users/users.module';
     RbacModule,
 
     UsersModule,
+
+    AdminManagementModule,
 
     DatabaseSeedsModule,
   ],

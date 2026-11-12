@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import express, { type Express } from 'express';
+import compression from 'compression';
 import helmet from 'helmet';
 import { DataSource } from 'typeorm';
 import {
@@ -61,6 +62,11 @@ async function bootstrap() {
       crossOriginEmbedderPolicy: false,
     }),
   );
+  // Respuestas JSON comprimidas (br/gzip/deflate según Accept-Encoding): las
+  // listas de situaciones e indicadores son texto repetitivo y se notan en móvil.
+  // Por debajo de 1 KB no compensa. No hay endpoints de streaming (SSE) que
+  // pudieran verse afectados; si se añaden, deben excluirse en `filter`.
+  expressApp.use(compression({ threshold: 1024 }));
   registerProbeHealthRoutes(expressApp, healthState);
 
   logBootDebug('[BOOT 3] Opening early listener');
