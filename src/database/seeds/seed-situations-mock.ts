@@ -34,6 +34,7 @@ import { SituationImpactAssessment } from '../../situation-impact/entities/situa
 import { SituationRecommendation } from '../../situation-recommendations/entities/situation-recommendation.entity';
 import { SituationTimelineEntry } from '../../situation-timeline/entities/situation-timeline-entry.entity';
 import { Situation } from '../../situations/entities/situation.entity';
+import { SituationResolution } from '../../situations/entities/situation-resolution.entity';
 import { SituationRelatedCoordination } from '../../situations/entities/situation-related-coordination.entity';
 import {
   computeDueAt,
@@ -52,6 +53,15 @@ import {
 export const MOCK_SEED_MARKER = '[MOCK-SEED]';
 
 const DEFAULT_COUNT = 80;
+
+/** Aprendizajes de cierre simulados: un cierre real nunca queda sin lección. */
+const MOCK_LEARNINGS = [
+  'Se documentó el procedimiento de reversión y se acordó revisarlo en cada cambio de versión.',
+  'La causa fue una configuración desalineada entre ambientes; se añadió una verificación previa al despliegue.',
+  'Se definió un responsable de seguimiento y una alerta temprana para detectar la demora antes del plazo.',
+  'El retraso venía de una entrega pendiente de otra área; se fijó una fecha de compromiso en el acuerdo de servicio.',
+  'Se reforzó la comunicación con los estudiantes afectados y se dejó una plantilla de respuesta para casos similares.',
+] as const;
 
 const TITLE_TEMPLATES = [
   'Interrupción parcial del portal de servicios',
@@ -620,6 +630,18 @@ export async function runSituationsMockSeed(
       effectiveAt: createdAt,
       actorUserId: creator.id,
     });
+    /*
+     * Un cierre real siempre registra su aprendizaje (la regla del producto lo
+     * exige). La semilla cerraba sin él y «Historial» mostraba 0 aprendizajes.
+     */
+    if (status === SituationStatus.CLOSED) {
+      await dataSource.getRepository(SituationResolution).insert({
+        situationId: situation.id,
+        learning: pick(MOCK_LEARNINGS, index),
+        resolvedByUserId: (assignee ?? creator).id,
+        createdAt: closedAt ?? updatedAt,
+      });
+    }
     created += 1;
 
     const uniqueRelated =
