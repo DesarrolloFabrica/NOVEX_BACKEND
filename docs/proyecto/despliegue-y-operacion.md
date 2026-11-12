@@ -10,16 +10,16 @@
 | Migraciones | **Ninguna vía las corre** | N/A |
 | Smoke | health, ready, 401 `/auth/me` | build + nginx |
 
-**Push a `main` = producción.** Orden correcto de esquema: migrar primero (copia + `migration:show` + `run`), desplegar después. Incidente 23-oct: [NOVEX_BACKEND/docs/INCIDENTE-20261023-MIGRACIONES.md](../NOVEX_BACKEND/docs/INCIDENTE-20261023-MIGRACIONES.md).
+**Push a `main` = producción.** Orden correcto de esquema: migrar primero (copia + `migration:show` + `run`), desplegar después. Incidente 23-oct: [INCIDENTE-20261023-MIGRACIONES.md](../INCIDENTE-20261023-MIGRACIONES.md). Arquitectura, rollback, monitoreo y runbook: [INFRAESTRUCTURA-GCP.md](../INFRAESTRUCTURA-GCP.md).
 
 ## Secretos (solo nombres)
 
-`DB_PASSWORD`, `JWT_SECRET`, `GEMINI_API_KEY` (Secret Manager). Ver `NOVEX_BACKEND/docs/SECRETS-AND-VARS.md`.
+`DB_PASSWORD`, `JWT_SECRET`, `GEMINI_API_KEY` (Secret Manager). Ver [SECRETS-AND-VARS.md](../SECRETS-AND-VARS.md).
 
 ## Migraciones
 
 - Local: Postgres Docker; perfil `DB_CLOUD=false`.
-- `migration:*` **sin guarda** anti-nube: confirmar destino antes de cualquier comando.
+- `migration:*` y `seed:*` abortan contra Cloud SQL salvo `ALLOW_CLOUD_MIGRATIONS=true` / `ALLOW_CLOUD_SEED=true` en la invocación; confirmar destino siempre.
 - Seeds on boot apagados en prod (`CATALOG_SEED_ON_BOOT=false`).
 - Migración fantasma histórica en prod: `AllowAnalystUnassignedSituations1786500000000` (copia en backups Fase 00; **no** reintroducir sin decisión).
 - Rollback a pre-cartas (`49a6483`) **no viable** si hay INTER.
@@ -54,16 +54,24 @@ Misma puerta que 01B.1 (van detrás de `1788700000000`). Además:
 - **`1788900000000-AddSituationEvidenceRetirement`**: aditiva; `down()` se niega si hay evidencias retiradas.
 - Variables nuevas opcionales: `AI_PROMPT_SNAPSHOT_RETENTION_DAYS`, `AI_SESSION_RETENTION_DAYS` (vacías; no ejecutan nada).
 
+### Migraciones posteriores (`1789000000000`…`1789200000000`) — **no desplegar aún**
+
+Van detrás de la puerta 01B.1/01B.2:
+
+- **`1789000000000-GrantAdminKpisView`**: concede `KPIS_VIEW` a ADMIN.
+- **`1789100000000-AddSituationCategoryOtherText`**: columna `category_other_text` para la categoría «Otra» (aditiva).
+- **`1789200000000-MergeServiciosIntoHomologaciones`**: reasigna a `coord-homologaciones` usuarios, situaciones y relaciones de `coord-servicios`, la deja inactiva y registra cada fila en `coordination_merge_log`; `down()` revierte exactamente lo registrado.
+
 ## Backups y recuperación
 
 | Doc en BE | Uso | Nota |
 |---|---|---|
 | `docs/RELEASE_CIRCO.md` | Release Circo / compatibilidad | Vigente para recuperación de versión |
-| `docs/RESTORE-TEST.md` | Pruebas de restore | Se contradice con BACKUP-DR — reconciliar |
+| `docs/RESTORE-TEST.md` | Pruebas de restore | Contrastar con BACKUP-DR antes de usar |
 | `docs/BACKUP-DR.md` | DR | Contrastar antes de usar |
 | Tags | `novex-circo-prod-20261027`, `novex-pre-circo-20261023` | Conservar siempre |
 
-Guías Cloud Run: `NOVEX_BACKEND/DEPLOY_BACKEND.md`, `NOVEX_FRONTEND/DEPLOY_FRONTEND.md` (FE parcialmente desactualizado).
+Guías Cloud Run: `NOVEX_BACKEND/DEPLOY_BACKEND.md`, `NOVEX_FRONTEND/DEPLOY_FRONTEND.md`. Plataforma GCP: [INFRAESTRUCTURA-GCP.md](../INFRAESTRUCTURA-GCP.md).
 
 ## Respaldo Git local (Fase 00)
 

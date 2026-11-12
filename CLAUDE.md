@@ -75,4 +75,4 @@ La migración `1788700000000-HardenSituationHistory` requiere que infraestructur
 
 ## Docs operativos en este repo
 
-Conservar: `docs/RELEASE_CIRCO.md`, `INCIDENTE-20261023-MIGRACIONES.md`, `RESTORE-TEST.md`, `BACKUP-DR.md`, `SECURITY.md`, `SECRETS-AND-VARS.md`, `INTERNAL_VIVO.md`, `DEPLOY_BACKEND.md`. Índice en `../docs/despliegue-y-operacion.md`.
+Conservar: `docs/INFRAESTRUCTURA-GCP.md` (arquitectura GCP, CI/CD, monitoreo, runbook, costos), `RELEASE_CIRCO.md`, `INCIDENTE-20261023-MIGRACIONES.md`, `RESTORE-TEST.md`, `BACKUP-DR.md`, `SECURITY.md`, `SECRETS-AND-VARS.md`, `INTERNAL_VIVO.md`, `DEPLOY_BACKEND.md`. Índice único en `docs/proyecto/README.md`; no crear docs sueltos nuevos: ampliar el que corresponda.

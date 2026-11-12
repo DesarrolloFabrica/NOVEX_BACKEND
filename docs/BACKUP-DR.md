@@ -45,7 +45,7 @@ Para PITR usar la consola Cloud SQL → Backups → “Restore to point in time�
 ## Recuperación de aplicación
 
 1. Verificar health backend/frontend.
-2. Si solo app: rollback de revisión Cloud Run ([DEPLOY.md](DEPLOY.md)).
+2. Si solo app: rollback de revisión Cloud Run ([INFRAESTRUCTURA-GCP.md](INFRAESTRUCTURA-GCP.md) §2).
 3. Si corrupción de datos: restore SQL a instancia temporal → validar → cutover de `INSTANCE_CONNECTION_NAME` / DNS interno (planificar ventana).
 
 ## Recomendaciones futuras

@@ -4,7 +4,7 @@
 > **Revisión:** 2026-11-06 · **Código de referencia:** NOVEX_BACKEND `5ffc65f` (producción); A1 en `72e24fe`; A2/M1 en worktrees sin commit
 > **Leyenda:** [V] verificado en código · [H] histórico/documental · [?] no verificado · [I] inferido
 
-Las reglas de autorización de referencia están en [autenticacion-y-permisos.md](autenticacion-y-permisos.md). Nada de este documento autoriza commits, despliegues ni cambios en producción: cada paso requiere aprobación explícita ([CLAUDE.md](../../CLAUDE.md)).
+Las reglas de autorización de referencia están en [seguridad-y-permisos.md](seguridad-y-permisos.md). Nada de este documento autoriza commits, despliegues ni cambios en producción: cada paso requiere aprobación explícita ([CLAUDE.md](../../CLAUDE.md)).
 
 > **Estado tras la Fase 01A (2026-11-09).** A2, M1, N1, N2, O1 y O2 están **corregidos y con pruebas** en `refactor/novex-consolidacion` del backend (commits `485476c` A2/M1, `8be4415` PATCH, `b28026f` alta INTER). Las correcciones se reimplementaron desde la especificación de §3–§6, **ajustadas a las decisiones de producto aprobadas** (no a la política provisional «P1»): el ANALISTA analiza cualquier caso activo, y el PATCH ya no reasigna la coordinación para ningún rol. Nada está desplegado. Las secciones §2–§6 describen el problema original y se conservan como historia. El contrato propuesto del traslado administrativo está en §8.1. Estado vivo: [seguridad-y-permisos.md](seguridad-y-permisos.md).
 
@@ -96,7 +96,7 @@ Ninguna fila es una vulnerabilidad **explotada**: no se hizo ninguna prueba de e
 - `POST /situations/:id/analyze` (`AI_ANALYZE`) usa `requireAccessibleSituation` ([ai-orchestration.controller.ts](../../src/ai-orchestration/ai-orchestration.controller.ts) L71-88) y no comprueba el estado.
 - `POST /situations/:id/recommendations` (`SITUATIONS_UPDATE`) también usa la puerta de lectura ([situation-recommendations.controller.ts](../../src/situation-recommendations/situation-recommendations.controller.ts) L48-65).
 
-**Impacto.** Analizar ejecuta Gemini (coste, envío del expediente) y **reemplaza** evaluación de impacto, recomendaciones IA y versión vigente del análisis, que alimentan la integridad de las cartas [V según comentario del diff; ver [inteligencia-artificial.md](inteligencia-artificial.md)]. Hoy pueden hacerlo: un ANALISTA sobre **cualquier** caso, incluso cerrado; un COORDINADOR sobre casos de los que solo es afectada o autor en otra área. Lo mismo para crear recomendaciones manuales.
+**Impacto.** Analizar ejecuta Gemini (coste, envío del expediente) y **reemplaza** evaluación de impacto, recomendaciones IA y versión vigente del análisis, que alimentan la integridad de las cartas [V según comentario del diff; ver [EMPALME-NOVEX.md](EMPALME-NOVEX.md) (IA)]. Hoy pueden hacerlo: un ANALISTA sobre **cualquier** caso, incluso cerrado; un COORDINADOR sobre casos de los que solo es afectada o autor en otra área. Lo mismo para crear recomendaciones manuales.
 
 **Corrección existente (sin commit, `NOVEX_BACKEND_m1`).**
 - `analyze`: `requireOperableSituation`; si el caso está `CLOSED` → **409** `{ code: 'SITUATION_CLOSED' }`. Estado comprobado después del alcance (no revela si está cerrado a quien no puede leerlo). Todo antes de `orchestrator.execute`: no toma el reclamo ni llama a Gemini.
@@ -155,7 +155,7 @@ Resultado: el autor ANALISTA de un problema de otra coordinación lo soluciona �
 
 ## 6.1 Observaciones O1–O4 (Fase 2B)
 
-> Todas son **revisión estática** de `5ffc65f`. Ninguna se ha reproducido con pruebas. Detalle de reglas en [situaciones-y-reglas.md](situaciones-y-reglas.md).
+> Todas son **revisión estática** de `5ffc65f`. Ninguna se ha reproducido con pruebas. Detalle de reglas en [funcional-y-roles.md](funcional-y-roles.md).
 
 | Id | Comportamiento implementado [V por lectura] | Comportamiento esperado [I] | Evidencia |
 |---|---|---|---|
@@ -180,7 +180,7 @@ Resultado: el autor ANALISTA de un problema de otra coordinación lo soluciona �
 - Si algún cliente actual muestra o descarga `promptSnapshot`: el frontend de producción no tiene interfaz de IA montada (NOVEX_FRONTEND → `docs/empalme/contratos-api.md`).
 - Qué política de minimización o seudonimización aplica la institución.
 
-**Clasificación:** observación de privacidad por revisión estática. **No es una fuga demostrada.** Detalle del flujo en [inteligencia-artificial.md](inteligencia-artificial.md).
+**Clasificación:** observación de privacidad por revisión estática. **No es una fuga demostrada.** Detalle del flujo en [EMPALME-NOVEX.md](EMPALME-NOVEX.md) (IA).
 
 ---
 
@@ -263,10 +263,10 @@ Resultado: el autor ANALISTA de un problema de otra coordinación lo soluciona �
 ## Documentos relacionados
 
 - [README.md](README.md): estado, ramas, worktrees y pendientes.
-- [autenticacion-y-permisos.md](autenticacion-y-permisos.md): guards, RBAC y matriz de autorización.
-- [situaciones-y-reglas.md](situaciones-y-reglas.md): ciclo y resolución (contexto de N1/N2).
-- [inteligencia-artificial.md](inteligencia-artificial.md): qué reemplaza un análisis (contexto de M1).
-- [pruebas-y-desarrollo.md](pruebas-y-desarrollo.md): cómo ejecutar `test/security/`.
-- [despliegue-y-operacion.md](despliegue-y-operacion.md), [base-de-datos-y-migraciones.md](base-de-datos-y-migraciones.md), [arquitectura.md](arquitectura.md).
+- [seguridad-y-permisos.md](seguridad-y-permisos.md): guards, RBAC y matriz de autorización.
+- [funcional-y-roles.md](funcional-y-roles.md): ciclo y resolución (contexto de N1/N2).
+- [EMPALME-NOVEX.md](EMPALME-NOVEX.md) (IA): qué reemplaza un análisis (contexto de M1).
+- `NOVEX_BACKEND/CLAUDE.md` §«Validación segura»: cómo ejecutar `test/security/` (`npm run test:security`).
+- [despliegue-y-operacion.md](despliegue-y-operacion.md), [arquitectura.md](arquitectura.md).
 - [CLAUDE.md](../../CLAUDE.md).
 - Frontend: NOVEX_FRONTEND → `docs/empalme/roles-y-navegacion.md`.

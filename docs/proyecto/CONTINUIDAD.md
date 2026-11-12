@@ -1,221 +1,116 @@
-# Continuidad NOVEX — retomar desde otro computador
+# Continuidad NOVEX — estado actual, historial y cómo retomar
 
-**Fecha de sincronización:** 2026-11-09  
-**Rama de trabajo:** `refactor/novex-consolidacion` (única autorizada para publicar).  
-**Producción / `main`:** no tocar, no mergear, no desplegar.
+**Actualizado:** 2026-11-12  
+**Rama de trabajo:** `refactor/novex-consolidacion` en ambos repos (única autorizada para publicar).  
+**Producción / `main`:** no tocar, no mergear, no desplegar sin autorización del responsable.
 
-Esta carpeta (`NOVEX_BACKEND/docs/proyecto/`) es la **copia versionada** de la documentación vigente del monorepo local `Proyecto-Novex/docs/`. Los originales en el disco local se conservan; esta ruta es la fuente al clonar solo el backend.
+## 1. Estado actual
 
-## Estado actual
-
-| Capa | Repo | Rama | SHA de sincronización |
+| Capa | Repo | Rama | Último commit de código |
 |---|---|---|---|
-| API | `NOVEX_BACKEND` | `refactor/novex-consolidacion` | tip de la rama (código 01B.2 = `6408bc4`; luego solo docs de continuidad) |
-| SPA | `NOVEX_FRONTEND` | `refactor/novex-consolidacion` | tip de la rama (código 01B.2 = `e38bca1`; luego solo docs de continuidad) |
-| Prod | tags `novex-circo-prod-20261027` | `main` | BE `5ffc65f` · FE `b726c47` |
+| API | `NOVEX_BACKEND` | `refactor/novex-consolidacion` | `8bba579` (después solo limpieza documental) |
+| SPA | `NOVEX_FRONTEND` | `refactor/novex-consolidacion` | `6bc9ae1` (después solo limpieza documental y de pruebas) |
+| Prod | tag `novex-circo-prod-20261027` | `main` | BE `5ffc65f` · FE `b726c47` |
 
-Fases **cerradas en código, sin desplegar a Cloud SQL / `main`:**
+Todo lo listado abajo está **cerrado en código y sin desplegar** (ni en `main` ni en Cloud SQL).
 
 | Fase | Qué quedó |
 |---|---|
 | **00** | Diagnóstico, respaldos, ramas de consolidación, docs compactas, limpieza remota segura |
-| **01A** | Alcance lectura/IA/escritura (A2/M1), PATCH seguro (N/O/F-01), alta INTER, guardas Cloud SQL, overview COORDINADOR |
+| **01A** | Alcance lectura/IA/escritura (A2/M1), PATCH seguro, alta INTER, guardas Cloud SQL, overview COORDINADOR |
 | **01B.1** | Anulación, traslado, auditoría transaccional, historial `NOLOGIN`, KPIs históricos |
 | **01B.2** | IA solo sugiere + prompt minimizado; K-01/K-02/K-03/K-06; D8 RESOLVED→CLOSED; recomendaciones congeladas; retiro de evidencias |
+| **02** (FE) | UI de anulación y traslado ADMIN (02A/02B), retiro e historial de evidencias (02C), sesión estable con `/auth/me` y borradores tras caducidad, análisis IA contextual en el detalle, registro único INTERNAL ∪ INTER |
+| **03a** (FE) | UX/UI del centro por rol, login, paneles admin y KPIs, assets por coordinación |
+| **Nov-12** | Ver §2 |
 
-### Últimos commits relevantes
+## 2. Cambios del 2026-11-12
 
-**Backend (01B.2, después de `2bdf12f`):**  
-`1cdd00e` integridad · `f3ddeb6` prompt · `80ed87b` K-01 · `771bb96` K-02/K-06 · `9d8c49f` D8 · `d1946fc` recomendaciones · `47746ca` evidencias · `d12ca0b` fixes PG · `d0f2b67` tests PG · `6408bc4` reglas CLAUDE.
+**Backend**
 
-**Correcciones de la revisión Codex 01B.2 (locales, sin push):**  
-`d3ddaf9` evidencia retirada por id · `33d65ed` campos dinámicos del prompt · `983711d` 422 `PROMPT_TOO_LARGE`.
+- `8e6b9b0` Coordinaciones relacionadas en la situación y categoría **«Otra»** con texto libre (columna `category_other_text`, migración `1789100000000`; la tabla de relacionadas ya existía).
+- `580de7b` **Servicios se fusiona en Homologaciones** (migración `1789200000000`): reasigna usuarios, situaciones y relaciones; `coord-servicios` queda inactiva (no se borra por las tablas de historial inmutables); todo queda en `coordination_merge_log` y `down()` lo revierte.
+- `4e4b348` Los cierres simulados del seed mock llevan su aprendizaje.
+- `3bbf72c` Límite de peticiones **por usuario** (`UserAwareThrottlerGuard`: rastrea `user:<sub>` si hay sesión, IP si no) y `204` cuando una situación no tiene análisis persistido.
+- `8bba579` Pruebas: servidor HTTP tipado para supertest.
 
-**Frontend (01B.2):**  
-`6e71c0b` Director / regla de estado (K-01) · `e38bca1` Coordinador / conteos oficiales (K-03).  
-También en la rama (previo): `cbf4595` e2e con PostgreSQL efímero marcado.
+**Frontend**
 
-## Qué debe revisar Codex de Fase 01B.2
+- `ac17141` Recorrido guiado del **coordinador** rehecho (11 pasos, motor de geometría propio, teclado, móvil). Se ofrece en desarrollo o con `VITE_ENABLE_COORDINATOR_TOUR=true`; el tour general sigue suspendido (`ONBOARDING_TOUR_SUSPENDED`).
+- `2b33279` Formulario de reporte con coordinaciones relacionadas, «Otra» con texto y validación en línea.
+- `6bc9ae1` Auditoría de los cuatro roles: un solo «Historial», KPIs del Director pedidos una vez, cabeceras y textos coherentes, paginación admin, retiro de ~260 archivos inalcanzables y setup de Vitest compatible con Node 26.
 
-Revisión de código ya escrito (sin redesplegar ni migrar Cloud SQL):
+**Validación al cerrar (local):** BE 1.411 pruebas Jest, ESLint y `tsc` limpios. FE 1.163 pruebas Vitest, oxlint sin avisos, typecheck y build limpios.
+E2E Playwright (mocks): pasan las suites del recorrido y del shell; quedan fallos **anteriores** a estos cambios en suites de cartas, detalle, personaje y shell del coordinador (UI evolucionó y las pruebas no), pendientes de actualizar.
 
-1. Integridad: solo hechos confirmados; `situation_affected_coordinations` no cuenta.
-2. Prompt: lista blanca, expediente no confiable, límite duro, `promptSnapshot` solo ADMIN.
-3. Población KPI compartida (`kpi-population.ts`): RESOLVED sin fecha no activo; INTER consigo misma = propia.
-4. Contrato overview / panel: regla de Dirección (K-01) y conteos oficiales del coordinador (K-03).
-5. Migración `1788800000000`: no inventa fechas; pendientes `PENDING_*` explícitos.
-6. Retiro de evidencias (`1788900000000`): sin borrado físico; motivo obligatorio; `DELETE` compatible.
-7. Suites PG reales y guarda de base desechable; contenedor con roles `NOLOGIN` + app antes de `1788700000000+`.
-8. Correcciones de la revisión: evidencia retirada por id (404 sin permiso de historial), saneamiento de catálogos y códigos en el prompt, 422 `PROMPT_TOO_LARGE` conservado.
+## 3. Pendientes
 
-### Hallazgo pendiente para la integración de KPIs (no corregido aquí)
+- **Migraciones en Cloud SQL** (§4): bloqueadas hasta roles PostgreSQL y autorización.
+- **E2E desactualizadas** del frontend (ya fallaban antes del 12-nov; la UI evolucionó y las pruebas no). Las de más fallos: `operational-coordinator-shell`, `operational-character-lives`, `operational-cards-selection`, `operational-action-panel`, `operational-problem-detail`, `operational-card-language`, `operational-cards`; además casos sueltos en `operational-deck-*`, `operational-table-*`, `operational-history-panel`, `operational-center-menu` y otras. Ejecutar con `npx playwright test --workers=1` para no saturar el equipo.
+- Parser de KPIs del FE: `parseDirectionIntegrity` (`operational-kpi.service.ts`) lanza `OperationalKpiContractError` ante una regla de Dirección desconocida; con las 6 reglas actuales no bloquea, pero una regla nueva rompería toda la respuesta. Resolver en la integración de KPIs (regla desconocida → `null`) y sincronizar con `operational-direction-integrity.ts`.
+- AU-01 restante, OP-01/OP-03, K-04/K-05/K-07, retención IA (D7) sin ejecución automática.
+- Activar el recorrido del coordinador en un despliegue solo con validación y autorización.
 
-El parser del frontend (`NOVEX_FRONTEND` · `operational-kpi.service.ts`, `parseDirectionIntegrity`) **rechaza** con `OperationalKpiContractError` cualquier `direction.directionIntegrity.rule` fuera de su lista fija (`DIRECTION_INTEGRITY_RULES`). Hoy las 6 reglas coinciden con el backend (`operational-direction-integrity.ts`), por lo que no bloquea; pero una regla nueva rompería toda la respuesta de Dirección, aunque el contrato se declaró aditivo. Se deja sin tocar porque los KPIs están en trabajo de otro integrante; resolverlo en esa integración (p. ej. regla desconocida → explicación `null` en lugar de error) y sincronizar la lista con el backend.
+## 4. Migraciones pendientes de producción
 
-## Pendientes de frontend y UX/UI
-
-- **UI de anulación y traslado** (contratos HTTP y `canCancel` / `canTransfer` ya en backend).
-- Resto FE-01…FE-04 de la auditoría.
-- Tutorial: sigue suspendido en prod (`ONBOARDING_TOUR_SUSPENDED`); no activar sin autorización.
-- Vitest puede fallar por `localStorage`/jsdom; typecheck/build son la puerta.
-
-## Fase 02 — Plan de integración funcional FE (sin tocar KPIs ni diseño)
-
-**Fecha del plan:** 2026-11-10  
-**Alcance:** cablear en Cartas y Circo lo ya cerrado en BE (01B.1 / 01B.2).  
-**Ramas de trabajo:** solo `refactor/novex-consolidacion`.  
-**SHAs de referencia al planear:** BE `f11f44a` · FE tip docs `1cf7e55` (código 01B.2 aún `e38bca1`).  
-**Fuera de alcance aquí:** KPIs/cálculos/contratos overview (otro integrante); rediseño visual; migraciones/Cloud SQL; `main` / `Alejo-Rama`; push/merge/deploy.
-
-**Rutas locales en esta máquina (no mezclar):**
-
-| Uso | Ruta | Rama | Nota |
-|---|---|---|---|
-| Activo prod-like | `Proyecto-Novex/NOVEX_{BACKEND,FRONTEND}` | `main` | **No modificar** |
-| Consolidación | `NOVEX-review-01b2-{backend,frontend}` | `refactor/novex-consolidacion` | Aquí se integra |
-
-Contratos HTTP detallados: [seguridad-y-permisos.md](./seguridad-y-permisos.md) §01B.1 / §01B.2.
-
-### 1. Inventario de funcionalidades pendientes
-
-| # | Funcionalidad | BE @ `f11f44a` | FE Cartas | Gap |
-|---|---|---|---|---|
-| A | Anulación ADMIN | Listo (`POST …/cancellation`, `SITUATIONS_CANCEL`, `canCancel`) | Ausente | Client + UI + tipo `CANCELLED` |
-| B | Traslado administrativo | Listo (`POST …/coordination-transfer`, `SITUATIONS_TRANSFER`, `canTransfer`) | Ausente | Client + UI; no usar PATCH `coordinationId` |
-| C | Retiro / historial evidencias | Listo (retirement, `includeRetired`, 404 sin permiso) | Solo lectura de activas | Client retiro/historial + UI |
-| D | IA contextual | Listo (`analyze`, history, compare; alta **sin** Gemini inline) | API sí; panel Cartas no | Superficie Circo; no remontan modal legacy |
-| E | Formularios INTERNAL ∪ INTER | Listo (`reportKind` + `register-with-analysis`) | Casi hecho (`ReportProblemForm`) | Limpieza drafts legacy + deep-link INTER |
-| F | Sesión / borradores / rutas | Auth parcial (JWT ~1 h, sin refresh/logout API) | FE-01…FE-04 abiertos | Permisos desde `/auth/me`; no cerrar por red; drafts aprendizaje; bookmarks ya redirigen |
-
-### 2. Contratos actuales comprobados (resumen)
-
-- **Anular:** `POST /api/v1/situations/:id/cancellation` `{ reason }` → 201 detalle `CANCELLED` + `cancellation`. Orígenes OPEN/IN_PROGRESS/RESOLVED; no CLOSED. Listado excluye anuladas salvo `?status=CANCELLED`. Escrituras sobre anulada → 409 `SITUATION_CANCELLED`.
-- **Trasladar:** `POST /api/v1/situations/:id/coordination-transfer` `{ toCoordinationId, reason, expectedCurrentCoordinationId? }`. INTERNAL mueve responsable+afectada; INTER solo responsable (destino ≠ afectada). `IN_PROGRESS` → `OPEN` y quita asignación. PATCH con `coordinationId` → 403.
-- **Evidencias:** `POST …/retirement` (y `DELETE` compatible) con `reason`; GET activas por defecto; `?includeRetired=true` solo ADMIN u operador con alcance (sin eso, retirada por id → 404).
-- **IA:** alta `register-with-analysis` devuelve `analysis: null`; análisis = `POST …/analyze` aparte (`AI_ANALYZE`). Lectura `AI_VIEW_REPORTS`. No usar `/intelligence` ni `/operational-events` para el flujo de cartas.
-- **INTERNAL/INTER:** un alta; `reportKind` obligatorio en clientes nuevos.
-- **Sesión:** `POST /auth/google|email`, `GET /auth/me`; sin refresh ni logout de servidor. Borradores **solo FE** (`novex.cards.reportDrafts.v1`).
-
-### 3. Componentes frontend reutilizables
-
-| Área | Reutilizar (no rediseñar) |
-|---|---|
-| Acciones admin A/B | `ProblemDetail`, `ProblemActions`, `OperationalActionPanel`, shells `AdminOperationalShell` |
-| Selector traslado | `ResponsibleCoordinationPicker` + catálogo `coordinations.api` (adaptar copy; no es el form INTER) |
-| Evidencias C | `ProblemDetail` / `ProblemDetailSection`, `problem-detail.service`, `evidences.api` (ampliar) |
-| IA D | Clients `analysis.api` / `situationAnalysis.service`; **no** montar `SituationAnalysisPanel` legacy en el router |
-| Alta E | `ReportProblemForm`, `report-submission.service`, `report-persistence` |
-| Sesión F | `AuthContext`, `accessTokenStorage`, `http.ts` (401), `NovexUserMenu`, redirects en `app/router.tsx` |
-
-### 4. Orden de implementación
-
-1. **Cableado A+B (tipos/permisos/clients)** — `CANCELLED`, `canCancel`/`canTransfer`, `SITUATIONS_CANCEL`/`TRANSFER`, endpoints dedicados; sin UI todavía.
-2. **UI anulación ADMIN** — modal motivo en panel derecho; refresco overview; manejo 403/409.
-3. **UI traslado ADMIN** — mismo patrón + `expectedCurrentCoordinationId` + errores de destino INTER.
-4. **Retiro/historial evidencias** — ampliar `evidences.api` y sección del detalle; motivo obligatorio.
-5. **FE-01…FE-03 (sesión/borradores)** — permisos vigentes desde `/auth/me`; no cerrar sesión por fallo de red/5xx al bootstrap; aviso de caducidad + persistir borrador de aprendizaje. FE-04 ya mitigado por redirects.
-6. **IA contextual en Cartas** — panel Circo que dispare `analyze` / muestre vigente; alta sigue diferida.
-7. **Cierre E** — unificar o archivar `situationCaptureDraftStorage`; deep-link INTER equivalente a `?reportar=interno`.
-
-**No paralelizar con el trabajo de KPIs** en los mismos archivos de overview/parsers.
-
-### 5. Riesgos e incompatibilidades reales
-
-- Tipar mal `CANCELLED` o pintarlo en el mazo activo rompe filtros/vidas; las anuladas van fuera del mazo (solo consulta explícita).
-- Usar PATCH para “cambiar coordinación” choca con 403 del BE maduro.
-- Traslado sin refrescar overview deja carta fantasma en origen/destino.
-- Mostrar evidencias retiradas o `promptSnapshot` sin permiso → 404 / withheld; no inventar UI de error que filtre RETIRED en cliente.
-- Remontar páginas legacy (`/intelligence`, `/operational-events`, rail) reintroduce FE-04 y doble identidad.
-- Tocar `operational-kpi.service` / integridad de Dirección: **ajeno** a Fase 02 (hallazgo del parser de reglas queda para el integrante de KPIs).
-- Migraciones `17883*`–`17889*` siguen bloqueadas en Cloud SQL; la UI puede cablearse contra API local consolidada, no contra prod.
-
-### 6. Reparto Cursor ↔ Antigravity
-
-| Quién | Qué |
-|---|---|
-| **Cursor** | Clients/tipos/permisos; cableado a shells existentes; FE-01…FE-03; retiro evidencias en API+sección actual; guards de no-regresión (no montar legacy; no PATCH de coordinación); docs/contratos; **no** KPIs |
-| **Antigravity** | UX Cartas y Circo de anulación/traslado (modales, copy, estados vacíos); superficie IA contextual en el panel derecho; presentación de historial de evidencias retiradas; pulido visual sin cambiar el sistema de diseño |
-
-Contratos HTTP canónicos para Antigravity: ya listados en [seguridad-y-permisos.md](./seguridad-y-permisos.md) §«Contratos para la interfaz (Antigravity)».
-
-## Migraciones pendientes de producción
-
-**No ejecutar en Cloud SQL** hasta roles y verificación:
+**No ejecutar en Cloud SQL** sin autorización y sin los requisitos de abajo. Detalle por puerta: [despliegue-y-operacion.md](despliegue-y-operacion.md).
 
 | Serie | Contenido |
 |---|---|
-| `17883*`…`17887*` | 01B.1: CANCELLED, historial, permisos CANCEL/TRANSFER, privilegios |
-| `17888*` | Normalización RESOLVED legado → CLOSED (D8) |
-| `17889*` | Retiro de evidencias |
+| `1788300000000`…`1788700000000` | 01B.1: CANCELLED, traslados, auditoría protegida, permisos CANCEL/TRANSFER, historial endurecido |
+| `1788800000000` | Normalización RESOLVED legado → CLOSED (D8) |
+| `1788900000000` | Retiro de evidencias |
+| `1789000000000` | `KPIS_VIEW` para ADMIN |
+| `1789100000000` | Texto libre de la categoría «Otra» |
+| `1789200000000` | Fusión Servicios → Homologaciones |
 
-**Requisitos PostgreSQL (bloqueantes):**
+**Requisitos PostgreSQL (bloqueantes):** rol propietario `NOVEX_HISTORY_OWNER_ROLE` **`NOLOGIN`**; rol de aplicación `NOVEX_APP_DB_ROLE` no-superusuario y sin membresía del propietario; migrador autorizado para transferir propiedad; verificación **solo lectura** de privilegios ([seguridad-y-permisos.md](seguridad-y-permisos.md)) antes de `migration:run`.
 
-1. `NOVEX_HISTORY_OWNER_ROLE` **`NOLOGIN`**, separado del rol de aplicación.
-2. `NOVEX_APP_DB_ROLE` no-superusuario, sin membresía del propietario.
-3. Migrador autorizado para transferir propiedad de tablas.
-4. Verificación **solo lectura** de privilegios (ver `seguridad-y-permisos.md` y `despliegue-y-operacion.md`) **antes** de `migration:run`.
+## 5. Base local y pruebas destructivas
 
-## Advertencia: snapshot local dañada
+- Base de desarrollo: `novex_local_snapshot_20261028` (contenedor `novex-postgres`, puerto 5442). Fue truncada el 2026-11-09 y se repobló con seeds locales: sirve para desarrollar, **no** como verdad de datos ni como destino de pruebas destructivas.
+- Pruebas que escriben: solo en contenedor desechable nuevo con marca `novex:disposable-test-db` y roles `NOLOGIN`/app. Procedimiento completo en `NOVEX_BACKEND/CLAUDE.md` §«Pruebas destructivas».
 
-La base `novex_local_snapshot_20261028` (puerto 5442 / contenedor `novex-postgres`) fue **truncada** el 2026-11-09 por e2e sin override de `.env`. **No usarla** como verdad de datos ni como destino de pruebas. Detalle: `NOVEX-FASE-01-AUDITORIA-TECNICA.md` §1.2.
-
-## Pruebas destructivas (resumen seguro)
-
-1. Contenedor **nuevo** distinto de `novex-postgres`, tmpfs, loopback.
-2. `COMMENT ON DATABASE … IS 'novex:disposable-test-db'`.
-3. Variables solo en la **invocación** (`NOVEX_DESTRUCTIVE_TESTS=1`, host/puerto/nombre de prueba).
-4. Desde `1788700000000`: crear roles `novex_history_owner NOLOGIN` y `novex_app`, y pasar `NOVEX_HISTORY_OWNER_ROLE` / `NOVEX_APP_DB_ROLE` al migrar.
-5. Procedimiento completo: `NOVEX_BACKEND/CLAUDE.md` §«Pruebas destructivas».
-
-**Nunca** contra `.env` de desarrollo, `novex`, snapshot dañada o Cloud SQL.
-
-## Continuar mañana desde otro computador
-
-### Opción A — ya tienes clones
-
-```bash
-cd NOVEX_BACKEND
-git fetch origin
-git checkout refactor/novex-consolidacion
-git pull --ff-only origin refactor/novex-consolidacion
-git log -1 --oneline   # debe incluir docs(proyecto); código 01B.2 en 6408bc4
-
-cd ../NOVEX_FRONTEND
-git fetch origin
-git checkout refactor/novex-consolidacion
-git pull --ff-only origin refactor/novex-consolidacion
-git log -1 --oneline   # debe incluir docs de continuidad; código 01B.2 en e38bca1
-```
-
-### Opción B — clon fresco
+## 6. Retomar desde otro computador
 
 ```bash
 git clone -b refactor/novex-consolidacion https://github.com/DesarrolloFabrica/NOVEX_BACKEND.git
 git clone -b refactor/novex-consolidacion https://github.com/DesarrolloFabrica/NOVEX_FRONTEND.git
 ```
 
-Documentación de continuidad y fases: `NOVEX_BACKEND/docs/proyecto/` (empezar por `README.md` y este archivo).
+Clones ya existentes: `git fetch origin && git checkout refactor/novex-consolidacion && git pull --ff-only`.
+Clonar ambos repos como carpetas hermanas (`Proyecto-Novex/NOVEX_BACKEND`, `Proyecto-Novex/NOVEX_FRONTEND`):
+`npm run dev` del frontend arranca también el backend.
 
-### Layout recomendado
+Secretos (`.env`, JWT, Gemini, DB) **no** están en Git: copiarlos por canal seguro.
 
-```
-Proyecto-Novex/
-  NOVEX_BACKEND/     # docs/proyecto = docs vigentes versionados
-  NOVEX_FRONTEND/
-```
+**No hacer:** push/merge a `main`, force push, deploy, migraciones en Cloud SQL, tocar `Alejo-Rama`.
 
-Secretos (`.env`, JWT, Gemini, DB): **no** están en Git; copiarlos por canal seguro aparte. No commitear `.env`.
+## 7. Historial
 
-### Qué no hacer al retomar
+| Fecha | Evento |
+|---|---|
+| 2026-08 | Hardening fases 1–4 (auth global, RBAC server-side, auditoría, logging). Docs de cierre retirados del árbol; ver §8 |
+| 2026-10-23 | Incidente: deploy sin migraciones ([INCIDENTE-20261023-MIGRACIONES.md](../INCIDENTE-20261023-MIGRACIONES.md)) |
+| 2026-10-27 | Release **Cartas y Circo** en prod · tags `novex-circo-prod-20261027` (BE `5ffc65f`, FE `b726c47`) |
+| 2026-11-05 | A1 mergeado a `integracion/cartas-circo` (`72e24fe`); no en `main` |
+| 2026-11-06 | Empalme documental BE/FE ([EMPALME-NOVEX.md](EMPALME-NOVEX.md)) |
+| 2026-11-09 | Fase 00 (diagnóstico, ramas `refactor/novex-consolidacion`, docs compactas) |
+| 2026-11-09 | Fase 01B.1 cerrada en código (BE `2bdf12f`); 01B.2 cerrada (BE `6408bc4`, FE `e38bca1`) |
+| 2026-11-10 | Fase 02 planificada y luego integrada en FE (anulación, traslado, evidencias, sesión, IA, registro único) |
+| 2026-11-12 | Recorrido del coordinador, formulario ampliado, fusión Servicios→Homologaciones, límite por usuario, auditoría de roles |
+| 2026-11-12 | Limpieza documental: un índice, un doc de infraestructura, este archivo como estado + historial |
 
-- Push/merge a `main`, force push, deploy, migraciones Cloud SQL.
-- Tocar `Alejo-Rama` o la snapshot dañada.
-- Publicar desde otra rama que no sea `refactor/novex-consolidacion`.
+Ramas a conservar: `main`, `refactor/novex-consolidacion`, `Alejo-Rama`.
 
-## Qué falta (productivo / siguientes fases)
+## 8. Documentación retirada
 
-- Revisión Codex 01B.2 y cierre formal documental si hace falta.
-- **Fase 02** (plan arriba): UI anulación/traslado y demás integración FE; sin KPIs.
-- Aprovisionar roles PG y solo entonces planificar migraciones (autorización explícita).
-- AU-01 restante, OP-01/OP-03, K-04/K-05/K-07, P2, retención IA (D7) sin ejecución automática.
-- Respaldos locales `.backups/` de Fase 00: **solo en el disco original**; no están en GitHub (intencional). Bundles recuperables allí si hace falta historia pre-limpieza.
+Se retiraron del árbol (siguen en el historial de Git y, en el monorepo local, en `Proyecto-Novex/docs/archivo/`):
+
+- `docs/proyecto/archivo/` (docs de agosto 01–12 y copia íntegra del empalme del 6-nov).
+- `docs/AUDITORIA_INTEGRAL_NOVEX.md`, `CLOSURE_PHASE_{1,2,3}*.md`, `FINAL_TECHNICAL_CLOSURE.md` (cierres de agosto).
+- `README_ESTADO_ACTUAL_NOVEX.md` de ambos repos (estado de octubre, desactualizado).
+- `docs/{ARCHITECTURE,DEPLOY,MONITORING,RUNBOOK,COSTOS,ENVIRONMENTS,CUSTOM-DOMAIN}.md` → fusionados en [`docs/INFRAESTRUCTURA-GCP.md`](../INFRAESTRUCTURA-GCP.md).
+- `docs/proyecto/historial.md` → §7 de este archivo.
+
+Recuperar cualquiera: `git log --diff-filter=D --oneline -- <ruta>` y `git show <commit>^:<ruta>`.

@@ -1,6 +1,6 @@
 # Arquitectura técnica NOVEX
 
-**Vigente:** Cartas y Circo (nov-2026). Detalle: [EMPALME-NOVEX.md](./EMPALME-NOVEX.md).
+**Vigente:** Cartas y Circo (actualizado 2026-11-12). Detalle: [EMPALME-NOVEX.md](./EMPALME-NOVEX.md).
 
 ## Stack
 
@@ -12,21 +12,21 @@
 
 ## Backend — activos vs latentes
 
-**Activos (HTTP montado):** auth, users, roles, permissions, coordinations, situations (+ sweep, timeline, evidence, impact, recommendations, AI orchestration/sessions), operational-overview, operational-kpis, dashboard.
+**Activos (HTTP montado):** auth, users, roles, permissions, coordinations, situations (+ sweep, timeline, evidence, impact, recommendations, administración ADMIN, AI orchestration/sessions), operational-overview, operational-kpis, dashboard.
 
 **Latentes (no remontar sin PermissionsGuard + alcance):** `operational-areas`, `operational-events`, `recommended-actions`, `intelligence` (controller huérfano), `demo-users` (ni importado).
 
-**Guards globales:** JwtAuthGuard → AuthorizationEnrichmentGuard (relee rol/permisos/coordinación desde BD) → ThrottlerGuard.
+**Guards globales:** JwtAuthGuard → AuthorizationEnrichmentGuard (relee rol/permisos/coordinación desde BD) → UserAwareThrottlerGuard (límite por usuario autenticado `user:<sub>`; por IP si no hay sesión).
 
-**Persistencia:** `synchronize: false`, `migrationsRun: false`; 26 migraciones; aplicar **a mano** (migrate → deploy).
+**Persistencia:** `synchronize: false`, `migrationsRun: false`; migraciones en `src/database/migrations/` (última `1789200000000`); aplicar **a mano** (migrate → deploy).
 
 ## Frontend — núcleo
 
 - Entrada: `src/main.tsx` → `router.tsx`.
 - Núcleo: `src/modules/operational-cards/` (shells por rol, servicios, charts, personaje).
-- Auth: JWT en `localStorage`; permisos UX desde claims; autoridad real = backend.
-- Legacy redirige al Centro (`impact-network`, `monitoring`, panorama/inteligencia/reportes).
-- Tutorial: código integrado en consolidación; `ONBOARDING_TOUR_SUSPENDED=true`; piloto solo `DEV` + COORDINADOR.
+- Auth: JWT en `localStorage`; permisos UX desde `permissions[]` de `GET /auth/me`; autoridad real = backend.
+- Rutas legadas (`/dashboard`, `/red-impacto`, `/monitoring`, panorama/inteligencia/reportes…) redirigen al Centro; su código fue retirado.
+- Tutorial: tour general suspendido (`ONBOARDING_TOUR_SUSPENDED`); recorrido del COORDINADOR en `src/modules/onboarding/` (desarrollo o `VITE_ENABLE_COORDINATOR_TOUR=true`).
 
 ## Contratos críticos FE↔BE
 
