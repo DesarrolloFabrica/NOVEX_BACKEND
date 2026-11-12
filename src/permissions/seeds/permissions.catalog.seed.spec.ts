@@ -18,10 +18,10 @@ describe('ROLE_PERMISSION_CODES · operación de situaciones', () => {
     );
   });
 
-  it('DIRECTOR y ADMIN tienen KPIS_VIEW', () => {
+  it('DIRECTOR, ADMIN y ANALISTA tienen KPIS_VIEW', () => {
     expect(ROLE_PERMISSION_CODES.DIRECTOR).toContain('KPIS_VIEW');
     expect(ROLE_PERMISSION_CODES.ADMIN).toContain('KPIS_VIEW');
-    expect(ROLE_PERMISSION_CODES.ANALISTA).not.toContain('KPIS_VIEW');
+    expect(ROLE_PERMISSION_CODES.ANALISTA).toContain('KPIS_VIEW');
     expect(ROLE_PERMISSION_CODES.COORDINADOR).not.toContain('KPIS_VIEW');
   });
 

@@ -152,8 +152,9 @@ const SITUATION_OPERATION_PERMISSION_CODES = [
 
 /**
  * KPIs analíticos: capability distinta de REPORTS_VIEW.
- * La reciben DIRECTOR y ADMIN (el ADMIN la hereda del filtro ALL; ver
- * `GrantAdminKpisView` para instalaciones existentes).
+ * La reciben DIRECTOR, ADMIN y ANALISTA (el ADMIN la hereda del filtro ALL; ver
+ * `GrantAdminKpisView` y `GrantAnalistaKpisView` para instalaciones existentes).
+ * COORDINADOR no la recibe.
  */
 
 /**
@@ -195,6 +196,8 @@ export const ROLE_PERMISSION_CODES: Readonly<
     'AI_ANALYZE',
     'AI_VIEW_REPORTS',
     'REPORTS_VIEW',
+    // Analista de Operaciones: consulta los indicadores de la mesa.
+    'KPIS_VIEW',
   ],
   COORDINADOR: [
     'AUTH_VIEW_PROFILE',
