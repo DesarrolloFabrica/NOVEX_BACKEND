@@ -56,6 +56,12 @@ export const CATALOG_OPERATIONAL_AREAS: readonly OperationalAreaCatalogItem[] =
     },
   ] as const;
 
+/**
+ * Categoría «Otra». Al elegirla, el alta exige `categoryOtherText` (la
+ * categoría que escribe quien reporta). Va siempre al final del catálogo.
+ */
+export const OTHER_INCIDENT_CATEGORY_CODE = 'OTRA';
+
 export const CATALOG_INCIDENT_CATEGORIES: readonly IncidentCategoryCatalogItem[] =
   [
     {
@@ -144,6 +150,13 @@ export const CATALOG_INCIDENT_CATEGORIES: readonly IncidentCategoryCatalogItem[]
       name: 'Tickets',
       description: 'Casos de mesa de ayuda y tickets de soporte.',
       icon: 'tickets',
+    },
+    {
+      code: OTHER_INCIDENT_CATEGORY_CODE,
+      name: 'Otra',
+      description:
+        'El problema no encaja en las categorías anteriores; quien reporta escribe la suya.',
+      icon: 'other',
     },
   ] as const;
 

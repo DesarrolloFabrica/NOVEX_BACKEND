@@ -129,6 +129,41 @@ describe('DTOs de situación · contrato INTERNAL vivo', () => {
       ).toContain('description');
     });
 
+    it('la categoría escrita se recorta y exige entre 3 y 120 caracteres', async () => {
+      expect(
+        await errorsOf(CreateSituationDto, {
+          ...internal,
+          categoryOtherText: '  Biblioteca  ',
+        }),
+      ).toEqual([]);
+      for (const bad of ['   ', ' ab ', 'x'.repeat(121), 42]) {
+        expect(
+          await errorsOf(CreateSituationDto, {
+            ...internal,
+            categoryOtherText: bad,
+          }),
+        ).toContain('categoryOtherText');
+      }
+    });
+
+    it('acepta varias coordinaciones relacionadas, todas UUID', async () => {
+      expect(
+        await errorsOf(CreateSituationDto, {
+          ...internal,
+          relatedCoordinationIds: [
+            'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+            'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+          ],
+        }),
+      ).toEqual([]);
+      expect(
+        await errorsOf(CreateSituationDto, {
+          ...internal,
+          relatedCoordinationIds: ['no-es-uuid'],
+        }),
+      ).toContain('relatedCoordinationIds');
+    });
+
     it('la afectación inicial no acepta fecha propia', async () => {
       expect(
         await errorsOf(CreateSituationDto, {

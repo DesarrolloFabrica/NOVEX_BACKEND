@@ -46,7 +46,9 @@ import {
   SituationsListResponseDto,
   UpdateSituationDto,
   SituationCancellationResponseDto,
+  SITUATION_CATEGORY_OTHER_TEXT_MIN_LENGTH,
 } from './dto/situation.dto';
+import { OTHER_INCIDENT_CATEGORY_CODE } from '../database/seeds/catalogs.seed';
 import { Situation } from './entities/situation.entity';
 import { SituationConsequence } from './entities/situation-consequence.entity';
 import { SituationRelatedCoordination } from './entities/situation-related-coordination.entity';
@@ -171,7 +173,18 @@ export class SituationsService implements OnModuleInit {
       order: { isSelectable: 'DESC', name: 'ASC' },
     });
 
-    return categories.map((category) => ({
+    // «Otra» cierra siempre la lista de vigentes, sin importar el orden alfabético.
+    const isOther = (category: IncidentCategory) =>
+      category.isSelectable && category.code === OTHER_INCIDENT_CATEGORY_CODE;
+    const ordered = [
+      ...categories.filter(
+        (category) => category.isSelectable && !isOther(category),
+      ),
+      ...categories.filter(isOther),
+      ...categories.filter((category) => !category.isSelectable),
+    ];
+
+    return ordered.map((category) => ({
       id: category.id,
       code: category.code,
       name: category.name,
@@ -235,7 +248,8 @@ export class SituationsService implements OnModuleInit {
       dto.affectedCoordinationId !== undefined ||
       dto.affectedProcess !== undefined ||
       dto.pendingDelivery !== undefined ||
-      dto.initialConsequence !== undefined;
+      dto.initialConsequence !== undefined ||
+      dto.categoryOtherText !== undefined;
     if (usesCardsFields || !dto.categoryId) {
       throw new BadRequestException(
         'Indique el tipo de registro (reportKind).',
@@ -310,6 +324,11 @@ export class SituationsService implements OnModuleInit {
       ),
     ]);
 
+    const categoryOtherText = this.resolveCategoryOtherText(
+      category,
+      dto.categoryOtherText,
+    );
+
     return this.persistNewSituation({
       dto,
       actor,
@@ -317,6 +336,7 @@ export class SituationsService implements OnModuleInit {
       coordination,
       affectedCoordination: coordination,
       category,
+      categoryOtherText,
       relatedCoordinations,
       affectedProcess: null,
       pendingDelivery: null,
@@ -337,6 +357,11 @@ export class SituationsService implements OnModuleInit {
     if (dto.initialConsequence) {
       throw new BadRequestException(
         'Las afectaciones solo aplican a problemas internos.',
+      );
+    }
+    if (dto.categoryOtherText !== undefined) {
+      throw new BadRequestException(
+        'La categoría solo aplica a problemas internos.',
       );
     }
     if (!dto.coordinationId) {
@@ -392,6 +417,7 @@ export class SituationsService implements OnModuleInit {
       coordination,
       affectedCoordination,
       category: null,
+      categoryOtherText: null,
       relatedCoordinations,
       affectedProcess,
       pendingDelivery,
@@ -427,6 +453,7 @@ export class SituationsService implements OnModuleInit {
     coordination: Coordination | null;
     affectedCoordination: Coordination | null;
     category: IncidentCategory | null;
+    categoryOtherText: string | null;
     relatedCoordinations: Coordination[];
     affectedProcess: string | null;
     pendingDelivery: string | null;
@@ -461,6 +488,7 @@ export class SituationsService implements OnModuleInit {
           createdByUserId: input.actor.sub,
           categoryId: input.category?.id ?? null,
           category: input.category,
+          categoryOtherText: input.categoryOtherText,
           severity: reportedSeverity,
           reportedSeverity,
           severityEscalationPolicyCode: ACTIVE_SEVERITY_ESCALATION_POLICY_CODE,
@@ -549,6 +577,8 @@ export class SituationsService implements OnModuleInit {
               reportKind: saved.reportKind,
               coordinationId: saved.coordinationId,
               categoryId: saved.categoryId,
+              // Solo la longitud: nunca el texto libre en auditoría.
+              categoryOtherTextLength: saved.categoryOtherText?.length ?? null,
               affectedCoordinationId: saved.affectedCoordinationId,
               dueAt: saved.dueAt,
               slaPolicyCode: saved.slaPolicyCode,
@@ -1321,6 +1351,34 @@ export class SituationsService implements OnModuleInit {
     return category;
   }
 
+  /**
+   * «Otra» exige la categoría escrita; cualquier otra categoría la rechaza
+   * (no se guarda texto huérfano que el expediente no mostraría con sentido).
+   * El DTO ya recortó el texto y acotó su longitud.
+   */
+  private resolveCategoryOtherText(
+    category: IncidentCategory,
+    categoryOtherText: string | undefined,
+  ): string | null {
+    const text = categoryOtherText?.trim() ?? '';
+    if (category.code === OTHER_INCIDENT_CATEGORY_CODE) {
+      if (text.length < SITUATION_CATEGORY_OTHER_TEXT_MIN_LENGTH) {
+        throw new BadRequestException({
+          code: 'CATEGORY_OTHER_TEXT_REQUIRED',
+          message: 'Escriba la categoría del problema al elegir «Otra».',
+        });
+      }
+      return text;
+    }
+    if (categoryOtherText !== undefined) {
+      throw new BadRequestException({
+        code: 'CATEGORY_OTHER_TEXT_NOT_ALLOWED',
+        message: 'Solo se escribe una categoría propia al elegir «Otra».',
+      });
+    }
+    return null;
+  }
+
   private async resolveRelatedCoordinations(
     relatedCoordinationIds: string[],
     originCoordinationId: string | null,
@@ -1431,6 +1489,7 @@ export class SituationsService implements OnModuleInit {
       categoryName: situation.category?.name ?? null,
       categoryIcon: situation.category?.icon ?? null,
       categorySelectable: situation.category?.isSelectable ?? null,
+      categoryOtherText: situation.categoryOtherText ?? null,
       severity: situation.severity,
       reportedSeverity: situation.reportedSeverity,
       status: situation.status,

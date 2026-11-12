@@ -12,7 +12,8 @@ import type { CreateSituationDto } from './dto/situation.dto';
  * distintos. Se añaden SOLO cuando vienen en la petición (`undefined` no entra
  * en el JSON), de modo que una petición con el contrato anterior produce
  * exactamente la misma huella que en main y las claves ya persistidas en
- * producción siguen reconociéndose tras el despliegue.
+ * producción siguen reconociéndose tras el despliegue. Lo mismo vale para
+ * `categoryOtherText` (categoría escrita al elegir «Otra»).
  */
 export function computeRegistrationFingerprint(
   dto: CreateSituationDto,
@@ -34,6 +35,7 @@ export function computeRegistrationFingerprint(
     affectedProcess: dto.affectedProcess?.trim(),
     pendingDelivery: dto.pendingDelivery?.trim(),
     initialConsequence: dto.initialConsequence?.description?.trim(),
+    categoryOtherText: dto.categoryOtherText?.trim(),
   };
 
   return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');

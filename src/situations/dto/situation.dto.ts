@@ -31,6 +31,10 @@ export const SITUATION_LEARNING_MAX_LENGTH = 4000;
 /** Longitud máxima de una afectación (también la exige la base). */
 export const SITUATION_CONSEQUENCE_MAX_LENGTH = 2000;
 
+/** Longitudes de la categoría escrita al elegir «Otra» (también en la base). */
+export const SITUATION_CATEGORY_OTHER_TEXT_MIN_LENGTH = 3;
+export const SITUATION_CATEGORY_OTHER_TEXT_MAX_LENGTH = 120;
+
 const trimString = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
 
@@ -116,6 +120,23 @@ export class CreateSituationDto {
   )
   @IsUUID()
   categoryId?: string;
+
+  /**
+   * Categoría escrita por quien reporta. Obligatoria SOLO si `categoryId` es
+   * la categoría «Otra» (código OTRA) y prohibida en cualquier otro caso: esa
+   * regla depende del catálogo y la aplica el servicio. Aquí se recorta y se
+   * acota la longitud.
+   */
+  @IsOptional()
+  @IsString()
+  @Transform(trimString)
+  @MinLength(SITUATION_CATEGORY_OTHER_TEXT_MIN_LENGTH, {
+    message: `La categoría escrita debe tener al menos ${SITUATION_CATEGORY_OTHER_TEXT_MIN_LENGTH} caracteres.`,
+  })
+  @MaxLength(SITUATION_CATEGORY_OTHER_TEXT_MAX_LENGTH, {
+    message: `La categoría escrita admite como máximo ${SITUATION_CATEGORY_OTHER_TEXT_MAX_LENGTH} caracteres.`,
+  })
+  categoryOtherText?: string;
 
   @IsEnum(SituationSeverity)
   severity!: SituationSeverity;
@@ -380,6 +401,8 @@ export class SituationResponseDto {
   categoryIcon!: string | null;
   /** Categoría vigente en el catálogo (false = legacy, solo lectura). */
   categorySelectable!: boolean | null;
+  /** Categoría escrita por quien reporta al elegir «Otra»; si no, null. */
+  categoryOtherText!: string | null;
   /** Severidad EFECTIVA: el nivel operacional actual. */
   severity!: SituationSeverity;
   /** Severidad REPORTADA al registrar. Inmutable; es la base del SLA. */

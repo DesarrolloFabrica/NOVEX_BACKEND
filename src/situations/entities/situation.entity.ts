@@ -105,6 +105,19 @@ export class Situation extends BaseEntity {
   categoryId!: string | null;
 
   /**
+   * Categoría escrita por quien reporta cuando eligió «Otra» (código OTRA).
+   * Nula en cualquier otra categoría y en INTER. Inmutable tras el alta, como
+   * la categoría.
+   */
+  @Column({
+    type: 'varchar',
+    length: 120,
+    name: 'category_other_text',
+    nullable: true,
+  })
+  categoryOtherText!: string | null;
+
+  /**
    * Severidad EFECTIVA: el nivel operacional actual. Es la caché de la última
    * fila de `situation_severity_changes` y la leen listas, overview, integridad
    * y KPI. Solo la cambia el escalamiento del sistema; el PATCH ya no la acepta.

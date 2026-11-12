@@ -154,6 +154,7 @@ describe('SituationsService · alta por tipo de registro', () => {
       service,
       manager,
       situationsRepository,
+      coordinationsRepository,
       timelineService,
       auditLogService,
     };
@@ -385,6 +386,98 @@ describe('SituationsService · alta por tipo de registro', () => {
         service.create(internalDto() as never, analyst as never),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    describe('categoría «Otra»', () => {
+      const otherCategory = { code: 'OTRA', name: 'Otra', icon: 'other' };
+
+      it('persiste la categoría escrita y audita solo su longitud', async () => {
+        const { service, manager, auditLogService } = buildService({
+          category: otherCategory,
+        });
+        await service.create(
+          internalDto({ categoryOtherText: 'Biblioteca' }),
+          analyst as never,
+        );
+
+        expect(savedSituation(manager)?.categoryOtherText).toBe('Biblioteca');
+        const [audit] = auditLogService.recordCritical.mock.calls[0] as [
+          { metadata: Record<string, unknown> },
+        ];
+        expect(audit.metadata.categoryOtherTextLength).toBe(10);
+        expect(JSON.stringify(audit.metadata)).not.toContain('Biblioteca');
+      });
+
+      it('exige la categoría escrita al elegir «Otra», sin escribir', async () => {
+        const { service, manager } = buildService({ category: otherCategory });
+        await expect(
+          service.create(internalDto() as never, analyst as never),
+        ).rejects.toMatchObject({
+          response: { code: 'CATEGORY_OTHER_TEXT_REQUIRED' },
+        });
+        expect(manager.save).not.toHaveBeenCalled();
+      });
+
+      it('rechaza texto propio con una categoría del catálogo', async () => {
+        const { service, manager } = buildService();
+        await expect(
+          service.create(
+            internalDto({ categoryOtherText: 'Biblioteca' }) as never,
+            analyst as never,
+          ),
+        ).rejects.toMatchObject({
+          response: { code: 'CATEGORY_OTHER_TEXT_NOT_ALLOWED' },
+        });
+        expect(manager.save).not.toHaveBeenCalled();
+      });
+
+      it('una categoría del catálogo nace sin texto propio', async () => {
+        const { service, manager } = buildService();
+        await service.create(internalDto(), analyst as never);
+        expect(savedSituation(manager)?.categoryOtherText).toBeNull();
+      });
+
+      it('rechaza la categoría escrita en una dependencia INTER', async () => {
+        const { service, manager } = buildService({
+          reportKind: SituationReportKind.INTER_COORDINATION,
+        });
+        await expect(
+          service.create(
+            internalDto({
+              reportKind: SituationReportKind.INTER_COORDINATION,
+              coordinationId: AREA_B,
+              affectedCoordinationId: AREA_A,
+              categoryId: undefined,
+              categoryOtherText: 'Biblioteca',
+              affectedProcess: 'Matrículas',
+              pendingDelivery: 'Listado',
+            }) as never,
+            analyst as never,
+          ),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(manager.save).not.toHaveBeenCalled();
+      });
+    });
+
+    it('persiste varias coordinaciones relacionadas en orden, sin la responsable', async () => {
+      const { service, manager, coordinationsRepository } = buildService();
+      const C = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+      coordinationsRepository.find.mockResolvedValueOnce([
+        { id: C, code: 'coord-c', name: 'C', isActive: true },
+        { id: AREA_B, code: 'coord-b', name: 'B', isActive: true },
+      ] as never);
+
+      await service.create(
+        internalDto({ relatedCoordinationIds: [AREA_B, AREA_A, C, AREA_B] }),
+        analyst as never,
+      );
+
+      const related = savedSituation(manager)?.relatedCoordinations as Array<{
+        coordinationId: string;
+        displayOrder: number;
+      }>;
+      expect(related.map((item) => item.coordinationId)).toEqual([AREA_B, C]);
+      expect(related.map((item) => item.displayOrder)).toEqual([0, 1]);
     });
 
     it('nace con reported = efectiva, fila REPORTED, sin política y due_at desde el mismo created_at', async () => {
