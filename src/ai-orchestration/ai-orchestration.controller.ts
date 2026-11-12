@@ -4,11 +4,14 @@ import {
   Controller,
   Get,
   Headers,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Post,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { isUUID } from 'class-validator';
 import type { AuthPayload } from '../auth/contracts/auth-payload.contract';
@@ -88,16 +91,27 @@ export class AIOrchestrationController {
     return this.orchestrator.execute(situationId, user);
   }
 
+  /**
+   * Sin informe todavía responde 204 (sin contenido), no 404: es el estado
+   * normal y el 404 llenaba la consola del navegador con un error por cada
+   * expediente abierto. Una situación inexistente o ajena sigue siendo 404.
+   */
   @Get(':id/analysis')
   @RequirePermissions('AI_VIEW_REPORTS')
   async getAnalysis(
     @Param('id', ParseUUIDPipe) situationId: string,
     @CurrentUser() user: AuthPayload,
+    @Res({ passthrough: true }) response: Response,
   ) {
     await this.situationAccessService.requireAccessibleSituation(
       user,
       situationId,
     );
-    return this.orchestrator.getPersistedAnalysis(situationId);
+    const analysis = await this.orchestrator.findPersistedAnalysis(situationId);
+    if (!analysis) {
+      response.status(HttpStatus.NO_CONTENT);
+      return undefined;
+    }
+    return analysis;
   }
 }

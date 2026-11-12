@@ -242,15 +242,30 @@ export class AIOrchestrator {
   async getPersistedAnalysis(
     situationId: string,
   ): Promise<SituationAIAnalysisResponseDto> {
+    const analysis = await this.findPersistedAnalysis(situationId);
+    if (!analysis) {
+      throw new NotFoundException(
+        `Análisis IA no encontrado para la situación: ${situationId}`,
+      );
+    }
+    return analysis;
+  }
+
+  /**
+   * Como `getPersistedAnalysis`, pero «aún no hay informe» es `null` y no un
+   * error: es el estado normal de casi todas las situaciones. La situación
+   * inexistente sigue respondiendo 404.
+   */
+  async findPersistedAnalysis(
+    situationId: string,
+  ): Promise<SituationAIAnalysisResponseDto | null> {
     await this.ensureSituationExists(situationId);
 
     const record =
       await this.analysisRecordRepository.findBySituationId(situationId);
 
     if (!record) {
-      throw new NotFoundException(
-        `Análisis IA no encontrado para la situación: ${situationId}`,
-      );
+      return null;
     }
 
     const latestSession =

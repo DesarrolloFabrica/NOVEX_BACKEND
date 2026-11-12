@@ -1,7 +1,8 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { UserAwareThrottlerGuard } from './common/guards/user-aware-throttler.guard';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AIAnalysisSessionsModule } from './ai-analysis-sessions/ai-analysis-sessions.module';
@@ -127,7 +128,8 @@ import { AdminManagementModule } from './admin-management/admin-management.modul
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: AuthorizationEnrichmentGuard },
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // Después de JwtAuthGuard: cuenta por usuario autenticado; sin sesión, por IP.
+    { provide: APP_GUARD, useClass: UserAwareThrottlerGuard },
   ],
 })
 export class AppModule implements NestModule {
