@@ -75,14 +75,14 @@ Pendientes de esta lista (post-01B.1): IA-01/IA-02, K-01…K-03 (parcialmente cu
 |---|---|---|
 | F-02 (anulación) | **Implementada**: ADMIN anula con motivo; anuladas fuera de indicadores; conteo aparte | `20d431d`, `957cce3` |
 | N1 (traslado administrativo) | **Implementado**: ADMIN traslada con motivo, bloqueo y auditoría; `IN_PROGRESS` reabre a `OPEN` | `9bcd89d`, `a718cd7` |
-| Historial / privilegios | **Endurecido**: tablas administrativas sin UPDATE/DELETE/TRUNCATE; propietario `NOLOGIN` + rol app separado; migrador debe poder transferir propiedad | `119ea7b`, `1788700000000` |
+| Historial / privilegios | **Endurecido**: tablas administrativas sin UPDATE/DELETE/TRUNCATE por triggers (la separación de propietario `NOLOGIN` se retiró el 2026-11-13) | `119ea7b`, `1788700000000` |
 | Escalamiento | Auditoría de severidad **transaccional** con historial/timeline | `2f38cdb` |
 | KPIs / atribución | Indicadores temporales atribuyen por responsable **histórica** vía traslados | `0d18545`, `957cce3` |
 | AU-01 | **En gran parte corregido**. Auditoría obligatoria en la TX de acciones críticas; `audit_logs` sin UPDATE/DELETE. Pendiente: login, recomendaciones, endpoint de consulta | `546fbe3`, `5690971`, `2f38cdb` |
 | S-O2 (evidencias) | Alta y borrado solo en casos activos | `546fbe3` |
 | Invariantes PG | Suites de historial, traslado e institucionales | `811797c`, `2bdf12f` |
 
-**Bloqueantes de despliegue / Cloud SQL:** roles `NOVEX_HISTORY_OWNER_ROLE` (`NOLOGIN`) + `NOVEX_APP_DB_ROLE` + migrador autorizado, verificados en solo lectura antes de `migration:run` de `17883*`–`17887*`. Detalle: [seguridad-y-permisos.md](seguridad-y-permisos.md) y [despliegue-y-operacion.md](despliegue-y-operacion.md).  
+**Despliegue / Cloud SQL:** sin roles adicionales desde el 2026-11-13; backup, `migration:show` y autorización antes de `migration:run` de `17883*`–`17887*`. Detalle: [seguridad-y-permisos.md](seguridad-y-permisos.md) y [despliegue-y-operacion.md](despliegue-y-operacion.md).  
 **Pendiente frontend:** UI de anulación y traslado (contratos HTTP ya listos).  
 Contratos y decisiones de producto: [seguridad-y-permisos.md](seguridad-y-permisos.md) §«Anulación, traslado y auditoría».
 

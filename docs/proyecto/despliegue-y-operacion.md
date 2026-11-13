@@ -24,20 +24,17 @@
 - Migración fantasma histórica en prod: `AllowAnalystUnassignedSituations1786500000000` (copia en backups Fase 00; **no** reintroducir sin decisión).
 - Rollback a pre-cartas (`49a6483`) **no viable** si hay INTER.
 
-### Puerta Fase 01B.1 (`1788300000000`…`1788700000000`) — **no desplegar aún**
+### Puerta Fase 01B.1 (`1788300000000`…`1788700000000`)
 
-Código cerrado en `refactor/novex-consolidacion` @ `2bdf12f` (pruebas: 1.158 unitarias + 61 PG). **No** aplicar estas migraciones en Cloud SQL ni en bases compartidas hasta:
+Código cerrado en `refactor/novex-consolidacion`. No requieren roles PostgreSQL adicionales: corren con el usuario de la aplicación (`novex`). Desde el 2026-11-13, `1788700000000-HardenSituationHistory` protege el historial (`audit_logs`, anulaciones, traslados) solo con triggers que rechazan UPDATE/DELETE/TRUNCATE y FK `RESTRICT`; ya no transfiere la propiedad a un rol `NOLOGIN` ni exige `NOVEX_HISTORY_OWNER_ROLE` / `NOVEX_APP_DB_ROLE`.
 
-1. Rol propietario del historial (`NOVEX_HISTORY_OWNER_ROLE`) **`NOLOGIN`**, separado del rol de aplicación.
-2. Rol de aplicación (`NOVEX_APP_DB_ROLE`) no-superusuario, sin membresía del propietario.
-3. Migrador autorizado para transferir la propiedad de las tablas al propietario.
-4. Verificación **solo lectura** de privilegios (SQL en [seguridad-y-permisos.md](seguridad-y-permisos.md) §«Procedimiento de verificación») con criterio de paso cumplido.
+Límite aceptado: el propietario de las tablas (el usuario de la aplicación) podría deshabilitar los triggers de forma deliberada. La protección cubre errores de la aplicación y borrados accidentales, no credenciales comprometidas. Separar un propietario `NOLOGIN` queda como endurecimiento posterior de infraestructura.
 
-**Advertencia:** ejecutar `migration:run` / `cloud:*` contra Cloud SQL con estas migraciones **sin** esos roles preparados es un bloqueante operativo. La migración de privilegios falla cerrada si faltan; no usar eso como “prueba” en prod.
+Requisitos antes de `migration:run` en Cloud SQL: autorización del responsable, backup manual de la instancia y `migration:show` para confirmar el lote pendiente.
 
-### Puerta Fase 01B.2 (`1788800000000`, `1788900000000`) — **no desplegar aún**
+### Puerta Fase 01B.2 (`1788800000000`, `1788900000000`)
 
-Misma puerta que 01B.1 (van detrás de `1788700000000`). Además:
+Mismos requisitos que 01B.1 (van detrás de `1788700000000`). Además:
 
 - **`1788800000000-NormalizeLegacyResolvedSituations`** convierte a `CLOSED` solo los `RESOLVED` con fecha real (`closed_at`, o `resolved_at`). Los que no tienen fecha, o la tienen anterior a la creación, **no** se convierten y quedan en `legacy_resolved_normalizations` como `PENDING_*`: requieren que alguien con autoridad aporte la fecha real o decida su tratamiento (no se inventa). Consulta previa, solo lectura:
 
@@ -54,7 +51,7 @@ Misma puerta que 01B.1 (van detrás de `1788700000000`). Además:
 - **`1788900000000-AddSituationEvidenceRetirement`**: aditiva; `down()` se niega si hay evidencias retiradas.
 - Variables nuevas opcionales: `AI_PROMPT_SNAPSHOT_RETENTION_DAYS`, `AI_SESSION_RETENTION_DAYS` (vacías; no ejecutan nada).
 
-### Migraciones posteriores (`1789000000000`…`1789200000000`) — **no desplegar aún**
+### Migraciones posteriores (`1789000000000`…`1789300000000`)
 
 Van detrás de la puerta 01B.1/01B.2:
 

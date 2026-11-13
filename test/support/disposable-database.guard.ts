@@ -262,8 +262,8 @@ function connectionOptions(target: ResolvedDatabaseEnv): DataSourceOptions {
  *   2. corre en una transacción con `SET LOCAL session_replication_role =
  *      replica`, que desactiva los triggers ordinarios SOLO en esa transacción
  *      y SOLO para un superusuario (el dueño del contenedor de pruebas).
- * El rol de aplicación nunca puede hacerlo: en producción la protección no
- * cambia.
+ * Requiere superusuario: el usuario de la aplicación en Cloud SQL no lo es,
+ * así que en producción la protección no cambia.
  */
 export async function truncateDisposableFixtures(
   context: string,

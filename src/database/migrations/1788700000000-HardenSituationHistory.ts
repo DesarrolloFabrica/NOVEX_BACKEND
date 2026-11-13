@@ -3,51 +3,22 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 /**
  * Hardening de historial institucional.
  *
- * Requiere que infraestructura aprovisione:
- *   - NOVEX_HISTORY_OWNER_ROLE: rol NOLOGIN, separado del runtime;
- *   - NOVEX_APP_DB_ROLE: rol usado por la aplicación, no propietario ni
- *     miembro del rol propietario.
- * El migrador debe poder transferir la propiedad al primer rol. La migración
- * falla cerrada si faltan roles o si no hay separación efectiva.
+ * `audit_logs`, `situation_cancellations` y `situation_coordination_transfers`
+ * rechazan UPDATE, DELETE y TRUNCATE mediante triggers, vengan de la
+ * aplicación o de una consola, y la baja física de una situación no puede
+ * arrastrar su historia (ON DELETE RESTRICT).
+ *
+ * No exige roles de base de datos adicionales: corre con el mismo usuario que
+ * la aplicación. Límite aceptado: quien posea las tablas (o un superusuario)
+ * puede deshabilitar los triggers de forma deliberada; la protección cubre
+ * errores de la aplicación y borrados accidentales, no credenciales
+ * comprometidas. Separar un propietario NOLOGIN sería un endurecimiento
+ * posterior de infraestructura.
  */
 export class HardenSituationHistory1788700000000 implements MigrationInterface {
   name = 'HardenSituationHistory1788700000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    const owner = roleIdentifier('NOVEX_HISTORY_OWNER_ROLE');
-    const app = roleIdentifier('NOVEX_APP_DB_ROLE');
-    const ownerName = owner.slice(1, -1);
-    const appName = app.slice(1, -1);
-
-    await queryRunner.query(`
-      DO $novex$
-      DECLARE
-        owner_role text := '${ownerName}';
-        app_role text := '${appName}';
-        owner_login boolean;
-        app_superuser boolean;
-        migration_can_transfer boolean;
-      BEGIN
-        SELECT rolcanlogin INTO owner_login FROM pg_roles WHERE rolname = owner_role;
-        SELECT rolsuper INTO app_superuser FROM pg_roles WHERE rolname = app_role;
-        IF owner_login IS NULL OR app_superuser IS NULL THEN
-          RAISE EXCEPTION 'NOVEX_HISTORY_OWNER_ROLE y NOVEX_APP_DB_ROLE deben existir antes de migrar';
-        END IF;
-        IF owner_role = app_role OR owner_login OR app_superuser THEN
-          RAISE EXCEPTION 'El rol propietario debe ser NOLOGIN y distinto del rol operativo no-superusuario';
-        END IF;
-        IF pg_has_role(app_role, owner_role, 'MEMBER') THEN
-          RAISE EXCEPTION 'El rol operativo no puede ser miembro del rol propietario del historial';
-        END IF;
-        SELECT rolsuper OR pg_has_role(current_user, owner_role, 'MEMBER')
-          INTO migration_can_transfer FROM pg_roles WHERE rolname = current_user;
-        IF NOT coalesce(migration_can_transfer, false) THEN
-          RAISE EXCEPTION 'El migrador debe poder transferir propiedad a %', owner_role;
-        END IF;
-      END
-      $novex$;
-    `);
-
     await queryRunner.query(`
       CREATE OR REPLACE FUNCTION "novex_reject_history_mutation"()
       RETURNS trigger LANGUAGE plpgsql AS $$
@@ -90,35 +61,8 @@ export class HardenSituationHistory1788700000000 implements MigrationInterface {
         BEFORE TRUNCATE ON "${table}"
         FOR EACH STATEMENT EXECUTE FUNCTION "novex_reject_history_mutation"()
       `);
-      await queryRunner.query(
-        `REVOKE ALL ON TABLE "${table}" FROM PUBLIC, ${app}`,
-      );
-      await queryRunner.query(
-        `GRANT SELECT, INSERT ON TABLE "${table}" TO ${app}`,
-      );
-      await queryRunner.query(`ALTER TABLE "${table}" OWNER TO ${owner}`);
+      await queryRunner.query(`REVOKE ALL ON TABLE "${table}" FROM PUBLIC`);
     }
-
-    await queryRunner.query(`
-      DO $novex$
-      DECLARE
-        app_role text := '${appName}';
-        table_name text;
-      BEGIN
-        FOREACH table_name IN ARRAY ARRAY[
-          'audit_logs',
-          'situation_cancellations',
-          'situation_coordination_transfers'
-        ] LOOP
-          IF has_table_privilege(app_role, format('public.%I', table_name)::regclass, 'UPDATE')
-             OR has_table_privilege(app_role, format('public.%I', table_name)::regclass, 'DELETE')
-             OR has_table_privilege(app_role, format('public.%I', table_name)::regclass, 'TRUNCATE') THEN
-            RAISE EXCEPTION 'El rol operativo % conserva privilegios de mutación sobre %', app_role, table_name;
-          END IF;
-        END LOOP;
-      END
-      $novex$;
-    `);
 
     // La anulación y los traslados son historia de la situación: una baja
     // física del padre no debe propagar un borrado en cascada.
@@ -144,9 +88,6 @@ export class HardenSituationHistory1788700000000 implements MigrationInterface {
           FOREIGN KEY ("next_assigned_user_id") REFERENCES "users"("id") ON DELETE RESTRICT
     `);
     await queryRunner.query(
-      `ALTER FUNCTION "novex_reject_history_mutation"() OWNER TO ${owner}`,
-    );
-    await queryRunner.query(
       `REVOKE ALL ON FUNCTION "novex_reject_history_mutation"() FROM PUBLIC`,
     );
   }
@@ -156,14 +97,4 @@ export class HardenSituationHistory1788700000000 implements MigrationInterface {
       'HardenSituationHistory es irreversible automáticamente: revertirlo quitaría protecciones de auditoría e historial. Requiere un plan de seguridad aprobado.',
     );
   }
-}
-
-function roleIdentifier(variable: string): string {
-  const value = process.env[variable]?.trim();
-  if (!value || !/^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/.test(value)) {
-    throw new Error(
-      `${variable} debe declarar un identificador PostgreSQL simple (máx. 63 caracteres).`,
-    );
-  }
-  return `"${value}"`;
 }

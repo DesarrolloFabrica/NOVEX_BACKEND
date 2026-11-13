@@ -242,15 +242,12 @@ suite(
     const count = async (sql: string, params: unknown[]) =>
       Number((await ds.query<Array<{ n: string }>>(sql, params))[0].n);
 
-    async function runAsRole(role: string, sql: string, params: unknown[]) {
-      if (!/^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/.test(role)) {
-        throw new Error('Rol de prueba inválido.');
-      }
+    /** Ejecuta como el propietario de las tablas y siempre revierte. */
+    async function runAndRollback(sql: string, params: unknown[]) {
       const runner = ds.createQueryRunner();
       await runner.connect();
       await runner.startTransaction();
       try {
-        await runner.query(`SET LOCAL ROLE "${role}"`);
         return (await runner.query(sql, params)) as unknown;
       } finally {
         if (runner.isTransactionActive) await runner.rollbackTransaction();
@@ -759,9 +756,6 @@ suite(
           `SELECT id FROM audit_logs WHERE resource_id = $1 LIMIT 1`,
           [created.id],
         );
-        const ownerRole =
-          process.env.NOVEX_HISTORY_OWNER_ROLE ?? 'novex_history_owner';
-        const appRole = process.env.NOVEX_APP_DB_ROLE ?? 'novex_app';
         const attempts = [
           [`UPDATE audit_logs SET action = 'X' WHERE id = $1`, [id]],
           [`DELETE FROM audit_logs WHERE id = $1`, [id]],
@@ -786,13 +780,8 @@ suite(
           [`TRUNCATE situation_coordination_transfers`, []],
         ] as const;
         for (const [sql, params] of attempts) {
-          await expect(runAsRole(ownerRole, sql, [...params])).rejects.toThrow(
+          await expect(runAndRollback(sql, [...params])).rejects.toThrow(
             /inmutable/,
-          );
-        }
-        for (const [sql, params] of attempts) {
-          await expect(runAsRole(appRole, sql, [...params])).rejects.toThrow(
-            /permission denied/,
           );
         }
       });

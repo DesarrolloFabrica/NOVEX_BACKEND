@@ -63,15 +63,9 @@ Contra Cloud SQL (`DB_CLOUD=true` o `DB_HOST=/cloudsql/…`): las semillas de ar
 
 La e2e real del frontend (`NOVEX_FRONTEND/e2e-real/run.mjs`) crea por ejecución un contenedor PostgreSQL nuevo con tmpfs, puerto aleatorio ligado a loopback y base marcada `novex:disposable-test-db`; el preparador exige la guarda central antes de recrear el esquema. El contenedor se detiene al terminar. La aplicación e2e necesita el puerto 3001 libre.
 
-### Contenedor de pruebas con roles (Fase 01B.2)
+### Historial inmutable (`1788700000000`)
 
-Desde `1788700000000` el contenedor desechable necesita los roles antes de migrar (paso 1-2 de arriba, como superusuario del contenedor):
-`CREATE ROLE novex_history_owner NOLOGIN; CREATE ROLE novex_app LOGIN NOSUPERUSER PASSWORD '<aleatoria>';`
-y declarar `NOVEX_HISTORY_OWNER_ROLE=novex_history_owner NOVEX_APP_DB_ROLE=novex_app` en la invocación de `migration:run`. Las suites e2e vacían fixtures con `truncateDisposableFixtures` (re-verifica la marca y usa `SET LOCAL session_replication_role = replica`, solo posible para el superusuario del contenedor). La integración recrea `public` y restaura `GRANT USAGE ON SCHEMA public TO PUBLIC`; su prueba de reversión se detiene en `1788700000000` (irreversible por diseño). `fase01b-administration.pg.spec` no es re-ejecutable sobre la misma base: usar un contenedor nuevo por corrida completa.
-
-### Propiedad del historial institucional
-
-La migración `1788700000000-HardenSituationHistory` requiere que infraestructura cree `NOVEX_HISTORY_OWNER_ROLE` como `NOLOGIN` y `NOVEX_APP_DB_ROLE` como rol runtime no-superusuario, sin membresía del rol propietario. El migrador debe poder transferir la propiedad. Ejecute la migración con credenciales de migrador y declare ambos nombres solo en esa invocación; configure el servicio con el rol de aplicación. La migración valida los privilegios efectivos y falla cerrada si el runtime conserva UPDATE, DELETE o TRUNCATE. Los triggers también rechazan esas operaciones; propietarios y superusuarios siguen siendo una frontera administrativa privilegiada y nunca deben usarse como runtime.
+`audit_logs`, `situation_cancellations` y `situation_coordination_transfers` rechazan UPDATE/DELETE/TRUNCATE por trigger. La migración no exige roles adicionales (simplificada el 2026-11-13): corre con el usuario de la aplicación, también en Cloud SQL. Límite aceptado: el dueño de las tablas podría deshabilitar los triggers a propósito. Las suites e2e vacían fixtures con `truncateDisposableFixtures` (re-verifica la marca y usa `SET LOCAL session_replication_role = replica`, solo posible para el superusuario del contenedor). La integración recrea `public` y restaura `GRANT USAGE ON SCHEMA public TO PUBLIC`; su prueba de reversión se detiene en `1788700000000` (irreversible por diseño). `fase01b-administration.pg.spec` no es re-ejecutable sobre la misma base: usar un contenedor nuevo por corrida completa.
 
 ## Docs operativos en este repo
 

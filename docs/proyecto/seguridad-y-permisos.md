@@ -135,44 +135,22 @@ COORDINADOR **sin** coordinación: no lista (403 `COORDINATION_REQUIRED`), no le
 3. **Recomendaciones de casos CLOSED.** Siguen siendo editables (solo se congelaron las de casos anulados).
 4. **Borrado de evidencias.** Sigue siendo físico, aunque ahora queda auditado y solo en casos activos. Alternativa: borrado lógico.
 
-### Requisito obligatorio de producción (bloquea migrar / desplegar)
+### Protección del historial en producción
 
-Antes de aplicar `1788300000000`…`1788700000000` en cualquier base compartida o Cloud SQL:
+`1788700000000` no requiere roles adicionales (simplificada el 2026-11-13): los triggers rechazan UPDATE/DELETE/TRUNCATE sobre `audit_logs`, `situation_cancellations` y `situation_coordination_transfers` para cualquier usuario que no los deshabilite explícitamente. El usuario de la aplicación es dueño de esas tablas, así que podría deshabilitarlos de forma deliberada; la protección cubre errores de la aplicación y borrados accidentales, no credenciales comprometidas.
 
-1. Rol propietario del historial (`NOVEX_HISTORY_OWNER_ROLE`) **`NOLOGIN`**, separado del rol de aplicación.
-2. Rol de aplicación (`NOVEX_APP_DB_ROLE`) **no-superusuario**, sin membresía del propietario.
-3. Migrador **autorizado** capaz de transferir la propiedad de tablas al rol propietario.
-4. Runtime del servicio solo con el rol de aplicación (SELECT/INSERT sobre historial; sin UPDATE/DELETE/TRUNCATE).
+Endurecimiento posterior (opcional, infraestructura): propietario `NOLOGIN` separado y rol de aplicación sin propiedad, con SELECT/INSERT sobre el historial.
 
-Sin esa separación, `1788700000000` falla cerrada. **No ejecutar estas migraciones en Cloud SQL** hasta validar y preparar esos roles.
-
-### Procedimiento de verificación de privilegios (solo lectura; no cambia datos)
-
-Consultar en la instancia objetivo **antes** de `migration:run`. No modifica privilegios ni datos:
+Verificación tras migrar (solo lectura):
 
 ```sql
--- Sustituir por los nombres reales aprovisionados.
-SELECT r.rolname, r.rolcanlogin, r.rolsuper
-FROM pg_roles r
-WHERE r.rolname IN ('NOVEX_HISTORY_OWNER_ROLE', 'NOVEX_APP_DB_ROLE');
-
-SELECT pg_has_role('NOVEX_APP_DB_ROLE', 'NOVEX_HISTORY_OWNER_ROLE', 'MEMBER')
-  AS app_is_member_of_owner;
-
--- Solo tras prueba en base DESECHABLE (nunca en prod sin autorización):
-SELECT
-  t.tablename,
-  has_table_privilege('NOVEX_APP_DB_ROLE', format('public.%I', t.tablename), 'UPDATE') AS can_update,
-  has_table_privilege('NOVEX_APP_DB_ROLE', format('public.%I', t.tablename), 'DELETE') AS can_delete,
-  has_table_privilege('NOVEX_APP_DB_ROLE', format('public.%I', t.tablename), 'TRUNCATE') AS can_truncate
-FROM (VALUES
-  ('audit_logs'),
-  ('situation_cancellations'),
-  ('situation_coordination_transfers')
-) AS t(tablename);
+SELECT tgrelid::regclass AS tabla, tgname, tgenabled
+FROM pg_trigger
+WHERE tgname LIKE 'trg_%_immutable_%'
+ORDER BY 1, 2;
 ```
 
-Criterio de paso: propietario `rolcanlogin = false`; aplicación `rolsuper = false` y `app_is_member_of_owner = false`; tras migrar en desechable, mutación en `false`. Si falla → no migrar Cloud SQL.
+Criterio de paso: seis triggers (`_immutable_rows` y `_immutable_truncate` por tabla) con `tgenabled = 'O'`.
 
 ### Pendiente técnico
 

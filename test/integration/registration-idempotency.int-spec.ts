@@ -290,8 +290,7 @@ describe('Alta idempotente y reclamo de análisis con PostgreSQL real', () => {
     await ds.query('DROP SCHEMA IF EXISTS public CASCADE');
     await ds.query('CREATE SCHEMA public');
     // Restaura el privilegio por defecto del esquema public (PostgreSQL 15+:
-    // USAGE para PUBLIC). Desde 1788700000000 las tablas de historial son del
-    // rol propietario, que ejecuta las comprobaciones de claves foráneas.
+    // USAGE para PUBLIC), como en una base recién creada.
     await ds.query('GRANT USAGE ON SCHEMA public TO PUBLIC');
     await ds.runMigrations();
 

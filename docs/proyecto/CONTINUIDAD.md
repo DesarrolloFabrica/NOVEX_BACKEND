@@ -45,7 +45,7 @@ E2E Playwright (mocks): pasan las suites del recorrido y del shell; quedan fallo
 
 ## 3. Pendientes
 
-- **Migraciones en Cloud SQL** (§4): bloqueadas hasta roles PostgreSQL y autorización.
+- **Migraciones en Cloud SQL** (§4): pendientes de autorización, backup y `migration:show`. Ya no requieren roles PostgreSQL adicionales (2026-11-13).
 - **E2E desactualizadas** del frontend (ya fallaban antes del 12-nov; la UI evolucionó y las pruebas no). Las de más fallos: `operational-coordinator-shell`, `operational-character-lives`, `operational-cards-selection`, `operational-action-panel`, `operational-problem-detail`, `operational-card-language`, `operational-cards`; además casos sueltos en `operational-deck-*`, `operational-table-*`, `operational-history-panel`, `operational-center-menu` y otras. Ejecutar con `npx playwright test --workers=1` para no saturar el equipo.
 - Parser de KPIs del FE: `parseDirectionIntegrity` (`operational-kpi.service.ts`) lanza `OperationalKpiContractError` ante una regla de Dirección desconocida; con las 6 reglas actuales no bloquea, pero una regla nueva rompería toda la respuesta. Resolver en la integración de KPIs (regla desconocida → `null`) y sincronizar con `operational-direction-integrity.ts`.
 - AU-01 restante, OP-01/OP-03, K-04/K-05/K-07, retención IA (D7) sin ejecución automática.
@@ -64,7 +64,7 @@ E2E Playwright (mocks): pasan las suites del recorrido y del shell; quedan fallo
 | `1789100000000` | Texto libre de la categoría «Otra» |
 | `1789200000000` | Fusión Servicios → Homologaciones |
 
-**Requisitos PostgreSQL (bloqueantes):** rol propietario `NOVEX_HISTORY_OWNER_ROLE` **`NOLOGIN`**; rol de aplicación `NOVEX_APP_DB_ROLE` no-superusuario y sin membresía del propietario; migrador autorizado para transferir propiedad; verificación **solo lectura** de privilegios ([seguridad-y-permisos.md](seguridad-y-permisos.md)) antes de `migration:run`.
+**Requisitos:** autorización del responsable, backup manual de Cloud SQL, `migration:show` y la consulta previa de `1788800000000`. Se ejecutan con el usuario de la aplicación; desde el 2026-11-13 `1788700000000` no exige roles `NOLOGIN` ni rol de aplicación separado ([seguridad-y-permisos.md](seguridad-y-permisos.md)).
 
 ## 5. Base local y pruebas destructivas
 
