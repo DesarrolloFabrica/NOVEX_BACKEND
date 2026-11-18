@@ -19,7 +19,7 @@ Lectura ≠ escritura. Pistas `canUpdate` / `canResolve` / `canAdvanceToInProgre
 | **A1** | IDOR `/recommendations/:id` | Corregido (revalidado en 01A) | Vulnerable | Autorizar PR → `main` |
 | **A2** | COORDINADOR sin coordinación lista todas | **Corregido 01A** (`485476c`): 403 `COORDINATION_REQUIRED` en listado, 404 en detalle | Sí | Desplegar |
 | **M1** | `analyze` / POST recommendations con alcance lectura | **Corregido 01A** (`485476c`): análisis con regla propia, recomendaciones con operación, 409 en cerrados | Sí | Desplegar |
-| **N1** | ANALISTA reasigna a `coord-general` y resuelve | **Corregido 01A** (`8be4415`); traslado ADMIN en **01B.1** (`9bcd89d`…`2bdf12f`, sin desplegar) | Sí | Desplegar tras puerta roles `NOLOGIN` |
+| **N1** | ANALISTA reasigna a `coord-general` y resuelve | **Corregido 01A** (`8be4415`); traslado ADMIN en **01B.1** (`9bcd89d`…`2bdf12f`, desplegado 2026-11-18) | Sí | Desplegado (sin roles `NOLOGIN`, ver 2026-11-13) |
 | **N2** | PATCH INTER puede igualar responsable/afectada | **Corregido 01A** (`8be4415`), por la misma vía | Sí | Desplegar |
 | **O1** | Avance + otros campos | **Corregido 01A** (`8be4415`): 400 `ADVANCE_WITH_FIELD_CHANGES` | Sí | Desplegar |
 | **O2** | PATCH edita CLOSED | **Corregido 01A** (`8be4415`): 409 `SITUATION_CLOSED` | Sí | Desplegar |
@@ -45,7 +45,7 @@ COORDINADOR **sin** coordinación: no lista (403 `COORDINATION_REQUIRED`), no le
 
 ## Anulación, traslado y auditoría (Fase 01B.1) — **cerrada en código**
 
-**Estado:** implementada en `NOVEX_BACKEND` / `refactor/novex-consolidacion` (tip local `2bdf12f`, **sin desplegar** a `main`/Cloud SQL).  
+**Estado:** implementada en `NOVEX_BACKEND` / `refactor/novex-consolidacion` (tip `2bdf12f`; **desplegada** en `main` y Cloud SQL el 2026-11-18).  
 **Cierre de endurecimiento (Codex):** `119ea7b` historial/rollback · `2f38cdb` auditoría transaccional de escalamiento · `a718cd7` reapertura en traslado · `0d18545` atribución histórica en KPIs · `2bdf12f` pruebas PG de invariantes.  
 **Base funcional previa:** `5690971` modelo · `546fbe3` auditoría · `20d431d` anulación · `9bcd89d` traslado · `957cce3` indicadores · `811797c` integración PG.
 

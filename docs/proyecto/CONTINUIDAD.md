@@ -2,17 +2,17 @@
 
 **Actualizado:** 2026-11-18  
 **Rama de trabajo:** `refactor/novex-consolidacion` en ambos repos (única autorizada para publicar).  
-**Producción / `main`:** no tocar, no mergear, no desplegar sin autorización del responsable.
+**Producción / `main`:** desplegada el 2026-11-18 desde esta rama (tag `novex-prod-20261118`). No mergear ni desplegar sin autorización del responsable.
 
 ## 1. Estado actual
 
 | Capa | Repo | Rama | Último commit de código |
 |---|---|---|---|
-| API | `NOVEX_BACKEND` | `refactor/novex-consolidacion` | `8bba579` (después solo limpieza documental) |
-| SPA | `NOVEX_FRONTEND` | `refactor/novex-consolidacion` | `6bc9ae1` (después solo limpieza documental y de pruebas) |
-| Prod | tag `novex-circo-prod-20261027` | `main` | BE `5ffc65f` · FE `b726c47` |
+| API | `NOVEX_BACKEND` | `refactor/novex-consolidacion` | `0251386` |
+| SPA | `NOVEX_FRONTEND` | `refactor/novex-consolidacion` | `aec31a4` |
+| Prod | tag `novex-prod-20261118` | `main` | BE `0251386` (Cloud Run `novex-backend-00093-yak`) · FE `aec31a4` (`novex-frontend-00082-jih`) |
 
-Todo lo listado abajo está **cerrado en código y sin desplegar** (ni en `main` ni en Cloud SQL).
+Todo lo listado abajo está **desplegado en producción** desde el 2026-11-18 (código en `main` y esquema en Cloud SQL al día). Release anterior: tag `novex-circo-prod-20261027` (BE `5ffc65f`, FE `b726c47`).
 
 | Fase | Qué quedó |
 |---|---|
@@ -50,15 +50,15 @@ E2E Playwright (mocks): pasan las suites del recorrido y del shell; quedan fallo
 
 ## 3. Pendientes
 
-- **Migraciones en Cloud SQL** (§4): pendientes de autorización, backup y `migration:show`. Ya no requieren roles PostgreSQL adicionales (2026-11-13).
+- **`.env` local:** `DB_PASSWORD_CLOUD` no coincide con Secret Manager (`novex-db-password`); actualizarlo por canal seguro antes de usar `cloud:*` o migraciones contra Cloud SQL.
 - **E2E desactualizadas** del frontend (ya fallaban antes del 12-nov; la UI evolucionó y las pruebas no). Las de más fallos: `operational-coordinator-shell`, `operational-character-lives`, `operational-cards-selection`, `operational-action-panel`, `operational-problem-detail`, `operational-card-language`, `operational-cards`; además casos sueltos en `operational-deck-*`, `operational-table-*`, `operational-history-panel`, `operational-center-menu` y otras. Ejecutar con `npx playwright test --workers=1` para no saturar el equipo.
 - Parser de KPIs del FE: `parseDirectionIntegrity` (`operational-kpi.service.ts`) lanza `OperationalKpiContractError` ante una regla de Dirección desconocida; con las 6 reglas actuales no bloquea, pero una regla nueva rompería toda la respuesta. Resolver en la integración de KPIs (regla desconocida → `null`) y sincronizar con `operational-direction-integrity.ts`.
 - AU-01 restante, OP-01/OP-03, K-04/K-05/K-07, retención IA (D7) sin ejecución automática.
 - Activar el recorrido del coordinador en un despliegue solo con validación y autorización.
 
-## 4. Migraciones pendientes de producción
+## 4. Migraciones de producción
 
-**No ejecutar en Cloud SQL** sin autorización y sin los requisitos de abajo. Detalle por puerta: [despliegue-y-operacion.md](despliegue-y-operacion.md).
+**Al día (2026-11-18).** Antes de migrar: backup manual `1795010276467` de `novex-db`, `migration:show` (11 pendientes) y consulta previa de `1788800000000` (0 RESOLVED legado; `coord-servicios` sin usuarios ni situaciones). Aplicadas con el usuario de la aplicación por Cloud SQL Auth Proxy:
 
 | Serie | Contenido |
 |---|---|
@@ -68,8 +68,9 @@ E2E Playwright (mocks): pasan las suites del recorrido y del shell; quedan fallo
 | `1789000000000` | `KPIS_VIEW` para ADMIN |
 | `1789100000000` | Texto libre de la categoría «Otra» |
 | `1789200000000` | Fusión Servicios → Homologaciones |
+| `1789300000000` | `KPIS_VIEW` para ANALISTA |
 
-**Requisitos:** autorización del responsable, backup manual de Cloud SQL, `migration:show` y la consulta previa de `1788800000000`. Se ejecutan con el usuario de la aplicación; desde el 2026-11-13 `1788700000000` no exige roles `NOLOGIN` ni rol de aplicación separado ([seguridad-y-permisos.md](seguridad-y-permisos.md)).
+Próximas migraciones: mismos requisitos (autorización, backup, `migration:show`) y **siempre antes** del push a `main`. Detalle por puerta: [despliegue-y-operacion.md](despliegue-y-operacion.md).
 
 ## 5. Base local y pruebas destructivas
 
@@ -89,7 +90,7 @@ Clonar ambos repos como carpetas hermanas (`Proyecto-Novex/NOVEX_BACKEND`, `Proy
 
 Secretos (`.env`, JWT, Gemini, DB) **no** están en Git: copiarlos por canal seguro.
 
-**No hacer:** push/merge a `main`, force push, deploy, migraciones en Cloud SQL, tocar `Alejo-Rama`.
+**No hacer sin autorización:** push/merge a `main`, deploy, migraciones en Cloud SQL. **Nunca:** force push, tocar `Alejo-Rama`.
 
 ## 7. Historial
 
@@ -105,6 +106,8 @@ Secretos (`.env`, JWT, Gemini, DB) **no** están en Git: copiarlos por canal seg
 | 2026-11-10 | Fase 02 planificada y luego integrada en FE (anulación, traslado, evidencias, sesión, IA, registro único) |
 | 2026-11-12 | Recorrido del coordinador, formulario ampliado, fusión Servicios→Homologaciones, límite por usuario, auditoría de roles |
 | 2026-11-12 | Limpieza documental: un índice, un doc de infraestructura, este archivo como estado + historial |
+| 2026-11-18 | Exportar situaciones activas a Excel (BE `b6f13d9`, FE `aec31a4`) |
+| 2026-11-18 | **Despliegue de la consolidación a producción**: backup, 11 migraciones en Cloud SQL, `main` BE `0251386` y FE `aec31a4` · tag `novex-prod-20261118`. Primer intento de CI falló por una prueba frágil en Linux (`fase01a-overview-scope`), corregida en `0251386` |
 
 Ramas a conservar: `main`, `refactor/novex-consolidacion`, `Alejo-Rama`.
 

@@ -37,8 +37,8 @@ Empieza por **[CONTINUIDAD.md](./CONTINUIDAD.md)**: estado actual, pendientes, h
 
 | Capa | Carpeta | Rama de trabajo | Producción |
 |---|---|---|---|
-| API | `NOVEX_BACKEND/` | `refactor/novex-consolidacion` | `main` / tag `novex-circo-prod-20261027` (`5ffc65f`) |
-| SPA | `NOVEX_FRONTEND/` | `refactor/novex-consolidacion` | `main` / tag `novex-circo-prod-20261027` (`b726c47`) |
+| API | `NOVEX_BACKEND/` | `refactor/novex-consolidacion` | `main` / tag `novex-prod-20261118` (`0251386`) |
+| SPA | `NOVEX_FRONTEND/` | `refactor/novex-consolidacion` | `main` / tag `novex-prod-20261118` (`aec31a4`) |
 
 **Regla:** push a `main` = despliegue automático. No migrar ni tocar Cloud SQL sin autorización.
 

@@ -6,8 +6,9 @@ API NestJS de **NOVEX** (Cartas y Circo): situaciones, RBAC, overview/KPIs, Gemi
 
 | Ref | Commit | Uso |
 |---|---|---|
-| `origin/main` / tag `novex-circo-prod-20261027` | `5ffc65f` | Producción |
-| `refactor/novex-consolidacion` | tip de la rama | Desarrollo (sin desplegar) |
+| `origin/main` / tag `novex-prod-20261118` | `0251386` | Producción (desde 2026-11-18) |
+| tag `novex-circo-prod-20261027` | `5ffc65f` | Release anterior |
+| `refactor/novex-consolidacion` | tip de la rama | Desarrollo (base del despliegue actual) |
 | `Alejo-Rama` | conservada | No modificar en consolidación |
 
 **Node 20.** Push a `main` despliega Cloud Run **sin** aplicar migraciones.

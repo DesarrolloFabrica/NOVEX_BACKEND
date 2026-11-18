@@ -11,7 +11,7 @@ API NestJS de NOVEX (Cartas y Circo): RBAC, situaciones, overview/KPIs, Gemini. 
 ## Rama de trabajo
 
 - **Trabajo:** `refactor/novex-consolidacion` (base `origin/integracion/cartas-circo`, incluye **A1**).
-- **Producción:** `origin/main` / tag `novex-circo-prod-20261027` (`5ffc65f`) — **no** pushear sin autorización.
+- **Producción:** `origin/main` / tag `novex-prod-20261118` (`0251386`; anterior `novex-circo-prod-20261027`) — **no** pushear sin autorización.
 - **Conservar sin tocar:** `Alejo-Rama`.
 - Nunca usar `main` local divergente como base.
 

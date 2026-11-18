@@ -39,7 +39,7 @@ En el frontend, los contratos con el backend coinciden sin desajustes, pero la *
 
 **Los 21 tests fallidos del frontend no son un fallo del producto**: Node 26 define un `localStorage` global experimental que tapa el de jsdom. Con `--no-experimental-webstorage` pasan los 22 tests de esos dos archivos [E].
 
-### 1.1 Estado tras la Fase 01A (2026-11-09, backend `refactor/novex-consolidacion`, sin desplegar)
+### 1.1 Estado tras la Fase 01A (2026-11-09, backend `refactor/novex-consolidacion`; desplegada 2026-11-18)
 
 | Id | Estado | Commit | Pruebas |
 |---|---|---|---|
@@ -61,11 +61,11 @@ Correcciones finales tras la revisión de Codex:
 | Guarda de pruebas destructivas | **Nueva**: autorización explícita, destino declarado y marca de base desechable antes de cualquier SQL | `0456f9c` |
 | `phase2-http` (15 fallos) y 28 errores de TypeScript en pruebas | **Corregidos** sin dar permisos nuevos a ADMIN; integración del reclamo IA reescrita al contrato vigente | `dd88532` |
 
-Pendientes de esta lista (post-01B.1): IA-01/IA-02, K-01…K-03 (parcialmente cubiertos por atribución histórica de traslados), AU-01 (login/recomendaciones/consulta), OP-01/OP-03, FE-01…FE-04 (incluye UI de anulación/traslado) y los P2. Anulación y traslado administrativo: **cerrados en código** (sin desplegar).
+Pendientes de esta lista (post-01B.1): IA-01/IA-02, K-01…K-03 (parcialmente cubiertos por atribución histórica de traslados), AU-01 (login/recomendaciones/consulta), OP-01/OP-03, FE-01…FE-04 (incluye UI de anulación/traslado) y los P2. Anulación y traslado administrativo: **cerrados en código** (desplegados 2026-11-18).
 
-**Fase 01B.2 (cerrada en código, sin desplegar):** IA-01/IA-02 (la IA no alimenta la integridad; prompt minimizado, no confiable y con límite duro; `promptSnapshot` solo ADMIN), K-01 (regla de Dirección desde el backend), K-02 (población compartida: RESOLVED sin fecha no activo; barrido SLA sin RESOLVED), K-03 (panel del coordinador con conteos oficiales), K-06 (INTER consigo misma = propia), D8 (migración RESOLVED → CLOSED con pendientes explícitos), recomendaciones congeladas en casos cerrados y retiro de evidencias. Detalle en [seguridad-y-permisos.md](seguridad-y-permisos.md) §«Fase 01B.2». Siguen pendientes: AU-01, OP-01/OP-03, FE-01…FE-04, K-04/K-05/K-07, P2 y la aplicación de la retención (D7).
+**Fase 01B.2 (cerrada en código; desplegada 2026-11-18):** IA-01/IA-02 (la IA no alimenta la integridad; prompt minimizado, no confiable y con límite duro; `promptSnapshot` solo ADMIN), K-01 (regla de Dirección desde el backend), K-02 (población compartida: RESOLVED sin fecha no activo; barrido SLA sin RESOLVED), K-03 (panel del coordinador con conteos oficiales), K-06 (INTER consigo misma = propia), D8 (migración RESOLVED → CLOSED con pendientes explícitos), recomendaciones congeladas en casos cerrados y retiro de evidencias. Detalle en [seguridad-y-permisos.md](seguridad-y-permisos.md) §«Fase 01B.2». Siguen pendientes: AU-01, OP-01/OP-03, FE-01…FE-04, K-04/K-05/K-07, P2 y la aplicación de la retención (D7).
 
-### 1.1b Estado tras la Fase 01B.1 (2026-11-09) — **cerrada en código, sin desplegar**
+### 1.1b Estado tras la Fase 01B.1 (2026-11-09) — **cerrada en código; desplegada 2026-11-18**
 
 **Tip local BE:** `refactor/novex-consolidacion` @ `2bdf12f` (ahead de `origin`; **no** merge a `main` / Cloud SQL).  
 **Cierre Codex:** `119ea7b` · `2f38cdb` · `a718cd7` · `0d18545` · `2bdf12f`.  

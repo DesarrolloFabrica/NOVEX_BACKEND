@@ -2,7 +2,7 @@
 
 NOVEX gestiona situaciones INTERNAL e INTER_COORDINATION sobre 14 coordinaciones activas (Servicios se fusionó en Homologaciones, migración `1789200000000`; mesa: 9 mazos).  
 Estados: `OPEN` → `IN_PROGRESS` → `CLOSED` (cierre solo con aprendizaje vía `POST …/resolution`).  
-Estado administrativo **`CANCELLED`** (Fase 01B.1, con UI ADMIN; **sin desplegar**): anulación con motivo; no es cierre; fuera de listados e indicadores por defecto.
+Estado administrativo **`CANCELLED`** (Fase 01B.1, con UI ADMIN; **desplegado 2026-11-18**): anulación con motivo; no es cierre; fuera de listados e indicadores por defecto.
 Una situación puede marcar **coordinaciones relacionadas** (informativas) y una categoría **«Otra»** con texto libre.
 
 ## Capacidades por rol

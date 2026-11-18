@@ -135,7 +135,7 @@ RESOLVED (legado) ──POST /resolution──► CLOSED
 OPEN / IN_PROGRESS / RESOLVED ──POST /cancellation (ADMIN)──► CANCELLED
 ```
 
-`CANCELLED` (Fase 01B.1, **cerrada en código** @ `2bdf12f`, sin desplegar) no es un cierre: sin aprendizaje ni `closed_at`, inmutable, fuera de listados por defecto y de todo indicador. Traslado de responsable: `POST /situations/:id/coordination-transfer` (solo ADMIN; UI FE pendiente). Ver docs/seguridad-y-permisos.md.
+`CANCELLED` (Fase 01B.1, **cerrada en código** @ `2bdf12f`, desplegada 2026-11-18) no es un cierre: sin aprendizaje ni `closed_at`, inmutable, fuera de listados por defecto y de todo indicador. Traslado de responsable: `POST /situations/:id/coordination-transfer` (solo ADMIN; UI FE en el detalle desde la Fase 02). Ver docs/seguridad-y-permisos.md.
 
 Cierre **solo** por `POST /situations/:id/resolution` con `{ learning }` (1..4000, no vacío). PATCH con `status: CLOSED` → 403.
 
