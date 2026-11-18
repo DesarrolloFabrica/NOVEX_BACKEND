@@ -1,6 +1,6 @@
 # Continuidad NOVEX — estado actual, historial y cómo retomar
 
-**Actualizado:** 2026-11-12  
+**Actualizado:** 2026-11-18  
 **Rama de trabajo:** `refactor/novex-consolidacion` en ambos repos (única autorizada para publicar).  
 **Producción / `main`:** no tocar, no mergear, no desplegar sin autorización del responsable.
 
@@ -42,6 +42,11 @@ Todo lo listado abajo está **cerrado en código y sin desplegar** (ni en `main`
 
 **Validación al cerrar (local):** BE 1.411 pruebas Jest, ESLint y `tsc` limpios. FE 1.163 pruebas Vitest, oxlint sin avisos, typecheck y build limpios.
 E2E Playwright (mocks): pasan las suites del recorrido y del shell; quedan fallos **anteriores** a estos cambios en suites de cartas, detalle, personaje y shell del coordinador (UI evolucionó y las pruebas no), pendientes de actualizar.
+
+## 2b. Cambios del 2026-11-18 — Exportar situaciones activas a Excel
+
+- **BE** `GET /situations/export` (`src/situations/export/`): `.xlsx` generado con `exceljs` (4.4.0). Solo ADMIN, DIRECTOR y ANALISTA con `SITUATIONS_VIEW` (COORDINADOR → 403). Exporta OPEN + IN_PROGRESS; filtros opcionales `coordinationIds`, `statuses`, `severities`, `reportKinds`, `sheets` (listas separadas por comas). Hojas: Resumen, Situaciones (25 columnas: categoría y «Otra», responsable, afectada, relacionadas, severidad actual/reportada, plazo, días abierta, afectaciones…), Afectaciones y Coordinaciones relacionadas. Horas en Bogotá; tope 5.000 filas. Audita `SITUATIONS_EXPORTED` (`record`, sin textos). Controlador propio registrado antes de `SituationsController` para no caer en `:id`. CORS expone `Content-Disposition`. **Sin migraciones.**
+- **FE** botón «Exportar Excel» en el panel principal (ADMIN y ANALISTA bajo la pareja principal; DIRECTOR bajo «Indicadores operacionales») y diálogo para elegir coordinaciones, estado, severidad, tipo y hojas (`src/modules/operational-cards/export/`).
 
 ## 3. Pendientes
 

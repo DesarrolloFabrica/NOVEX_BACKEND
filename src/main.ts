@@ -114,6 +114,8 @@ async function bootstrap() {
   app.enableCors({
     origin: resolveCorsOrigins(),
     credentials: true,
+    // La exportación a Excel nombra el archivo en Content-Disposition.
+    exposedHeaders: ['Content-Disposition', 'X-Export-Rows'],
   });
 
   logBootDebug('Initializing Nest application (DB, modules, routes)...');

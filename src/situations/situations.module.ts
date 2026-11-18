@@ -25,6 +25,8 @@ import { SituationAccessService } from './situation-access.service';
 import { SituationConsequencesService } from './situation-consequences.service';
 import { SituationSlaScheduler } from './situation-sla.scheduler';
 import { SituationsService } from './situations.service';
+import { SituationsExportService } from './export/situations-export.service';
+import { SituationsExportController } from './export/situations-export.controller';
 import { GoogleIdTokenVerifier } from './sweep/google-id-token.verifier';
 import { SchedulerOidcGuard } from './sweep/scheduler-oidc.guard';
 import { SituationSweepController } from './sweep/situation-sweep.controller';
@@ -48,12 +50,15 @@ import { SituationSweepService } from './sweep/situation-sweep.service';
     forwardRef(() => SituationTimelineModule),
   ],
   controllers: [
+    // Antes de SituationsController: «/situations/export» no es un `:id`.
+    SituationsExportController,
     SituationsController,
     SituationSweepController,
     SituationAdministrationController,
   ],
   providers: [
     SituationsService,
+    SituationsExportService,
     SituationAdministrationService,
     SituationsRepository,
     SituationAccessService,
