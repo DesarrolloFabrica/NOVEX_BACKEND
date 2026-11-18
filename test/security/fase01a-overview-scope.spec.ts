@@ -272,11 +272,12 @@ describe('Fase 01A · alcance de GET /operational-overview', () => {
   });
 
   it('la protección no altera integridad ni vidas: mismo resultado para todos los roles permitidos', async () => {
-    const bodies = await Promise.all(
-      (['admin', 'director', 'analista', 'coordA'] as const).map(
-        async (who) => (await getOverview(who)).body as OverviewBody,
-      ),
-    );
+    // Secuencial: varias peticiones supertest a la vez sobre un servidor sin
+    // `listen` previo provocan ECONNRESET en Linux (CI), no en Windows.
+    const bodies: OverviewBody[] = [];
+    for (const who of ['admin', 'director', 'analista', 'coordA'] as const) {
+      bodies.push((await getOverview(who)).body as OverviewBody);
+    }
 
     const pick = (body: OverviewBody) =>
       body.coordinations.map(
