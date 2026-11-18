@@ -48,6 +48,11 @@ E2E Playwright (mocks): pasan las suites del recorrido y del shell; quedan fallo
 - **BE** `GET /situations/export` (`src/situations/export/`): `.xlsx` generado con `exceljs` (4.4.0). Solo ADMIN, DIRECTOR y ANALISTA con `SITUATIONS_VIEW` (COORDINADOR → 403). Exporta OPEN + IN_PROGRESS; filtros opcionales `coordinationIds`, `statuses`, `severities`, `reportKinds`, `sheets` (listas separadas por comas). Hojas: Resumen, Situaciones (25 columnas: categoría y «Otra», responsable, afectada, relacionadas, severidad actual/reportada, plazo, días abierta, afectaciones…), Afectaciones y Coordinaciones relacionadas. Horas en Bogotá; tope 5.000 filas. Audita `SITUATIONS_EXPORTED` (`record`, sin textos). Controlador propio registrado antes de `SituationsController` para no caer en `:id`. CORS expone `Content-Disposition`. **Sin migraciones.**
 - **FE** botón «Exportar Excel» en el panel principal (ADMIN y ANALISTA bajo la pareja principal; DIRECTOR bajo «Indicadores operacionales») y diálogo para elegir coordinaciones, estado, severidad, tipo y hojas (`src/modules/operational-cards/export/`).
 
+## 2c. Login institucional (2026-11-18)
+
+- **FE** merge de `feature/login-institucional` en consolidación (`c0a917c`): acceso institucional (`d2ff25c`, `8efe2cf`) y obturador de entrada con sello NOVEX (`8d2ac0d`) en lugar de las cortinas (`EntryCover`, `PostLoginEntryTransition`, `entry-cover.css`, `login-institutional.css`).
+- **Login anterior conservado** (escénico: cortinas, ticket y personaje): tag `novex-login-escenico-20261118` y rama `respaldo/login-escenico` (ambos en `aec31a4`). Recuperarlo: revertir el merge (`git revert -m 1 c0a917c`) o restaurar sus archivos desde el tag (`git checkout novex-login-escenico-20261118 -- src/pages/LoginPage.tsx src/shared/components src/shared/transition src/styles/login-stage.css index.html src/main.tsx`) y revisar el diff antes de publicar.
+
 ## 3. Pendientes
 
 - **`.env` local:** `DB_PASSWORD_CLOUD` no coincide con Secret Manager (`novex-db-password`); actualizarlo por canal seguro antes de usar `cloud:*` o migraciones contra Cloud SQL.
@@ -107,6 +112,7 @@ Secretos (`.env`, JWT, Gemini, DB) **no** están en Git: copiarlos por canal seg
 | 2026-11-12 | Recorrido del coordinador, formulario ampliado, fusión Servicios→Homologaciones, límite por usuario, auditoría de roles |
 | 2026-11-12 | Limpieza documental: un índice, un doc de infraestructura, este archivo como estado + historial |
 | 2026-11-18 | Exportar situaciones activas a Excel (BE `b6f13d9`, FE `aec31a4`) |
+| 2026-11-18 | Login institucional integrado en FE (`c0a917c`); login escénico en tag `novex-login-escenico-20261118` |
 | 2026-11-18 | **Despliegue de la consolidación a producción**: backup, 11 migraciones en Cloud SQL, `main` BE `0251386` y FE `aec31a4` · tag `novex-prod-20261118`. Primer intento de CI falló por una prueba frágil en Linux (`fase01a-overview-scope`), corregida en `0251386` |
 
 Ramas a conservar: `main`, `refactor/novex-consolidacion`, `Alejo-Rama`.
